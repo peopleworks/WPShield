@@ -14,7 +14,9 @@ SECURITY.md
 THREAT_MODEL.md
 WPShield.slnx
 docs/en/architecture.md
+docs/en/m1-lab-gateway.md
 docs/es/arquitectura.md
+docs/es/m1-gateway-laboratorio.md
 src/WPShield.Abstractions/IInspectionRule.cs
 src/WPShield.Abstractions/InspectionAction.cs
 src/WPShield.Abstractions/InspectionContext.cs
@@ -26,6 +28,11 @@ src/WPShield.Core/ProtectionMode.cs
 src/WPShield.Core/SiteOptions.cs
 src/WPShield.Core/SiteResolver.cs
 src/WPShield.Core/WPShield.Core.csproj
+src/WPShield.Gateway/GatewayOptions.cs
+src/WPShield.Gateway/Program.cs
+src/WPShield.Gateway/WPShield.Gateway.csproj
+src/WPShield.Gateway/WPShieldTransformer.cs
+src/WPShield.Gateway/appsettings.json
 src/WPShield.Rules.WordPress/ExecutableUploadExtensionRule.cs
 src/WPShield.Rules.WordPress/PhpContentInUploadRule.cs
 src/WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj

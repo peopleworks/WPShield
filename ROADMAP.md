@@ -12,8 +12,8 @@
 
 ## M1 — Safe HTTP gateway
 
-- [ ] ASP.NET Core gateway prototype.
-- [ ] Explicit host routing to IIS loopback bindings.
+- [x] ASP.NET Core gateway prototype.
+- [x] Explicit host routing to IIS loopback bindings.
 - [ ] Bounded multipart inspection by streaming.
 - [ ] Safe request-size and timeout controls.
 - [ ] Structured logs with mandatory redaction.

@@ -22,7 +22,8 @@ WPShield is not an antivirus, EDR, replacement for Microsoft Defender, or genera
 - `src/WPShield.Abstractions` — stable contracts for rules and findings.
 - `src/WPShield.Core` — site resolution and rule evaluation.
 - `src/WPShield.Rules.WordPress` — initial WordPress-focused rules.
-- `src/WPShield.Service` — first executable host and configuration example.
+- `src/WPShield.Service` — first executable engine demonstration.
+- `src/WPShield.Gateway` — M1 loopback-only multi-site HTTP gateway.
 - `tests` — unit tests for the engine and rules.
 - `docs/en`, `docs/es` — multilingual documentation.
 
@@ -50,3 +51,11 @@ The current bootstrap does **not** proxy traffic and does **not** change IIS. Th
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## M1 laboratory gateway
+
+```powershell
+dotnet run --project src/WPShield.Gateway
+```
+
+The M1 gateway is intentionally restricted to loopback. See `docs/es/m1-gateway-laboratorio.md` before testing with IIS.
