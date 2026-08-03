@@ -37,6 +37,12 @@ dotnet test --configuration Release
 dotnet run --project src/WPShield.Service
 ```
 
+`WPShield.Service` resolves its default `appsettings.json` from the compiled application directory, so the command works when launched from the repository root. An explicit configuration file can also be supplied after `--`:
+
+```powershell
+dotnet run --project src/WPShield.Service -- src/WPShield.Service/appsettings.json
+```
+
 ## Safety
 
 The current bootstrap does **not** proxy traffic and does **not** change IIS. The first executable only validates configuration and demonstrates the engine.

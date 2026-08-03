@@ -32,7 +32,9 @@ src/WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj
 src/WPShield.Service/Program.cs
 src/WPShield.Service/WPShield.Service.csproj
 src/WPShield.Service/appsettings.json
+tests/WPShield.Core.Tests/GlobalUsings.cs
 tests/WPShield.Core.Tests/SiteResolverTests.cs
 tests/WPShield.Core.Tests/WPShield.Core.Tests.csproj
+tests/WPShield.Rules.WordPress.Tests/GlobalUsings.cs
 tests/WPShield.Rules.WordPress.Tests/UploadRuleTests.cs
 tests/WPShield.Rules.WordPress.Tests/WPShield.Rules.WordPress.Tests.csproj
