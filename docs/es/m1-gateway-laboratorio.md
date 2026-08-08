@@ -83,6 +83,42 @@ La suite de integración verifica:
 
 Las pruebas automatizadas comprueban que sus puertos no sean 80, 443, 8081, 8082 ni 10000. El timeout configurable de actividad del proxy está limitado entre 1 y 300 segundos; el valor predeterminado del laboratorio continúa siendo 100 segundos.
 
+## Validación local con IIS M1.3
+
+M1.3 es un procedimiento de laboratorio controlado por un operador, no un despliegue automatizado. WPShield no crea ni modifica bindings de IIS. Antes de validar, un administrador debe agregar y comprobar estos bindings temporales de loopback sin cambiar los puertos públicos 80 y 443:
+
+- `peopleworks.com.do` en `127.0.0.1:8081`
+- `peopleworksgpt.com` en `127.0.0.1:8082`
+
+Ejecutar el gateway únicamente después de que ambos destinos respondan directamente. El script de prueba de solo lectura se detiene si un destino o el gateway no está disponible y nunca imprime cuerpos de respuesta, cookies ni datos de autorización:
+
+```powershell
+.\scripts\Test-WPShieldIisLab.ps1 `
+  -SiteOneStaticPath "/wp-includes/css/dashicons.min.css" `
+  -SiteTwoStaticPath "/wp-includes/css/dashicons.min.css" `
+  -GatewayLogPath "C:\ruta\al\log-capturado-del-gateway.log"
+```
+
+El script comprueba las páginas principales directa y vía gateway, `/wp-admin/`, login, REST, cron, AJAX, redirecciones, HEAD, un recurso estático conocido, un 404 sintético, salud local, rechazo de hosts desconocidos, marcadores de privacidad y listeners sin cambios en los puertos 80 y 443. Las rutas estáticas deben identificar archivos públicos que existan en cada instalación. La ruta del log debe corresponder a la salida capturada durante la misma ejecución.
+
+### Lista manual autenticada
+
+Usar una cuenta administrativa dedicada al laboratorio y una ventana privada del navegador. No copiar credenciales, cookies, nonces, códigos OAuth ni logs de producción en issues o informes.
+
+| Prueba | Resultado esperado |
+| --- | --- |
+| Login y logout de WordPress | La autenticación funciona por el puerto 10000; no aparece un bucle ni un puerto interno |
+| Navegación en `/wp-admin/` | Dashboard, CSS, JavaScript, imágenes y redirecciones cargan normalmente |
+| Upload multimedia | Un archivo benigno menor de 5 MB se carga y puede abrirse; M1 no lo inspecciona ni bloquea |
+| API REST | Las rutas autenticadas y públicas usadas por el sitio funcionan igual que directamente por IIS |
+| Cron y AJAX | Las tareas programadas y operaciones de `admin-ajax.php` terminan sin errores del gateway |
+| Elementor | El editor abre, carga recursos, muestra preview y guarda un borrador inocuo sin publicarlo |
+| Google Site Kit | El dashboard abre, conserva la conexión existente y los valores OAuth no aparecen en logs |
+| 404 y redirecciones canónicas | Los códigos y URLs públicas coinciden con el comportamiento directo de IIS |
+| Revisión de privacidad | Los logs no contienen credenciales, Authorization, Cookie, Set-Cookie, nonces, OAuth, cuerpos ni query strings completas |
+
+Registrar solamente pass/fail, códigos HTTP, duración, request IDs y observaciones saneadas. M1.3 termina únicamente cuando ambos sitios pasan las pruebas automáticas, la lista manual y la revisión de privacidad.
+
 ## Reversión
 
 Detener WPShield basta para desactivar este laboratorio. Como los bindings públicos de IIS permanecen intactos, los visitantes continúan entrando directamente por 80/443.
