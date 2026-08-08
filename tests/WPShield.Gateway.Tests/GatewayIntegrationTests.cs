@@ -135,6 +135,90 @@ public sealed class GatewayIntegrationTests
         Assert.True(backend.IsDisposed);
     }
 
+    [Fact]
+    public async Task DeclaredOversizedBody_Returns413WithoutReachingBackend()
+    {
+        var backend = new ConsumingHandler();
+        await using var harness = await GatewayHarness.StartAsync(backend, maximumRequestBytes: 16);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/upload")
+        {
+            Content = new ByteArrayContent(new byte[17])
+        };
+        request.Headers.Host = "example.test";
+
+        using var response = await harness.Client.SendAsync(request);
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Contains("\"error\":\"request_too_large\"", content, StringComparison.Ordinal);
+        Assert.Equal(0, backend.RequestCount);
+    }
+
+    [Fact]
+    public async Task BodyAtConfiguredLimit_IsForwarded()
+    {
+        var backend = new ConsumingHandler();
+        await using var harness = await GatewayHarness.StartAsync(backend, maximumRequestBytes: 16);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/upload")
+        {
+            Content = new UnknownLengthContent(new byte[16])
+        };
+        request.Headers.Host = "example.test";
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(1, backend.RequestCount);
+        Assert.Equal(16, backend.BytesRead);
+    }
+
+    [Fact]
+    public async Task UnknownLengthBodyOverLimit_ReturnsPrivacySafe413()
+    {
+        var backend = new ConsumingHandler();
+        await using var harness = await GatewayHarness.StartAsync(backend, maximumRequestBytes: 16);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/upload?secret=query-marker")
+        {
+            Content = new UnknownLengthContent(Encoding.UTF8.GetBytes("safe-marker-12345"))
+        };
+        request.Headers.Host = "example.test";
+        request.Headers.Authorization = new("Bearer", "authorization-marker");
+        request.Headers.Add("Cookie", "session=cookie-marker");
+
+        using var response = await harness.Client.SendAsync(request);
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.RequestEntityTooLarge, response.StatusCode);
+        Assert.Contains("\"error\":\"request_too_large\"", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("query-marker", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("authorization-marker", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("cookie-marker", content, StringComparison.Ordinal);
+        Assert.Equal(1, backend.RequestCount);
+        Assert.InRange(backend.BytesRead, 0, 16);
+
+        var logs = string.Join(Environment.NewLine, harness.Logs);
+        Assert.DoesNotContain("query-marker", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain("authorization-marker", logs, StringComparison.Ordinal);
+        Assert.DoesNotContain("cookie-marker", logs, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task UnknownHostWithOversizedBody_StillReturns421WithoutReachingBackend()
+    {
+        var backend = new ConsumingHandler();
+        await using var harness = await GatewayHarness.StartAsync(backend, maximumRequestBytes: 16);
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/upload")
+        {
+            Content = new ByteArrayContent(new byte[17])
+        };
+        request.Headers.Host = "unknown.test";
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal((HttpStatusCode)421, response.StatusCode);
+        Assert.Equal(0, backend.RequestCount);
+    }
+
     private sealed class GatewayHarness : IAsyncDisposable
     {
         private readonly WebApplication _application;
@@ -150,7 +234,9 @@ public sealed class GatewayIntegrationTests
         public HttpClient Client { get; }
         public IReadOnlyCollection<string> Logs => _loggerProvider.Messages;
 
-        public static async Task<GatewayHarness> StartAsync(HttpMessageHandler backendHandler)
+        public static async Task<GatewayHarness> StartAsync(
+            HttpMessageHandler backendHandler,
+            long maximumRequestBytes = 6L * 1024 * 1024)
         {
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
@@ -163,6 +249,7 @@ public sealed class GatewayIntegrationTests
                 ["Gateway:Urls:0"] = "http://127.0.0.1:0",
                 ["Gateway:AllowRemoteHealthChecks"] = "true",
                 ["Gateway:ActivityTimeoutSeconds"] = "10",
+                ["Gateway:MaximumRequestBytes"] = maximumRequestBytes.ToString(),
                 ["Sites:0:Id"] = "test-site",
                 ["Sites:0:Hosts:0"] = "example.test",
                 ["Sites:0:Destination"] = "http://127.0.0.1:51001",
@@ -244,6 +331,90 @@ public sealed class GatewayIntegrationTests
         {
             IsDisposed = true;
             base.Dispose(disposing);
+        }
+    }
+
+    private sealed class ConsumingHandler : HttpMessageHandler
+    {
+        public int RequestCount { get; private set; }
+        public int BytesRead { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken)
+        {
+            RequestCount++;
+            if (request.Content is not null)
+            {
+                await using var destination = new CountingWriteStream(
+                    count => BytesRead += count);
+                await request.Content.CopyToAsync(destination, cancellationToken);
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }
+    }
+
+    private sealed class CountingWriteStream(Action<int> recordWrite) : Stream
+    {
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override bool CanWrite => true;
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override void Flush()
+        {
+        }
+
+        public override void Write(byte[] buffer, int offset, int count)
+        {
+            recordWrite(count);
+        }
+
+        public override ValueTask WriteAsync(
+            ReadOnlyMemory<byte> buffer,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            recordWrite(buffer.Length);
+            return ValueTask.CompletedTask;
+        }
+
+        public override long Seek(long offset, SeekOrigin origin)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override void SetLength(long value)
+        {
+            throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            throw new NotSupportedException();
+        }
+    }
+
+    private sealed class UnknownLengthContent(byte[] content) : HttpContent
+    {
+        protected override Task SerializeToStreamAsync(
+            Stream stream,
+            TransportContext? context)
+        {
+            return stream.WriteAsync(content).AsTask();
+        }
+
+        protected override bool TryComputeLength(out long length)
+        {
+            length = 0;
+            return false;
         }
     }
 

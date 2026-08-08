@@ -17,6 +17,7 @@ public static class GatewayConfigurationValidator
         ArgumentNullException.ThrowIfNull(sites);
 
         var listeners = ValidateListeners(gatewayOptions.Urls);
+        ValidateRequestLimits(gatewayOptions);
 
         if (sites.Count == 0)
         {
@@ -28,6 +29,16 @@ public static class GatewayConfigurationValidator
         foreach (var site in sites)
         {
             ValidateDestination(site, listeners);
+        }
+    }
+
+    private static void ValidateRequestLimits(GatewayOptions options)
+    {
+        if (options.MaximumRequestBytes <= 0 ||
+            options.MaximumRequestBytes > GatewayOptions.AbsoluteMaximumRequestBytes)
+        {
+            throw new InvalidOperationException(
+                $"Gateway:MaximumRequestBytes must be between 1 and {GatewayOptions.AbsoluteMaximumRequestBytes} bytes.");
         }
     }
 
