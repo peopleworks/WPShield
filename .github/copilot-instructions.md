@@ -43,7 +43,7 @@ git diff --check
 
 - M0 foundation and CI are complete.
 - M1 has a loopback-only multi-site gateway prototype.
-- Complete M1.1 gateway hardening and M1.2 synthetic integration tests before local IIS validation in M1.3.
+- M1.1 gateway hardening is complete. Complete M1.2 synthetic integration tests before local IIS validation in M1.3.
 - Do not implement M2 multipart inspection until the M1 acceptance criteria pass.
 - Public activation is deferred until synthetic and IIS validation, privacy review, bypass/rollback documentation, and stable Monitor operation are complete.
 

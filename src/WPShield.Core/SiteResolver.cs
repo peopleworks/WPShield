@@ -14,7 +14,13 @@ public sealed class SiteResolver
             Validate(site);
             foreach (var host in site.Hosts)
             {
-                if (!map.TryAdd(NormalizeHost(host), site))
+                var normalizedHost = NormalizeHost(host);
+                if (normalizedHost.Length == 0)
+                {
+                    throw new ArgumentException($"Site '{site.Id}' contains an empty host.");
+                }
+
+                if (!map.TryAdd(normalizedHost, site))
                 {
                     throw new InvalidOperationException($"Host '{host}' is assigned more than once.");
                 }
@@ -32,17 +38,35 @@ public sealed class SiteResolver
 
     private static string NormalizeHost(string host)
     {
+        if (string.IsNullOrWhiteSpace(host)) return string.Empty;
+
         var value = host.Trim();
+        if (value.StartsWith('['))
+        {
+            var closingBracket = value.IndexOf(']');
+            if (closingBracket > 0)
+            {
+                return value[1..closingBracket].TrimEnd('.');
+            }
+        }
+
         var colon = value.LastIndexOf(':');
-        return colon > -1 && value[(colon + 1)..].All(char.IsDigit)
-            ? value[..colon]
-            : value;
+        if (colon > 0 && value.IndexOf(':') == colon && value[(colon + 1)..].All(char.IsDigit))
+        {
+            value = value[..colon];
+        }
+
+        return value.TrimEnd('.');
     }
 
     private static void Validate(SiteOptions site)
     {
         if (string.IsNullOrWhiteSpace(site.Id)) throw new ArgumentException("Site Id is required.");
-        if (site.Hosts is null || site.Hosts.Length == 0) throw new ArgumentException($"Site '{site.Id}' requires at least one host.");
+        if (site.Hosts is null || site.Hosts.Length == 0 || site.Hosts.All(string.IsNullOrWhiteSpace))
+        {
+            throw new ArgumentException($"Site '{site.Id}' requires at least one non-empty host.");
+        }
+
         if (site.BlockThreshold < site.ObserveThreshold) throw new ArgumentException($"Site '{site.Id}' has invalid thresholds.");
     }
 }
