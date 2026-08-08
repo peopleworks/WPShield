@@ -65,6 +65,22 @@ An unavailable backend returns a consistent HTTP 502 JSON response:
 
 The client response never includes the destination, exception details, credentials, cookies, request body, or query string. Gateway request logs contain only privacy-safe metadata such as request ID, site ID, method, and path. ASP.NET Core and YARP informational request logging is disabled to prevent query-string disclosure.
 
+## M1.2 synthetic integration tests
+
+Automated tests run two safe local Kestrel backends named `site-one` and `site-two`. They do not use IIS, WordPress, production hostnames, or production data. The gateway and both backends bind to loopback ports assigned dynamically by the operating system.
+
+The integration suite verifies:
+
+- each configured hostname reaches only its assigned backend;
+- unknown hosts return HTTP 421 and reach neither backend;
+- spoofed `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` values are replaced;
+- a gateway-generated `X-WPShield-Request-ID` reaches the backend;
+- the HTTP method, path, and query string are forwarded correctly;
+- unavailable and timed-out backends produce a privacy-safe HTTP 502 response; and
+- the health namespace remains local and reaches neither backend.
+
+Automated tests assert that their bound ports are not 80, 443, 8081, 8082, or 10000. The configurable forwarding activity timeout is bounded from 1 to 300 seconds; the laboratory default remains 100 seconds.
+
 ## Rollback
 
 Stop WPShield to disable the laboratory. Because public IIS bindings remain unchanged, visitors continue to reach IIS directly on ports 80 and 443.

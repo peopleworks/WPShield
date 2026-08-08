@@ -47,7 +47,7 @@ public static class GatewayApplication
         var app = builder.Build();
         var requestConfig = new ForwarderRequestConfig
         {
-            ActivityTimeout = TimeSpan.FromSeconds(Math.Clamp(gatewayOptions.ActivityTimeoutSeconds, 10, 300))
+            ActivityTimeout = TimeSpan.FromSeconds(Math.Clamp(gatewayOptions.ActivityTimeoutSeconds, 1, 300))
         };
 
         app.Use(async (context, next) =>

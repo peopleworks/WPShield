@@ -42,7 +42,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | Initial WordPress rules | Available | Executable upload extensions and PHP tags in bounded samples |
 | Loopback HTTP gateway | Prototype | Kestrel and YARP on `127.0.0.1:10000` |
-| Gateway hardening | Available | Strict startup validation, safe 502 failures, timeouts, and integration coverage |
+| Gateway hardening | Available | Strict startup validation, safe 502 failures, and real synthetic multi-site integration coverage |
 | Streaming multipart inspection | Planned | M2; not yet connected to gateway traffic |
 | Rate limiting and observability | Planned | M3 and M4 |
 | Dashboard and Windows Service | Planned | M5 and M6 |
