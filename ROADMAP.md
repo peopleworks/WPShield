@@ -1,27 +1,105 @@
 # Roadmap
 
+WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only, and no milestone may modify production IIS bindings, public ports, DNS, certificates, firewall rules, or Windows services automatically.
+
 ## M0 — Foundation
 
-- [x] Multi-site configuration model.
-- [x] Explainable rule findings.
-- [x] Monitor versus Block semantics.
+- [x] .NET 10 solution with nullable reference types and warnings as errors.
+- [x] Platform-independent inspection abstractions.
+- [x] Multi-site configuration and explicit host resolution.
+- [x] Explainable findings and Monitor/Block semantics.
 - [x] Initial WordPress upload rules.
 - [x] English and Spanish architecture documentation.
-- [ ] CI validation in GitHub Actions.
-- [ ] Configuration schema and validation messages.
+- [x] GitHub Actions restore, Release build, and Release test validation.
+- [x] Repository-wide and path-specific agent instructions.
+- [ ] Configuration schema and localized validation messages.
 
 ## M1 — Safe HTTP gateway
 
-- [x] ASP.NET Core gateway prototype.
-- [x] Explicit host routing to IIS loopback bindings.
-- [ ] Bounded multipart inspection by streaming.
-- [ ] Safe request-size and timeout controls.
-- [ ] Structured logs with mandatory redaction.
-- [ ] Synthetic integration test site.
+### M1.1 — Gateway hardening
 
-## M2 — Operations
+- [ ] Validate at least one configured site and reject duplicate hosts.
+- [ ] Accept only supported destination URI schemes.
+- [ ] Reject public laboratory destinations and destinations that point back to the gateway.
+- [ ] Preserve loopback-only listeners and prevent proxy loops.
+- [ ] Keep health endpoints local and add readiness behavior.
+- [ ] Return consistent privacy-safe 502 responses for unavailable backends.
+- [ ] Add configurable forwarding timeout and graceful shutdown behavior.
+- [ ] Ensure logs omit query strings, secrets, sensitive headers, and request bodies.
+- [ ] Add unit and integration coverage for configuration, routing, errors, headers, and request IDs.
 
-- [ ] Windows Service packaging.
-- [ ] Per-site metrics and dashboard.
-- [ ] Signed releases and checksums.
-- [ ] Installation, bypass, rollback, and recovery guides.
+### M1.2 — Synthetic backends and integration tests
+
+- [ ] Route each configured host exclusively to its assigned synthetic backend.
+- [ ] Prove unknown hosts return 421 without reaching a backend.
+- [ ] Replace spoofed inbound `X-Forwarded-*` headers.
+- [ ] Forward `X-WPShield-Request-ID`.
+- [ ] Preserve methods, paths, and query strings without logging full queries.
+- [ ] Handle slow and unavailable backends safely.
+- [ ] Keep health endpoints local.
+- [ ] Allocate dynamic test ports; never use 80, 443, 8081, 8082, or 10000.
+
+### M1.3 — Local IIS validation
+
+- [ ] Validate loopback routing to IIS destinations 127.0.0.1:8081 and 127.0.0.1:8082.
+- [ ] Leave public IIS bindings on ports 80 and 443 unchanged.
+- [ ] Validate home pages, administration, login, static assets, REST, cron, AJAX, redirects, HEAD, uploads, and 404 responses.
+- [ ] Validate Elementor and Google Site Kit compatibility.
+- [ ] Confirm credentials, cookies, nonces, tokens, and full query strings do not appear in logs.
+
+## M2 — Bounded multipart inspection
+
+- [ ] Enforce configured and absolute request, upload, file-count, field-count, header, boundary, and timeout limits.
+- [ ] Reject oversized `Content-Length` early and count chunked bodies while streaming.
+- [ ] Parse multipart requests without buffering complete uploads or writing them to disk.
+- [ ] Normalize filenames, reject control characters and unsafe path forms, and bound metadata.
+- [ ] Extend inspection context with bounded per-file metadata and sample data only.
+- [ ] Implement high-confidence executable-extension, multiple-extension, PHP-content, MIME/signature, and filename rules.
+- [ ] Preserve Monitor forwarding where operationally safe and explicitly document absolute safety limits.
+- [ ] In Block mode, stop forwarding and return policy-appropriate 403, 413, or 415 responses.
+- [ ] Add malformed, truncated, Unicode, cancellation, disconnect, limit, false-positive, and multi-file tests.
+
+## M3 — Rate limiting and automated behavior
+
+- [ ] Add per-IP and per-site burst controls with IPv4 and IPv6 support.
+- [ ] Define separate policies for login, XML-RPC, uploads, REST, and administrative AJAX.
+- [ ] Add expiring temporary blocks and configurable exceptions.
+- [ ] Preserve Elementor and legitimate `admin-ajax.php` traffic.
+- [ ] Document that WPShield does not provide volumetric DDoS mitigation.
+
+## M4 — Observability
+
+- [ ] Emit structured gateway, routing, inspection, rule, backend, and configuration events.
+- [ ] Add per-site request, action, rule, byte, error, and duration metrics.
+- [ ] Store privacy-safe JSON Lines with rotation, size limits, retention, and restricted permissions.
+- [ ] Add automated redaction tests for sensitive headers, secrets, forms, query strings, and upload content.
+
+## M5 — Local multilingual dashboard
+
+- [ ] Bind management access to 127.0.0.1 initially.
+- [ ] Add English and Spanish views for summary, sites, events, rules, health, configuration, versions, export, and diagnostics.
+- [ ] Add CSRF protection and design Windows-authenticated administrative access before any remote use.
+- [ ] Keep detailed rule evidence available only to authorized administrators.
+
+## M6 — Windows Service and releases
+
+- [ ] Publish self-contained `win-x64` artifacts.
+- [ ] Run as a least-privilege Windows service account.
+- [ ] Provide installation, update, uninstall, bypass, rollback, and recovery procedures.
+- [ ] Add restricted configuration and log directories.
+- [ ] Produce signed releases, checksums, versions, and bilingual release notes.
+
+## M7 — Controlled public activation
+
+- [ ] Complete synthetic and loopback IIS validation.
+- [ ] Verify backups, alternate administrative access, monitoring, bypass, and rollback.
+- [ ] Run one test site, then one real site, then both sites in Monitor mode.
+- [ ] Review privacy-safe logs and operational stability.
+- [ ] Enable only approved high-confidence rules in Block mode, gradually and per site.
+
+## M8 — Community readiness
+
+- [ ] Complete contributor, support, security, conduct, changelog, and template documentation.
+- [ ] Enable private vulnerability reporting, CodeQL, Dependabot, branch protection, and required CI.
+- [ ] Define reviewed, versioned community rule packages.
+- [ ] Require rule descriptions, signals, risk, false positives, actions, benign tests, bilingual documentation, and compatibility metadata.
