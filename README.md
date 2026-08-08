@@ -43,6 +43,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Initial WordPress rules | Available | Executable upload extensions and PHP tags in bounded samples |
 | Loopback HTTP gateway | Prototype | Kestrel and YARP on `127.0.0.1:10000` |
 | Gateway hardening | Available | Strict startup validation, safe 502 failures, and real synthetic multi-site integration coverage |
+| Bounded request controls | Available | 6 MiB default, 64 MiB ceiling, early and streamed HTTP 413 enforcement |
 | Streaming multipart inspection | Planned | M2; not yet connected to gateway traffic |
 | Rate limiting and observability | Planned | M3 and M4 |
 | Dashboard and Windows Service | Planned | M5 and M6 |
@@ -223,7 +224,8 @@ The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/apps
   "Gateway": {
     "Urls": ["http://127.0.0.1:10000"],
     "AllowRemoteHealthChecks": false,
-    "ActivityTimeoutSeconds": 100
+    "ActivityTimeoutSeconds": 100,
+    "MaximumRequestBytes": 6291456
   },
   "Sites": [
     {
@@ -243,6 +245,7 @@ The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/apps
 | `Gateway:Urls` | Listener URLs; M1/M2 require loopback IP addresses |
 | `Gateway:AllowRemoteHealthChecks` | Keeps health endpoints local when `false` |
 | `Gateway:ActivityTimeoutSeconds` | Forwarding activity timeout |
+| `Gateway:MaximumRequestBytes` | Absolute per-request body limit; defaults to 6 MiB and cannot exceed 64 MiB |
 | `Sites[].Id` | Stable site identifier used by routing and findings |
 | `Sites[].Hosts` | Explicit hostnames assigned to this site |
 | `Sites[].Destination` | Site-specific loopback IIS or synthetic backend |
@@ -291,7 +294,7 @@ flowchart LR
 | --- | --- | --- |
 | M0 | Foundation, rule contracts, CI, and repository guidance | Complete |
 | M1 | Hardened loopback multi-site HTTP gateway and synthetic tests | In progress |
-| M2 | Bounded streaming multipart inspection and high-confidence rules | Planned |
+| M2 | Bounded request controls, multipart inspection, and high-confidence rules | In progress |
 | M3 | Per-site and per-IP rate limiting for sensitive WordPress paths | Planned |
 | M4 | Privacy-safe structured events, metrics, rotation, and retention | Planned |
 | M5 | Loopback multilingual management dashboard | Planned |
@@ -307,6 +310,7 @@ The full acceptance criteria and task lists live in [ROADMAP.md](ROADMAP.md).
 | --- | --- | --- |
 | Architecture | [Architecture](docs/en/architecture.md) | [Arquitectura](docs/es/arquitectura.md) |
 | M1 laboratory | [Laboratory gateway](docs/en/m1-lab-gateway.md) | [Gateway de laboratorio](docs/es/m1-gateway-laboratorio.md) |
+| M2 request limits | [Bounded request controls](docs/en/m2-request-limits.md) | [Controles limitados de solicitud](docs/es/m2-limites-solicitud.md) |
 
 Project-wide references:
 

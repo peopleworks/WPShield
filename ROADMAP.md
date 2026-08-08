@@ -49,8 +49,9 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 
 ## M2 — Bounded multipart inspection
 
-- [ ] Enforce configured and absolute request, upload, file-count, field-count, header, boundary, and timeout limits.
-- [ ] Reject oversized `Content-Length` early and count chunked bodies while streaming.
+- [x] Enforce a configurable 6 MiB request limit and a fixed 64 MiB configuration ceiling.
+- [x] Reject oversized `Content-Length` early and count unknown-length bodies while streaming.
+- [ ] Enforce upload, file-count, field-count, header, boundary, and multipart-read timeout limits.
 - [ ] Parse multipart requests without buffering complete uploads or writing them to disk.
 - [ ] Normalize filenames, reject control characters and unsafe path forms, and bound metadata.
 - [ ] Extend inspection context with bounded per-file metadata and sample data only.

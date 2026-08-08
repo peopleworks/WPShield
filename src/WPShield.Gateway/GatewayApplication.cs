@@ -42,6 +42,8 @@ public static class GatewayApplication
         builder.Services.AddSingleton<WPShieldTransformer>();
         builder.Services.TryAddSingleton(_ => CreateProxyClient());
 
+        builder.WebHost.ConfigureKestrel(options =>
+            options.Limits.MaxRequestBodySize = GatewayOptions.AbsoluteMaximumRequestBytes);
         builder.WebHost.UseUrls(gatewayOptions.Urls);
 
         var app = builder.Build();
@@ -106,6 +108,18 @@ public static class GatewayApplication
                 return;
             }
 
+            if (context.Request.ContentLength > gatewayOptions.MaximumRequestBytes)
+            {
+                logger.LogWarning(
+                    "Request rejected because its declared size exceeds the safety limit. RequestId={RequestId} SiteId={SiteId} DeclaredBytes={DeclaredBytes} LimitBytes={LimitBytes}",
+                    context.TraceIdentifier,
+                    site.Id,
+                    context.Request.ContentLength,
+                    gatewayOptions.MaximumRequestBytes);
+                await WriteRequestTooLargeAsync(context);
+                return;
+            }
+
             if (site.Mode == ProtectionMode.Disabled)
             {
                 logger.LogInformation(
@@ -121,15 +135,44 @@ public static class GatewayApplication
                 context.Request.Method,
                 context.Request.Path.Value);
 
-            var error = await forwarder.SendAsync(
-                context,
-                site.Destination.ToString().TrimEnd('/') + "/",
-                httpClient,
-                requestConfig,
-                transformer);
+            var originalBody = context.Request.Body;
+            context.Request.Body = new RequestBodyLimitStream(
+                originalBody,
+                gatewayOptions.MaximumRequestBytes);
+
+            ForwarderError error;
+            try
+            {
+                error = await forwarder.SendAsync(
+                    context,
+                    site.Destination.ToString().TrimEnd('/') + "/",
+                    httpClient,
+                    requestConfig,
+                    transformer);
+            }
+            finally
+            {
+                context.Request.Body = originalBody;
+            }
 
             if (error == ForwarderError.None)
             {
+                return;
+            }
+
+            var forwarderException = context.GetForwarderErrorFeature()?.Exception;
+            if (IsRequestTooLarge(forwarderException))
+            {
+                logger.LogWarning(
+                    "Request rejected after its streamed body exceeded the safety limit. RequestId={RequestId} SiteId={SiteId} LimitBytes={LimitBytes}",
+                    context.TraceIdentifier,
+                    site.Id,
+                    gatewayOptions.MaximumRequestBytes);
+                if (!context.Response.HasStarted)
+                {
+                    await WriteRequestTooLargeAsync(context);
+                }
+
                 return;
             }
 
@@ -149,6 +192,40 @@ public static class GatewayApplication
             await context.Response.WriteAsJsonAsync(new
             {
                 error = "backend_unavailable",
+                requestId = context.TraceIdentifier
+            }, context.RequestAborted);
+        }
+
+        static bool IsRequestTooLarge(Exception? exception)
+        {
+            while (exception is not null)
+            {
+                if (exception is RequestBodyTooLargeException)
+                {
+                    return true;
+                }
+
+                if (exception is BadHttpRequestException
+                    {
+                        StatusCode: StatusCodes.Status413PayloadTooLarge
+                    })
+                {
+                    return true;
+                }
+
+                exception = exception.InnerException;
+            }
+
+            return false;
+        }
+
+        static async Task WriteRequestTooLargeAsync(HttpContext context)
+        {
+            context.Response.Clear();
+            context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                error = "request_too_large",
                 requestId = context.TraceIdentifier
             }, context.RequestAborted);
         }

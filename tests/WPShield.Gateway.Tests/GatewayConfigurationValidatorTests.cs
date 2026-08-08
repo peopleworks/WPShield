@@ -123,6 +123,40 @@ public sealed class GatewayConfigurationValidatorTests
             [CreateSite("one", "example.test", 51001)]);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    [InlineData(GatewayOptions.AbsoluteMaximumRequestBytes + 1)]
+    public void Validate_RejectsInvalidMaximumRequestBytes(long maximumRequestBytes)
+    {
+        var options = new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:51999"],
+            MaximumRequestBytes = maximumRequestBytes
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(
+                options,
+                [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("MaximumRequestBytes", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_AcceptsAbsoluteMaximumRequestBytes()
+    {
+        var options = new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:51999"],
+            MaximumRequestBytes = GatewayOptions.AbsoluteMaximumRequestBytes
+        };
+
+        GatewayConfigurationValidator.Validate(
+            options,
+            [CreateSite("one", "example.test", 51001)]);
+    }
+
     private static GatewayOptions CreateGatewayOptions()
     {
         return new GatewayOptions { Urls = ["http://127.0.0.1:10000"] };
