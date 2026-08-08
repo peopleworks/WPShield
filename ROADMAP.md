@@ -30,14 +30,14 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 
 ### M1.2 — Synthetic backends and integration tests
 
-- [ ] Route each configured host exclusively to its assigned synthetic backend.
-- [ ] Prove unknown hosts return 421 without reaching a backend.
-- [ ] Replace spoofed inbound `X-Forwarded-*` headers.
-- [ ] Forward `X-WPShield-Request-ID`.
-- [ ] Preserve methods, paths, and query strings without logging full queries.
-- [ ] Handle slow and unavailable backends safely.
-- [ ] Keep health endpoints local.
-- [ ] Allocate dynamic test ports; never use 80, 443, 8081, 8082, or 10000.
+- [x] Route each configured host exclusively to its assigned synthetic backend.
+- [x] Prove unknown hosts return 421 without reaching a backend.
+- [x] Replace spoofed inbound `X-Forwarded-*` headers.
+- [x] Forward `X-WPShield-Request-ID`.
+- [x] Preserve methods, paths, and query strings without logging full queries.
+- [x] Handle slow and unavailable backends safely.
+- [x] Keep health endpoints local.
+- [x] Allocate dynamic test ports; never use 80, 443, 8081, 8082, or 10000.
 
 ### M1.3 — Local IIS validation
 
