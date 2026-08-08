@@ -42,7 +42,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | Initial WordPress rules | Available | Executable upload extensions and PHP tags in bounded samples |
 | Loopback HTTP gateway | Prototype | Kestrel and YARP on `127.0.0.1:10000` |
-| Gateway hardening | In progress | Validation, safe failures, timeouts, and integration coverage |
+| Gateway hardening | Available | Strict startup validation, safe 502 failures, timeouts, and integration coverage |
 | Streaming multipart inspection | Planned | M2; not yet connected to gateway traffic |
 | Rate limiting and observability | Planned | M3 and M4 |
 | Dashboard and Windows Service | Planned | M5 and M6 |
@@ -249,7 +249,7 @@ The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/apps
 | `Sites[].Mode` | `Monitor`, `Block`, or `Disabled`; use `Monitor` for evaluation |
 | `ObserveThreshold` / `BlockThreshold` | Score thresholds used by action calculation |
 
-Configuration validation is still being hardened in M1.1. Use only loopback destinations in the laboratory.
+M1.1 validates that sites exist, hosts are unique, listeners and destinations are safe, and destinations cannot point back to WPShield. Use only loopback destinations in the laboratory.
 
 ## Repository layout
 

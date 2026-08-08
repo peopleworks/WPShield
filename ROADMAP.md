@@ -18,15 +18,15 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 
 ### M1.1 — Gateway hardening
 
-- [ ] Validate at least one configured site and reject duplicate hosts.
-- [ ] Accept only supported destination URI schemes.
-- [ ] Reject public laboratory destinations and destinations that point back to the gateway.
-- [ ] Preserve loopback-only listeners and prevent proxy loops.
-- [ ] Keep health endpoints local and add readiness behavior.
-- [ ] Return consistent privacy-safe 502 responses for unavailable backends.
-- [ ] Add configurable forwarding timeout and graceful shutdown behavior.
-- [ ] Ensure logs omit query strings, secrets, sensitive headers, and request bodies.
-- [ ] Add unit and integration coverage for configuration, routing, errors, headers, and request IDs.
+- [x] Validate at least one configured site and reject duplicate hosts.
+- [x] Accept only supported destination URI schemes.
+- [x] Reject public laboratory destinations and destinations that point back to the gateway.
+- [x] Preserve loopback-only listeners and prevent proxy loops.
+- [x] Keep health endpoints local and add readiness behavior.
+- [x] Return consistent privacy-safe 502 responses for unavailable backends.
+- [x] Add configurable forwarding timeout and graceful shutdown behavior.
+- [x] Ensure logs omit query strings, secrets, sensitive headers, and request bodies.
+- [x] Add unit and integration coverage for configuration, routing, errors, headers, and request IDs.
 
 ### M1.2 — Synthetic backends and integration tests
 
