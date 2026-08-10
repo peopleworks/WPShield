@@ -73,6 +73,100 @@ public sealed class SyntheticGatewayIntegrationTests
         Assert.Empty(harness.SiteTwo.Requests);
     }
 
+    /// <summary>
+    /// Every header in this list lets a client influence how WordPress, IIS URL Rewrite or a security
+    /// plugin perceives the request origin or the effective path. None may survive the gateway.
+    /// </summary>
+    private static readonly string[] UntrustedClientHeaders =
+    [
+        "Forwarded",
+        "X-Real-IP",
+        "X-Client-IP",
+        "X-Cluster-Client-IP",
+        "True-Client-IP",
+        "CF-Connecting-IP",
+        "Fastly-Client-IP",
+        "X-Azure-ClientIP",
+        "X-Azure-SocketIP",
+        "X-Original-URL",
+        "X-Rewrite-URL",
+        "X-Original-Host",
+        "X-Forwarded-Port",
+        "X-Forwarded-Server",
+        "X-Forwarded-Prefix",
+        "X-Forwarded-Scheme",
+        "X-Forwarded-Ssl",
+        "X-Forwarded-AnythingElse"
+    ];
+
+    [Fact]
+    public async Task Forwarding_RemovesEveryUntrustedClientHeader()
+    {
+        const string attackerValue = "attacker-controlled";
+        await using var harness = await SyntheticGatewayHarness.StartAsync();
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/wp-admin/");
+
+        foreach (var header in UntrustedClientHeaders)
+        {
+            Assert.True(
+                request.Headers.TryAddWithoutValidation(header, attackerValue),
+                $"Test could not send '{header}'.");
+        }
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+
+        foreach (var header in UntrustedClientHeaders)
+        {
+            Assert.False(
+                recorded.Headers.ContainsKey(header),
+                $"'{header}' reached the backend with the client-supplied value.");
+        }
+    }
+
+    /// <summary>
+    /// <c>X-Original-URL</c> deserves its own assertion. IIS URL Rewrite resolves the effective
+    /// request path from it, so a surviving value would let a client reach a route the gateway
+    /// believed it had already evaluated.
+    /// </summary>
+    [Theory]
+    [InlineData("X-Original-URL")]
+    [InlineData("X-Rewrite-URL")]
+    public async Task PathOverrideHeaders_CannotRedirectTheBackendRoute(string header)
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync();
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/harmless");
+        request.Headers.TryAddWithoutValidation(header, "/wp-admin/users.php");
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.Equal("/harmless", recorded.PathAndQuery);
+        Assert.False(recorded.Headers.ContainsKey(header));
+    }
+
+    [Fact]
+    public async Task Forwarding_ReplacesRatherThanRemovesTheTrustedForwardingHeaders()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync();
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.99");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Host", "spoofed.example");
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.True(IPAddress.TryParse(recorded.ForwardedFor, out var forwarded));
+        Assert.True(IPAddress.IsLoopback(forwarded));
+        Assert.Equal("http", recorded.ForwardedProto);
+        Assert.Equal("site-one.test", recorded.ForwardedHost);
+    }
+
     [Fact]
     public async Task SlowBackend_ReturnsPrivacySafe502AfterConfiguredTimeout()
     {
@@ -236,7 +330,11 @@ public sealed class SyntheticGatewayIntegrationTests
                     context.Request.Headers["X-Forwarded-For"].ToString(),
                     context.Request.Headers["X-Forwarded-Proto"].ToString(),
                     context.Request.Headers["X-Forwarded-Host"].ToString(),
-                    context.Request.Headers["X-WPShield-Request-ID"].ToString());
+                    context.Request.Headers["X-WPShield-Request-ID"].ToString(),
+                    context.Request.Headers.ToDictionary(
+                        header => header.Key,
+                        header => header.Value.ToString(),
+                        StringComparer.OrdinalIgnoreCase));
                 backend!._requests.Enqueue(request);
 
                 if (context.Request.Path == "/slow")
@@ -273,7 +371,8 @@ public sealed class SyntheticGatewayIntegrationTests
         string ForwardedFor,
         string ForwardedProto,
         string ForwardedHost,
-        string RequestId);
+        string RequestId,
+        IReadOnlyDictionary<string, string> Headers);
 
     private static Uri GetBoundAddress(WebApplication application)
     {
