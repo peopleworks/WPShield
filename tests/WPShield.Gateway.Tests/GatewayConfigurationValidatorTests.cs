@@ -157,9 +157,95 @@ public sealed class GatewayConfigurationValidatorTests
             [CreateSite("one", "example.test", 51001)]);
     }
 
+    [Fact]
+    public void Validate_RejectsRealHostAlongsidePlaceholderSite()
+    {
+        var sites = new[]
+        {
+            CreateSite("real", "operator-site.tld", 51001),
+            CreateSite("leftover", "wordpress-two.example", 51002)
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(CreateGatewayOptions(), sites));
+
+        Assert.Contains("documentation placeholders", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("leftover:wordpress-two.example", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Reproduces the observed failure mode: JSON providers merge the nested <c>Hosts</c> array by
+    /// index, so an overlay declaring one host leaves the second shipped host alive inside an
+    /// otherwise correctly overridden site.
+    /// </summary>
+    [Fact]
+    public void Validate_RejectsPlaceholderSurvivingInsideMergedHostArray()
+    {
+        var site = CreateSiteWithHosts("site-one", ["operator-site.tld", "www.wordpress-one.example"], 51001);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(CreateGatewayOptions(), [site]));
+
+        Assert.Contains("merges arrays", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("site-one:www.wordpress-one.example", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("wordpress-one.example")]
+    [InlineData("www.wordpress-one.example.")]
+    [InlineData("EXAMPLE.COM")]
+    [InlineData("www.example.org")]
+    [InlineData("shop.example.net")]
+    public void Validate_TreatsReservedDocumentationNamesAsPlaceholders(string placeholderHost)
+    {
+        var sites = new[]
+        {
+            CreateSite("real", "operator-site.tld", 51001),
+            CreateSite("placeholder", placeholderHost, 51002)
+        };
+
+        Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(CreateGatewayOptions(), sites));
+    }
+
+    [Fact]
+    public void Validate_AcceptsUntouchedShippedExampleConfiguration()
+    {
+        var sites = new[]
+        {
+            CreateSiteWithHosts("wordpress-one", ["wordpress-one.example", "www.wordpress-one.example"], 8081),
+            CreateSiteWithHosts("wordpress-two", ["wordpress-two.example", "www.wordpress-two.example"], 8082)
+        };
+
+        GatewayConfigurationValidator.Validate(CreateGatewayOptions(), sites);
+    }
+
+    [Fact]
+    public void Validate_AcceptsFullyOverriddenOperatorConfiguration()
+    {
+        var sites = new[]
+        {
+            CreateSiteWithHosts("site-one", ["operator-one.tld", "www.operator-one.tld"], 8081),
+            CreateSiteWithHosts("site-two", ["operator-two.tld", "www.operator-two.tld"], 8082)
+        };
+
+        GatewayConfigurationValidator.Validate(CreateGatewayOptions(), sites);
+    }
+
     private static GatewayOptions CreateGatewayOptions()
     {
         return new GatewayOptions { Urls = ["http://127.0.0.1:10000"] };
+    }
+
+    private static SiteOptions CreateSiteWithHosts(string id, string[] hosts, int destinationPort)
+    {
+        return new SiteOptions
+        {
+            Id = id,
+            Hosts = hosts,
+            Destination = new Uri($"http://127.0.0.1:{destinationPort}"),
+            Mode = ProtectionMode.Monitor
+        };
     }
 
     private static SiteOptions CreateSite(
