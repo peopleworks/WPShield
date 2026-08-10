@@ -113,7 +113,14 @@ ADR requires must land before M3 rate limiting can identify clients correctly.
 
 ## M8 — Community readiness
 
-- [ ] Complete contributor, support, security, conduct, changelog, and template documentation.
-- [ ] Enable private vulnerability reporting, CodeQL, Dependabot, branch protection, and required CI.
+Community infrastructure was pulled forward from M8, because the repository is already public and
+contributors need somewhere safe to report before the project is otherwise ready.
+
+- [x] Complete contributor, support, security, conduct, changelog, and template documentation.
+- [x] Add issue forms, including a dedicated false-positive report.
+- [x] Enable CodeQL and Dependabot, and pin GitHub Actions to commit SHAs.
+- [x] Verify the platform-independent projects on Linux in CI.
+- [ ] Enable private vulnerability reporting and Discussions in repository settings.
+- [ ] Enable branch protection on `main` with required CI checks.
 - [ ] Define reviewed, versioned community rule packages.
 - [ ] Require rule descriptions, signals, risk, false positives, actions, benign tests, bilingual documentation, and compatibility metadata.
