@@ -217,7 +217,7 @@ Read the laboratory guide before using IIS:
 
 ## Configuration
 
-The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/appsettings.json`. Environment variables with the `WPSHIELD_` prefix and command-line arguments can override configuration.
+The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/appsettings.json`. That file ships with placeholder hostnames only. Real deployment values belong in `appsettings.Local.json`, which is ignored by git and never copied into a published artifact, or in `WPSHIELD_` environment variables.
 
 ```json
 {
@@ -239,6 +239,9 @@ The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/apps
   ]
 }
 ```
+
+> [!IMPORTANT]
+> Configuration is **not** hot-reloaded. Gateway and site options are validated once at startup and captured for the lifetime of the process; editing the file on a running gateway has no effect. The gateway prints its resolved site table on every start — read it to confirm which hosts are actually active. See [operator configuration](docs/en/operator-configuration.md) for the local overlay, the JSON array-merge caveat, and what must never be committed.
 
 | Setting | Purpose |
 | --- | --- |
@@ -309,6 +312,7 @@ The full acceptance criteria and task lists live in [ROADMAP.md](ROADMAP.md).
 | Topic | English | Español |
 | --- | --- | --- |
 | Architecture | [Architecture](docs/en/architecture.md) | [Arquitectura](docs/es/arquitectura.md) |
+| Operator configuration | [Operator configuration](docs/en/operator-configuration.md) | [Configuración del operador](docs/es/configuracion-operador.md) |
 | M1 laboratory | [Laboratory gateway](docs/en/m1-lab-gateway.md) | [Gateway de laboratorio](docs/es/m1-gateway-laboratorio.md) |
 | M2 request limits | [Bounded request controls](docs/en/m2-request-limits.md) | [Controles limitados de solicitud](docs/es/m2-limites-solicitud.md) |
 

@@ -12,3 +12,9 @@ artifacts/
 .env
 appsettings.Production.json
 secrets.json
+
+# Operator-specific configuration. Real hostnames, destinations and topology
+# must never reach the public repository; see docs/en/operator-configuration.md.
+appsettings.Local.json
+appsettings.*.Local.json
+DEVELOPMENT_PLAN.local.md

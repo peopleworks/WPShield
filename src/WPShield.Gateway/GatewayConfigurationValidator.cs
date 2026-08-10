@@ -11,6 +11,13 @@ public static class GatewayConfigurationValidator
         Uri.UriSchemeHttps
     };
 
+    private static readonly string[] ReservedDocumentationDomains =
+    [
+        "example.com",
+        "example.net",
+        "example.org"
+    ];
+
     public static void Validate(GatewayOptions gatewayOptions, IReadOnlyList<SiteOptions> sites)
     {
         ArgumentNullException.ThrowIfNull(gatewayOptions);
@@ -25,11 +32,90 @@ public static class GatewayConfigurationValidator
         }
 
         _ = new SiteResolver(sites);
+        ValidateNoPartiallyAppliedOverlay(sites);
 
         foreach (var site in sites)
         {
             ValidateDestination(site, listeners);
         }
+    }
+
+    /// <summary>
+    /// Fails closed when real hostnames appear alongside the documentation placeholders that ship in
+    /// <c>appsettings.json</c>.
+    /// </summary>
+    /// <remarks>
+    /// JSON configuration providers merge arrays element by element instead of replacing them, and
+    /// this applies to the nested <c>Hosts</c> array as well as to <c>Sites</c>. An operator overlay
+    /// that declares fewer sites, or fewer hosts within a site, silently leaves the surplus shipped
+    /// example entries active and routable. Mixed placeholder and real hostnames is the exact
+    /// signature of that mistake, so the gateway refuses to start rather than serve a site table the
+    /// operator did not intend. A configuration made entirely of placeholders is the untouched
+    /// demonstration configuration and remains allowed.
+    /// </remarks>
+    private static void ValidateNoPartiallyAppliedOverlay(IReadOnlyList<SiteOptions> sites)
+    {
+        var placeholders = new List<string>();
+        var realHostCount = 0;
+
+        foreach (var site in sites)
+        {
+            foreach (var host in site.Hosts)
+            {
+                if (string.IsNullOrWhiteSpace(host))
+                {
+                    continue;
+                }
+
+                if (IsDocumentationHost(host))
+                {
+                    placeholders.Add($"{site.Id}:{host.Trim()}");
+                }
+                else
+                {
+                    realHostCount++;
+                }
+            }
+        }
+
+        if (placeholders.Count == 0 || realHostCount == 0)
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            "Configuration mixes real hostnames with the documentation placeholders shipped in " +
+            $"appsettings.json: {string.Join(", ", placeholders)}. JSON configuration merges arrays " +
+            "element by element, so a local overlay that declares fewer sites, or fewer hosts inside " +
+            "a site, leaves the surplus example entries active and routable. Declare every site and " +
+            "every host explicitly in appsettings.Local.json. See docs/en/operator-configuration.md.");
+    }
+
+    /// <summary>
+    /// Identifies hostnames reserved for documentation by RFC 2606, which is what the shipped
+    /// example configuration uses. The <c>.test</c> label is deliberately excluded because the
+    /// synthetic integration suite uses it for genuine, intentional test hosts.
+    /// </summary>
+    private static bool IsDocumentationHost(string host)
+    {
+        var value = host.Trim().TrimEnd('.');
+
+        if (value.Equals("example", StringComparison.OrdinalIgnoreCase) ||
+            value.EndsWith(".example", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        foreach (var reserved in ReservedDocumentationDomains)
+        {
+            if (value.Equals(reserved, StringComparison.OrdinalIgnoreCase) ||
+                value.EndsWith($".{reserved}", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static void ValidateRequestLimits(GatewayOptions options)
