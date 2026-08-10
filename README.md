@@ -40,7 +40,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
-| Initial WordPress rules | Available | Executable upload extensions and PHP tags in bounded samples |
+| WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies |
 | Loopback HTTP gateway | Prototype | Kestrel and YARP on `127.0.0.1:10000` |
 | Gateway hardening | Available | Strict startup validation, safe 502 failures, and real synthetic multi-site integration coverage |
 | Bounded request controls | Available | 6 MiB default, 64 MiB ceiling, early and streamed HTTP 413 enforcement |
@@ -147,12 +147,20 @@ Read [THREAT_MODEL.md](THREAT_MODEL.md) for protected assets, trust boundaries, 
 
 ## Current rules
 
-| Rule ID | Signal | Current behavior |
-| --- | --- | --- |
-| `WP-UPLOAD-001` | Executable PHP-family upload extension | Produces a high-confidence explainable finding |
-| `PHP-CONTENT-001` | `<?php` or `<?=` in a bounded upload sample | Produces an explainable content finding |
+Rules match against a Windows-aware normalization of the file name rather than the raw client value, because `shell.php.`, `shell.php `, `shell.php::$DATA` and `..\..\shell.php` all reach disk as `shell.php`.
 
-These rules are available to the inspection engine demonstration. Gateway multipart integration is planned for M2. Future rules must include benign tests, false-positive analysis, safe evidence, and English and Spanish documentation.
+| Rule ID | Signal | Score |
+| --- | --- | --- |
+| `IIS-CONFIG-001` | Upload named `web.config`, which is remote code execution on IIS | 100 |
+| `WP-UPLOAD-001` | PHP-executable extension in any position | 90 final, 50 embedded |
+| `IIS-UPLOAD-001` | IIS-executable extension (`.aspx`, `.ashx`, `.asmx`, …) in any position | 90 final, 50 embedded |
+| `PHP-CONTENT-001` | `<?php` or `<?=` in a bounded upload sample | 75 |
+| `FILE-NAME-001` | Path separator, alternate data stream, trailing dots or spaces, control character, reserved device name, excessive length | 60 |
+| `WP-UPLOAD-002` | Executable extension disguised behind a benign one, such as `photo.php.jpg` | 30 |
+
+Scores are summed per request and capped at 100; the default thresholds are 30 to observe and 80 to block. `IIS-CONFIG-001` and `IIS-UPLOAD-001` cover a Windows attack surface that protection layers written for Linux hosting do not address.
+
+These rules are available to the inspection engine demonstration. Gateway multipart integration is planned for M2. Each rule documents its own false positives in [upload rules](docs/en/m2-upload-rules.md); future rules must include benign tests, false-positive analysis, safe evidence, and English and Spanish documentation.
 
 ## Getting started
 
@@ -315,6 +323,7 @@ The full acceptance criteria and task lists live in [ROADMAP.md](ROADMAP.md).
 | Operator configuration | [Operator configuration](docs/en/operator-configuration.md) | [Configuración del operador](docs/es/configuracion-operador.md) |
 | M1 laboratory | [Laboratory gateway](docs/en/m1-lab-gateway.md) | [Gateway de laboratorio](docs/es/m1-gateway-laboratorio.md) |
 | M2 request limits | [Bounded request controls](docs/en/m2-request-limits.md) | [Controles limitados de solicitud](docs/es/m2-limites-solicitud.md) |
+| M2 upload rules | [Upload rules](docs/en/m2-upload-rules.md) | [Reglas de carga](docs/es/m2-reglas-carga.md) |
 
 Project-wide references:
 

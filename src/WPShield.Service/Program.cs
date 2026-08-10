@@ -36,16 +36,28 @@ var resolver = new SiteResolver(configuration.Sites);
 var site = resolver.Resolve("wordpress-one.example")
     ?? throw new InvalidOperationException("Example site could not be resolved.");
 
-IInspectionRule[] rules = [new ExecutableUploadExtensionRule(), new PhpContentInUploadRule()];
+IInspectionRule[] rules =
+[
+    new ExecutableUploadExtensionRule(),
+    new DisguisedExtensionRule(),
+    new IisExecutableUploadRule(),
+    new IisConfigurationUploadRule(),
+    new UnsafeFileNameRule(),
+    new PhpContentInUploadRule()
+];
 var engine = new InspectionEngine(rules);
+
+// A deliberately evasive but harmless synthetic name. Every trick here defeats a naive check that
+// reads only the final extension: a directory prefix, an executable extension hidden behind an image
+// extension, and a trailing dot that Windows strips on write.
 var context = new InspectionContext(
     site.Id,
     "wordpress-one.example",
     "POST",
     "/wp-admin/async-upload.php",
-    "example.php",
-    "application/octet-stream",
-    "<?php echo 'test';"u8.ToArray());
+    @"..\..\photo.php.jpg.",
+    "image/jpeg",
+    "<?php echo 'synthetic marker';"u8.ToArray());
 
 var result = await engine.InspectAsync(context, site);
 var outputOptions = new JsonSerializerOptions { WriteIndented = true };
