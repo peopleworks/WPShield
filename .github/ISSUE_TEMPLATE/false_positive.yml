@@ -1,0 +1,86 @@
+name: False positive report
+description: A rule flagged legitimate WordPress traffic
+title: "[false positive] "
+labels: ["false-positive", "rules"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        False positive reports are the most valuable contribution to WPShield, and you do not
+        need to write any C# to file one. A rule that blocks real traffic is worse than a rule
+        that misses an attack, because it takes a working site offline.
+
+        **Do not paste production logs, cookies, tokens, nonces, credentials or full query
+        strings.** Redact anything sensitive before submitting. If the file that triggered the
+        finding is itself confidential, describe its shape instead of attaching it.
+
+  - type: input
+    id: rule-id
+    attributes:
+      label: Rule ID
+      description: The stable identifier from the finding, for example WP-UPLOAD-002.
+      placeholder: WP-UPLOAD-002
+    validations:
+      required: true
+
+  - type: textarea
+    id: legitimate-traffic
+    attributes:
+      label: What legitimate action triggered it
+      description: >-
+        What were you or your users doing? Uploading a media file, saving an Elementor
+        template, running a Google Site Kit sync, something else?
+    validations:
+      required: true
+
+  - type: input
+    id: file-name
+    attributes:
+      label: File name involved, redacted if needed
+      description: >-
+        The shape matters more than the exact name. `informe-2024.tar.gz` is enough;
+        you can replace identifying words.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Protection mode
+      options:
+        - Monitor
+        - Block
+        - Disabled
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Impact
+      description: >-
+        Was the request only observed, or was it actually blocked? Did a user-visible
+        feature break?
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: >-
+        WPShield version or commit, Windows Server version, IIS version, PHP version,
+        and any plugin relevant to the upload path. Do not include real hostnames.
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Before submitting
+      options:
+        - label: I removed credentials, cookies, tokens, nonces and full query strings.
+          required: true
+        - label: I am not reporting an exploitable vulnerability, which belongs in private reporting.
+          required: true

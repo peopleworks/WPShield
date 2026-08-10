@@ -1,0 +1,67 @@
+name: Feature or rule proposal
+description: Propose a capability or a new detection rule
+title: "[proposal] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        WPShield is a **defensive** project. Proposals for offensive capability, evasion
+        tooling or anything that would weaken the safety defaults will be closed.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you proposing
+      options:
+        - A new detection rule
+        - A gateway or platform capability
+        - Documentation or translation
+        - Operational tooling
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What can happen to a WordPress site today that this would prevent or reveal?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+    validations:
+      required: true
+
+  - type: textarea
+    id: false-positives
+    attributes:
+      label: False positive analysis
+      description: >-
+        Required for rule proposals. What legitimate WordPress, Elementor, Google Site Kit
+        or plugin traffic could this flag by mistake? A rule that cannot answer this is not
+        ready. Which signals does it combine so that it does not act on one weak indicator?
+    validations:
+      required: false
+
+  - type: textarea
+    id: milestone
+    attributes:
+      label: Which milestone does this belong to
+      description: >-
+        See ROADMAP.md. Say if it needs to come earlier than currently planned, and why.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Before submitting
+      options:
+        - label: This is defensive functionality only.
+          required: true
+        - label: It preserves Monitor as the default protection mode.
+          required: true
