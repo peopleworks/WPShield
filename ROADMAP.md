@@ -49,25 +49,77 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 
 ## M2 — Bounded multipart inspection
 
+> The inspection engine now runs on gateway traffic. Before this milestone the rules executed only
+> from the `WPShield.Service` console demonstration and the gateway did not reference the rules
+> project at all, so none of the detection this repository documents happened on a real request.
+> See [bounded multipart inspection](docs/en/m2-multipart-inspection.md) for the complete behaviour.
+
 - [x] Enforce a configurable 6 MiB request limit and a fixed 64 MiB configuration ceiling.
 - [x] Reject oversized `Content-Length` early and count unknown-length bodies while streaming.
-- [ ] Enforce upload, file-count, field-count, header, boundary, and multipart-read timeout limits.
-- [ ] Parse multipart requests without buffering complete uploads or writing them to disk.
+- [x] Enforce file-count, field-count, part-header, boundary, file-name, and multipart-read timeout limits, each with a hard ceiling that configuration may lower and never raise.
+- [x] Never write a request body to disk; never buffer an unbounded one; buffer in memory only a `multipart/form-data` body, and only within the enforced request limit.
 - [x] Normalize filenames, reject control characters and unsafe path forms, and bound metadata.
 - [x] Extend inspection context with bounded per-file metadata and sample data only.
 - [x] Implement high-confidence executable-extension, multiple-extension, PHP-content, and filename rules.
 - [x] Cover the Windows attack surface: IIS-executable extensions and `web.config` upload.
-- [ ] Implement MIME and file-signature mismatch rules (`FILE-TYPE-001`, `PHP-CONTENT-002`).
-- [ ] Preserve Monitor forwarding where operationally safe and explicitly document absolute safety limits.
-- [ ] In Block mode, stop forwarding and return policy-appropriate 403, 413, or 415 responses.
-- [ ] Add malformed, truncated, Unicode, cancellation, disconnect, limit, false-positive, and multi-file tests.
+- [x] Implement file-signature mismatch rules (`FILE-TYPE-001`, `PHP-CONTENT-002`).
+- [x] Preserve Monitor forwarding where operationally safe and explicitly document absolute safety limits.
+- [x] In Block mode, stop forwarding and return policy-appropriate 403, 408, 413, or 415 responses.
+- [x] Add malformed, truncated, Unicode, cancellation, disconnect, limit, false-positive, and multi-file tests.
+
+### Why the buffering line changed
+
+That fourth line used to read *"Parse multipart requests without buffering complete uploads or
+writing them to disk"*. It is restated rather than ticked as written, because the original wording
+described something Block mode cannot be built on, and a reader who notices the change deserves the
+reasoning rather than a quiet edit.
+
+To **block**, the gateway must decide before forwarding. To **forward**, it must read the body a
+second time. A network stream cannot be read twice. The choice was therefore between buffering a
+multipart body and having no Block mode for uploads at all. What is actually guaranteed now is
+narrower and checkable: **never to disk**, **never unbounded**, and **only for multipart**. The
+buffer is a pooled in-memory structure that contains no file API at all, so disk-freedom is
+structural rather than a threshold value a future edit could raise; the request-body limit is
+enforced *before* buffering, so a chunked body with no declared length cannot grow it; and any
+request that is not `multipart/form-data` still streams straight through with no added memory cost.
+
+The declared `Content-Type` deliberately does not trigger `FILE-TYPE-001`, so the ninth line drops
+the word *MIME*: browsers derive a part's `Content-Type` from the same extension, and every
+non-browser client legitimately sends `application/octet-stream`, so a rule that fired on that
+disagreement would fire on curl, wp-cli, mobile applications and the plupload fallback. The header is
+recorded as a four-state token and never as a finding.
+
+The eleventh line gains **408**. A body that does not fully arrive within the read timeout leaves a
+partial buffer, and forwarding it would send WordPress a body shorter than its declared
+`Content-Length`. That is answered with 408 in every mode, Monitor included, on the precedent the 413
+already set: absolute resource controls are not findings and apply regardless of protection mode.
+
+### What M2 does not cover
+
+Not gaps discovered later — limits of the milestone as built, recorded so the ticked lines above are
+not read as more than they claim:
+
+- No non-multipart body is inspected: `application/x-www-form-urlencoded`, JSON, XML-RPC and
+  `application/octet-stream` PUTs stream through untouched, as do `multipart/*` subtypes other than
+  `form-data`.
+- Form field parts are counted but never sampled or inspected, by design.
+- There is no per-file size limit. A single upload is bounded only by the whole-request limit.
+- Only the leading `SampleBytes` of each file are examined.
+- [ ] Inspect the contents of uploaded archives. A `.zip` plugin or theme containing a webshell is
+  not detected today, and plugin installation is a genuine WordPress upload path. This is the
+  largest single gap and it has no milestone assigned yet.
 
 ## M3 — Rate limiting and automated behavior
 
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
 > traffic path chosen in [ADR 0001](docs/en/adr/0001-production-traffic-path.md) every request
 > arrives from a local proxy, so `Gateway:TrustedProxies` must exist before this milestone starts.
+>
+> M2 also left a resource control unfinished. Nothing bounds how many multipart bodies may be
+> buffered at once, and `KestrelServerLimits.MaxConcurrentConnections` is unlimited by default, so
+> the loopback-only restriction is currently the only thing bounding that memory.
 
+- [ ] Bound the number of concurrent buffered multipart inspections, which M2 deliberately left unbounded.
 - [ ] Add per-IP and per-site burst controls with IPv4 and IPv6 support.
 - [ ] Define separate policies for login, XML-RPC, uploads, REST, and administrative AJAX.
 - [ ] Add expiring temporary blocks and configurable exceptions.
