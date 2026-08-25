@@ -13,12 +13,23 @@ does not work yet, and an issue reporting that it does not work will be closed a
 
 | I want to… | Go here |
 | --- | --- |
+| Understand what WPShield does before reading any code | [Project site](https://peopleworks.github.io/WPShield/) — the short version, in one page |
+| Find the document that covers my question | [Documentation index](docs/README.md) — every English and Spanish guide, in one table |
+| Configure a site, or understand the local overlay | [Operator configuration](docs/en/operator-configuration.md) · [Configuración del operador](docs/es/configuracion-operador.md) |
 | Report an exploitable vulnerability | [Private vulnerability reporting](https://github.com/peopleworks/WPShield/security/advisories/new) — **never** a public issue |
 | Report that a rule flagged legitimate traffic | [False positive report](https://github.com/peopleworks/WPShield/issues/new?template=false_positive.yml) |
 | Report a defect | [Bug report](https://github.com/peopleworks/WPShield/issues/new?template=bug_report.yml) |
 | Propose a rule or capability | [Feature proposal](https://github.com/peopleworks/WPShield/issues/new?template=feature_request.yml) |
 | Ask a configuration or deployment question | [Discussions](https://github.com/peopleworks/WPShield/discussions) |
 | Contribute code | [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) |
+| Check what this project claims about third-party software | [NOTICE.md](NOTICE.md) |
+
+The project site, Discussions and private vulnerability reporting are repository features a
+maintainer enables in settings, and a settings change can turn any of them off again. If one of those
+links does not resolve for you, that is why — the repository itself is always the authoritative copy.
+Use the email route in [SECURITY.md](SECURITY.md) for a vulnerability — never a public issue as a
+fallback — and a [bug report](https://github.com/peopleworks/WPShield/issues/new?template=bug_report.yml)
+for a question, which will be reclassified rather than closed.
 
 ## What we will not help with
 

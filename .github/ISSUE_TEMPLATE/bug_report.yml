@@ -10,6 +10,10 @@ body:
         [private vulnerability reporting](https://github.com/peopleworks/WPShield/security/advisories/new)
         instead.** A public issue tells an attacker before it tells a maintainer.
 
+        If a rule flagged legitimate traffic, the
+        [false positive report](https://github.com/peopleworks/WPShield/issues/new?template=false_positive.yml)
+        template asks better questions than this one.
+
         Never paste credentials, cookies, authorization headers, WordPress nonces, tokens,
         full query strings or request bodies. Redact real hostnames.
 
@@ -32,7 +36,10 @@ body:
     id: reproduce
     attributes:
       label: Steps to reproduce
-      description: Use synthetic data and placeholder hostnames such as wordpress-one.example.
+      description: >-
+        Use synthetic data and placeholder hostnames such as wordpress-one.example. If the
+        original request carried a query string, cookies or a body, describe their shape
+        rather than reproducing them — the shape is what turns into a test case.
       placeholder: |
         1. Configure a site with ...
         2. Send `curl.exe -H "Host: wordpress-one.example" ...`
@@ -45,8 +52,11 @@ body:
     attributes:
       label: Relevant output, redacted
       description: >-
-        Gateway output, the request identifier, or the failing test name. Redact
-        anything sensitive first.
+        Gateway output, the request identifier, or the failing test name. Read what you are
+        about to paste: a captured gateway log can carry hostnames, paths and upload file
+        names. Remove credentials, cookies, authorization values, nonces, tokens, query
+        strings and body content first, and replace real hostnames with
+        wordpress-one.example.
       render: text
     validations:
       required: false
@@ -55,7 +65,10 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: WPShield version or commit, .NET SDK version, operating system.
+      description: >-
+        WPShield version or commit, .NET SDK version, operating system, and IIS version if
+        it is involved. Describe the topology in placeholders — two sites on loopback ports —
+        never real hostnames or real internal ports.
       render: text
     validations:
       required: true

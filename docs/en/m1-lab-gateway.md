@@ -5,9 +5,9 @@ This version listens only on `127.0.0.1:10000`. It must not be exposed to the In
 ## Expected lab topology
 
 - WPShield Gateway: `127.0.0.1:10000`
-- IIS / peopleworks.com.do: `127.0.0.1:8081`
-- IIS / peopleworksgpt.com: `127.0.0.1:8082`
-- Declared legitimate upload: 5 MB (enforcement is planned for M2)
+- IIS / wordpress-one.example: `127.0.0.1:8081`
+- IIS / wordpress-two.example: `127.0.0.1:8082`
+- Declared legitimate upload: 5 MB. M2 enforces a 6 MiB limit on the **whole request** rather than on each file; there is no per-file size limit yet, and the multipart reader records each part's exact byte count without acting on it.
 
 Keep the existing public ports 80 and 443 unchanged. Add and verify separate temporary loopback HTTP bindings for the two IIS sites before running the gateway.
 
@@ -44,8 +44,8 @@ The complete `/_wpshield/health/` namespace is handled locally and is never prox
 ## Test each site
 
 ```powershell
-curl.exe -I -H "Host: peopleworks.com.do" http://127.0.0.1:10000/
-curl.exe -I -H "Host: peopleworksgpt.com" http://127.0.0.1:10000/
+curl.exe -I -H "Host: wordpress-one.example" http://127.0.0.1:10000/
+curl.exe -I -H "Host: wordpress-two.example" http://127.0.0.1:10000/
 ```
 
 An unconfigured host must return HTTP 421:
@@ -85,8 +85,8 @@ Automated tests assert that their bound ports are not 80, 443, 8081, 8082, or 10
 
 M1.3 is an operator-controlled laboratory procedure, not an automated deployment. WPShield does not create or modify IIS bindings. Before validation, an administrator must add and verify these temporary loopback bindings while leaving public ports 80 and 443 unchanged:
 
-- `peopleworks.com.do` on `127.0.0.1:8081`
-- `peopleworksgpt.com` on `127.0.0.1:8082`
+- `wordpress-one.example` on `127.0.0.1:8081`
+- `wordpress-two.example` on `127.0.0.1:8082`
 
 Run the gateway only after both loopback destinations respond directly. The read-only probe script refuses to continue when either destination or the gateway is unavailable and never prints response bodies, cookies, or authorization data:
 

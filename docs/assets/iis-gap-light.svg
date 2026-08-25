@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="460" viewBox="0 0 900 460"
+     role="img" aria-labelledby="wps-iis-gap-title wps-iis-gap-desc"
+     font-family="Segoe UI, system-ui, -apple-system, Helvetica Neue, Arial, sans-serif">
+  <title id="wps-iis-gap-title">Extensions IIS executes that a Linux-targeting rule set does not watch</title>
+  <desc id="wps-iis-gap-desc">Two lists of file extensions side by side, separated by a labelled gap. On the left, in grey, the eleven PHP extensions a rule set written for Apache or nginx watches: .php, .php3, .php4, .php5, .php7, .php8, .phps, .pht, .phtm, .phtml and .phar. On that platform the list is complete. On the right, in blue, the fourteen extensions IIS also maps to a handler and will execute as the application pool identity: .aspx, .asp, .ashx, .asmx, .ascx, .axd, .cshtml, .vbhtml, .razor, .svc, .soap, .rem, .asax and .master. Rule IIS-UPLOAD-001 scores these 90 in the final position and 50 when embedded. Below both lists, a red call-out for web.config, which no extension list covers: IIS reads it from every directory it serves, so one written into wp-content/uploads can register a handler mapping, re-enable script execution or relax authorization - remote code execution with no script uploaded at all. Rule IIS-CONFIG-001 scores it 100.</desc>
+
+  <rect x="0" y="0" width="900" height="460" fill="#FFFFFF"/>
+
+  <text x="450" y="28" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.3" fill="#6B7684">WHAT EXECUTES ON THE SERVER YOU ACTUALLY RUN</text>
+
+  <!-- ===================== left: already covered ==================== -->
+  <rect x="20" y="48" width="396" height="248" rx="14" fill="#F4F6F9" stroke="#D8DEE6" stroke-width="1.5"/>
+  <text x="44" y="76" font-size="14" font-weight="600" fill="#6B7684">What a Linux-targeting rule set watches</text>
+  <g font-size="11.5" fill="#5B6673">
+    <text x="44" y="96">Apache and nginx execute PHP.</text>
+    <text x="44" y="113">On that platform the list is complete.</text>
+  </g>
+  <rect x="44" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="82" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.php</text>
+  <rect x="134" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="172" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.php3</text>
+  <rect x="224" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="262" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.php4</text>
+  <rect x="314" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="352" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.php5</text>
+  <rect x="44" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="82" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.php7</text>
+  <rect x="134" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="172" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.php8</text>
+  <rect x="224" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="262" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.phps</text>
+  <rect x="314" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="352" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.pht</text>
+  <rect x="44" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="82" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.phtm</text>
+  <rect x="134" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="172" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.phtml</text>
+  <rect x="224" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#B3BCC7" stroke-width="1.5"/>
+  <text x="262" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#6B7684">.phar</text>
+  <g font-size="11" fill="#6B7684">
+    <text x="44" y="268">Covered by existing WAF rule sets.</text>
+    <text x="44" y="284">Drawn in grey for that reason.</text>
+  </g>
+
+  <!-- ========================== the gap ============================ -->
+  <line x1="450" y1="60" x2="450" y2="284" stroke="#C3CBD6" stroke-width="1.5" stroke-dasharray="6 5"/>
+  <rect x="420" y="160" width="60" height="24" rx="12" fill="#FFFFFF" stroke="#C3CBD6" stroke-width="1.5"/>
+  <text x="450" y="176" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.2" fill="#6B7684">THE GAP</text>
+
+  <!-- ==================== right: the uncovered set ================== -->
+  <rect x="484" y="48" width="396" height="248" rx="14" fill="#E6F2FB" stroke="#0078D4" stroke-width="2"/>
+  <text x="508" y="76" font-size="14" font-weight="600" fill="#0A5C9E">What IIS also executes</text>
+  <g font-size="11.5" fill="#5B6673">
+    <text x="508" y="96">Runs as the application pool identity &#8212; a</text>
+    <text x="508" y="113">strictly larger capability than a PHP shell.</text>
+  </g>
+  <rect x="508" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="546" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.aspx</text>
+  <rect x="598" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="636" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.asp</text>
+  <rect x="688" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="726" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.ashx</text>
+  <rect x="778" y="128" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="816" y="144" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.asmx</text>
+  <rect x="508" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="546" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.ascx</text>
+  <rect x="598" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="636" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.axd</text>
+  <rect x="688" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="726" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.cshtml</text>
+  <rect x="778" y="160" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="816" y="176" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.vbhtml</text>
+  <rect x="508" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="546" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.razor</text>
+  <rect x="598" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="636" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.svc</text>
+  <rect x="688" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="726" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.soap</text>
+  <rect x="778" y="192" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="816" y="208" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.rem</text>
+  <rect x="508" y="224" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="546" y="240" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.asax</text>
+  <rect x="598" y="224" width="76" height="24" rx="6" fill="#FFFFFF" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="636" y="240" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="12" fill="#0A5C9E">.master</text>
+  <g font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" fill="#0A5C9E">
+    <text x="508" y="268" font-size="11.5" font-weight="700">IIS-UPLOAD-001</text>
+    <text x="508" y="285" font-size="11">+90 in final position, +50 embedded</text>
+  </g>
+
+  <!-- ============= the case no extension list can express ============ -->
+  <rect x="20" y="310" width="860" height="130" rx="14" fill="#F8E9E8" stroke="#B42318" stroke-width="2"/>
+  <rect x="44" y="334" width="126" height="30" rx="6" fill="#FFFFFF" stroke="#B42318" stroke-width="1.5"/>
+  <text x="107" y="353" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="13" font-weight="700" fill="#B42318">web.config</text>
+  <text x="190" y="344" font-size="14.5" font-weight="700" fill="#12171D">Remote code execution with no script uploaded at all.</text>
+  <g font-size="12" fill="#5B6673">
+    <text x="190" y="370">IIS reads web.config from every directory it serves. One written into</text>
+    <text x="190" y="388">wp-content/uploads can register a handler mapping, re-enable script</text>
+    <text x="190" y="406">execution the operator disabled, or relax authorization for that directory.</text>
+  </g>
+  <text x="190" y="430" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11.5" font-weight="700" fill="#B42318">IIS-CONFIG-001 &#183; score 100 &#183; the highest-confidence rule WPShield ships</text>
+</svg>

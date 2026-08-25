@@ -29,7 +29,8 @@ body:
       label: What legitimate action triggered it
       description: >-
         What were you or your users doing? Uploading a media file, saving an Elementor
-        template, running a Google Site Kit sync, something else?
+        template, running a Google Site Kit sync, something else? Describe the action, not
+        the raw request — the request carries cookies and nonces you must not post.
     validations:
       required: true
 
@@ -39,7 +40,8 @@ body:
       label: File name involved, redacted if needed
       description: >-
         The shape matters more than the exact name. `informe-2024.tar.gz` is enough;
-        you can replace identifying words.
+        you can replace identifying words. A customer name or an internal project code in a
+        file name is exactly the kind of thing to change before posting.
     validations:
       required: false
 
@@ -60,7 +62,7 @@ body:
       label: Impact
       description: >-
         Was the request only observed, or was it actually blocked? Did a user-visible
-        feature break?
+        feature break? Describe the effect; do not paste the log line that recorded it.
     validations:
       required: true
 
@@ -70,7 +72,9 @@ body:
       label: Environment
       description: >-
         WPShield version or commit, Windows Server version, IIS version, PHP version,
-        and any plugin relevant to the upload path. Do not include real hostnames.
+        and any plugin relevant to the upload path, with its version. Do not include real
+        hostnames or real internal ports — placeholders such as wordpress-one.example carry
+        everything a maintainer needs.
       render: text
     validations:
       required: false
@@ -81,6 +85,8 @@ body:
       label: Before submitting
       options:
         - label: I removed credentials, cookies, tokens, nonces and full query strings.
+          required: true
+        - label: I replaced real hostnames and any identifying detail in file names.
           required: true
         - label: I am not reporting an exploitable vulnerability, which belongs in private reporting.
           required: true

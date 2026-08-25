@@ -1,9 +1,9 @@
 [CmdletBinding()]
 param(
     [Uri]$GatewayUri = 'http://127.0.0.1:10000',
-    [string]$SiteOneHost = 'peopleworks.com.do',
+    [string]$SiteOneHost = 'wordpress-one.example',
     [int]$SiteOnePort = 8081,
-    [string]$SiteTwoHost = 'peopleworksgpt.com',
+    [string]$SiteTwoHost = 'wordpress-two.example',
     [int]$SiteTwoPort = 8082,
     [string]$SiteOneStaticPath,
     [string]$SiteTwoStaticPath,

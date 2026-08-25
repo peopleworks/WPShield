@@ -5,9 +5,9 @@ Esta versión escucha únicamente en `127.0.0.1:10000`. No debe exponerse todav�
 ## Topología prevista
 
 - WPShield Gateway: `127.0.0.1:10000`
-- IIS / peopleworks.com.do: `127.0.0.1:8081`
-- IIS / peopleworksgpt.com: `127.0.0.1:8082`
-- Upload legítimo declarado: 5 MB (se aplicará en M2)
+- IIS / wordpress-one.example: `127.0.0.1:8081`
+- IIS / wordpress-two.example: `127.0.0.1:8082`
+- Upload legítimo declarado: 5 MB. M2 aplica un límite de 6 MiB a la **solicitud completa**, no a cada archivo; todavía no existe un límite de tamaño por archivo, y el lector multipart registra el conteo exacto de bytes de cada parte sin actuar sobre él.
 
 ## Preparar IIS sin interrumpir producción
 
@@ -46,8 +46,8 @@ El espacio completo `/_wpshield/health/` se procesa localmente y nunca se reenv�
 ## Probar cada sitio
 
 ```powershell
-curl.exe -I -H "Host: peopleworks.com.do" http://127.0.0.1:10000/
-curl.exe -I -H "Host: peopleworksgpt.com" http://127.0.0.1:10000/
+curl.exe -I -H "Host: wordpress-one.example" http://127.0.0.1:10000/
+curl.exe -I -H "Host: wordpress-two.example" http://127.0.0.1:10000/
 ```
 
 Un host no configurado debe producir HTTP 421:
@@ -87,8 +87,8 @@ Las pruebas automatizadas comprueban que sus puertos no sean 80, 443, 8081, 8082
 
 M1.3 es un procedimiento de laboratorio controlado por un operador, no un despliegue automatizado. WPShield no crea ni modifica bindings de IIS. Antes de validar, un administrador debe agregar y comprobar estos bindings temporales de loopback sin cambiar los puertos públicos 80 y 443:
 
-- `peopleworks.com.do` en `127.0.0.1:8081`
-- `peopleworksgpt.com` en `127.0.0.1:8082`
+- `wordpress-one.example` en `127.0.0.1:8081`
+- `wordpress-two.example` en `127.0.0.1:8082`
 
 Ejecutar el gateway únicamente después de que ambos destinos respondan directamente. El script de prueba de solo lectura se detiene si un destino o el gateway no está disponible y nunca imprime cuerpos de respuesta, cookies ni datos de autorización:
 

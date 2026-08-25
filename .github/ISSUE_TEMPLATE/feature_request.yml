@@ -9,6 +9,15 @@ body:
         WPShield is a **defensive** project. Proposals for offensive capability, evasion
         tooling or anything that would weaken the safety defaults will be closed.
 
+        Rule proposals usually start from something that really happened. Describe the attack
+        surface, never a working technique: **no webshell source, no weaponized payload, no
+        exploit chain.** A harmless synthetic marker demonstrates a detection just as well, and
+        is what the tests use.
+
+        Redact before you post. No credentials, cookies, authorization headers, nonces, tokens,
+        full query strings or request bodies, and no real hostnames — `wordpress-one.example`
+        carries everything a maintainer needs.
+
   - type: dropdown
     id: kind
     attributes:
@@ -25,7 +34,10 @@ body:
     id: problem
     attributes:
       label: The problem
-      description: What can happen to a WordPress site today that this would prevent or reveal?
+      description: >-
+        What can happen to a WordPress site today that this would prevent or reveal? If an
+        incident prompted this, describe its shape — the file name form, the endpoint class,
+        the header involved — not the captured request or the log that recorded it.
     validations:
       required: true
 
@@ -33,6 +45,10 @@ body:
     id: proposal
     attributes:
       label: The proposal
+      description: >-
+        For a rule, say which signals it combines and why that combination rather than one
+        indicator, and what score you would give it against the default thresholds of 30 to
+        observe and 80 to block.
     validations:
       required: true
 
@@ -41,9 +57,10 @@ body:
     attributes:
       label: False positive analysis
       description: >-
-        Required for rule proposals. What legitimate WordPress, Elementor, Google Site Kit
-        or plugin traffic could this flag by mistake? A rule that cannot answer this is not
-        ready. Which signals does it combine so that it does not act on one weak indicator?
+        Required for rule proposals; a proposal without one will be asked for it before it is
+        considered. What legitimate WordPress, Elementor, Google Site Kit or plugin traffic
+        could this flag by mistake? Which signals does it combine so that it does not act on
+        one weak indicator?
     validations:
       required: false
 
@@ -64,4 +81,6 @@ body:
         - label: This is defensive functionality only.
           required: true
         - label: It preserves Monitor as the default protection mode.
+          required: true
+        - label: I included no working payload, exploit code, credentials or real hostnames.
           required: true

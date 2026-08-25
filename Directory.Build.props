@@ -1,11 +1,180 @@
 <Project>
-  <PropertyGroup>
+
+  <!--
+    Repo-wide build settings, imported before every .csproj, so any project can still override a
+    value by re-declaring it.
+
+    Most of what is decided here is not packaging housekeeping. WPShield is meant to sit in the
+    request path of a live WordPress site, so an operator has to be able to answer two questions
+    about a file called WPShield.Gateway.dll: who built it, and was it built from the commit I
+    read? The version, the assembly metadata and the Source Link block below are the evidence for
+    those answers, and they belong at the repository level rather than in one csproj that the
+    others silently diverge from.
+  -->
+
+  <PropertyGroup Label="Version">
+    <!--
+      One version for the whole repository, and the version a release tag has to match:
+      .github/workflows/release.yml refuses to publish when the tag and this number disagree.
+
+      Until this property existed, every WPShield assembly took the SDK default and reported
+      AssemblyVersion 1.0.0.0. A gateway binary sitting on an operator's disk claimed to be
+      version 1.0 of a component the README calls a research preview that is not approved for
+      production traffic. Binary metadata contradicting the documentation is exactly the failure
+      the "never present WPShield as production-ready" invariant exists to prevent, so the number
+      is set here and nowhere else.
+
+      The minor tracks the roadmap milestone in flight: 0.2.x is M2. 1.0.0 is not a confidence
+      adjective to be awarded when the project feels finished - it is earned when M1 through M7
+      are complete and WPShield has run in front of real traffic under the controlled M7 rollout.
+      Until then the leading 0 is the honest statement, and it is the same statement the release
+      workflow makes by marking every release a prerelease.
+    -->
+    <Version>0.2.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Language and compilation">
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AnalysisLevel>latest</AnalysisLevel>
     <LangVersion>latest</LangVersion>
-    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!--
+      Unconditional, rather than gated on CI the way the sibling PeopleWorks repositories gate
+      theirs. The build is green with zero warnings today, so holding the line locally costs
+      nothing - and a warning that only fails in CI is a warning a contributor finds out about
+      after they have already pushed.
+    -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!--
+      `latest` opts every project into the newest analyzer rules the installed SDK ships,
+      including ones that arrive in a future SDK update. Combined with warnings-as-errors that
+      means an SDK bump can fail this build, which is the intent: in a security gateway a new
+      analyzer finding is something to read, not noise to pin away behind a frozen level.
+    -->
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <!--
+      GenerateDocumentationFile is deliberately NOT set here.
+
+      TreatWarningsAsErrors is unconditional, and WPShield.Abstractions - the surface community
+      rule packages are meant to implement against - is only partly documented today. Turning
+      documentation generation on repo-wide would not produce documentation; it would fail the
+      build on a pile of CS1591 ("missing XML comment on publicly visible type or member").
+      Turning it on together with a NoWarn for CS1591 is worse: it emits an XML file full of
+      holes and calls the job done.
+
+      The honest order is to document the Abstractions surface first, then enable the property on
+      that project - work that belongs with stabilizing the rule contracts.
+    -->
   </PropertyGroup>
+
+  <PropertyGroup Label="Package and assembly metadata">
+    <!--
+      Company, Product, Copyright and Description become AssemblyCompany, AssemblyProduct,
+      AssemblyCopyright and AssemblyDescription even though nothing here is packable, so they show
+      up in the Windows file-properties dialog and through `(Get-Item
+      WPShield.Gateway.dll).VersionInfo`. Someone who finds this binary on a server should be able
+      to see who wrote it, under what licence, and that it is a preview, without first having to
+      find the repository - which is why the Description repeats the warning rather than selling
+      the feature.
+
+      Authors is a NuGet-only field and does not reach the assembly manifest; it sits here beside
+      the ones that do so a future package cannot be published under a different name than the
+      binaries carry.
+    -->
+    <Authors>Pedro Hernández</Authors>
+    <Company>PeopleWorks Services</Company>
+    <Product>WPShield</Product>
+    <Copyright>Copyright (c) 2026 PeopleWorks Services</Copyright>
+    <Description>Defensive security gateway for WordPress hosted on Windows Server and IIS. Research preview: loopback-only and not approved for production traffic.</Description>
+
+    <!--
+      The remaining fields are NuGet-only. Nothing is packed today - see the Packaging group below
+      - and filling them in is not a step toward packing. They are here so that if a contracts
+      assembly is ever published, the licence, the project URL and the tags are already correct
+      instead of being invented in a hurry against a package ID that can never be withdrawn.
+    -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/peopleworks/WPShield</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageTags>wordpress;iis;windows-server;security;gateway;reverse-proxy;yarp;upload-inspection;dotnet</PackageTags>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Reproducible builds and Source Link">
+    <!--
+      Reproducibility is worth more to this repository than to a normal library. The question an
+      operator has to be able to answer before putting a component in a request path is "is this
+      the binary that was built from the commit I audited?". Deterministic plus
+      ContinuousIntegrationBuild is what makes two builds of one commit byte-identical; Source
+      Link is what lets a debugger walk from a shipped PDB back to that commit.
+
+      Deterministic is already the SDK default; it is stated because it is part of the contract,
+      not an accident of whichever toolchain happens to be installed.
+    -->
+    <Deterministic>true</Deterministic>
+
+    <!--
+      GitHub Actions sets CI=true as well as GITHUB_ACTIONS=true. CI is kept deliberately and is
+      the broader of the two signals: if a release is ever rebuilt on some other runner to check
+      that it reproduces, that build normalizes paths the same way and the outputs can be
+      compared. It stays off for local builds because path normalization breaks step-through
+      debugging in the IDE.
+    -->
+    <ContinuousIntegrationBuild Condition="'$(CI)' == 'true'">true</ContinuousIntegrationBuild>
+
+    <!--
+      The GitHub Source Link provider has shipped in-box since the .NET 8 SDK, so none of this
+      needs a PackageReference - setting PublishRepositoryUrl is what turns it on.
+      EmbedUntrackedSources covers generated files that are not in git, such as the AssemblyInfo
+      the SDK writes, which a debugger would otherwise fail to resolve.
+
+      The visible effect is that AssemblyInformationalVersion becomes `0.2.0+<commit sha>` and the
+      assembly gains a RepositoryUrl metadata attribute. A binary now names the commit it was
+      built from, which is the answer to the question above, and it is checkable on any copy:
+      `[Reflection.Assembly]::LoadFrom('WPShield.Gateway.dll').GetCustomAttributes(
+      [Reflection.AssemblyInformationalVersionAttribute], $false)`.
+    -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <RepositoryType>git</RepositoryType>
+    <RepositoryUrl>https://github.com/peopleworks/WPShield</RepositoryUrl>
+
+    <!--
+      Portable PDBs are the format Source Link annotates. IncludeSymbols and SymbolPackageFormat
+      only do anything during `dotnet pack`, which nothing here runs; they are set so symbol
+      publishing cannot be quietly forgotten if a project ever opts back into packing.
+    -->
+    <DebugType>portable</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <PropertyGroup Label="Packaging">
+    <!--
+      Nothing in this repository is published to NuGet, and no project opts back in. That is a
+      decision, not an oversight, and it is recorded here so a future contributor does not close
+      it as a gap: `dotnet tool install -g` or a PackageReference is a frictionless path to
+      running a loopback-only research preview in front of real traffic, and a package ID on
+      nuget.org is effectively permanent because published versions cannot be deleted.
+
+      WPShield.Abstractions is the only defensible future candidate - it is contracts with no
+      runtime behaviour - and it should wait until the rule contracts are stable. When that day
+      comes it is one IsPackable override in that one csproj; every field above is already
+      correct. .github/workflows/release.yml carries the matching omission on the publishing side.
+    -->
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!--
+    PackageReadmeFile above names README.md, but NuGet also requires the file itself inside the
+    package. Declared once here rather than repeated in csproj files that would drift. The item
+    does nothing outside `dotnet pack`, so while IsPackable is false it is inert.
+  -->
+  <ItemGroup>
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
+
 </Project>
