@@ -574,6 +574,416 @@ public sealed class UploadInspectionIntegrationTests
 
     #endregion
 
+    #region Parser differentials — the bypasses an adversarial review measured against M2
+
+    // Everything in this region is a request that WPShield and PHP's main/rfc1867.c read as two
+    // different requests. The differential is in the framing rather than in the file, so the
+    // fixtures are assembled byte by byte and the file inside them is the same harmless synthetic
+    // marker used everywhere else in this suite.
+    //
+    // The assertion is the same in every case and it is deliberately about the request rather than
+    // about the file: Block answers 415 and the synthetic backend records nothing, Monitor forwards
+    // the bytes untouched and writes a warning an operator can find. WPShield does not try to parse
+    // these bodies the way PHP would — it refuses to claim it inspected a request it did not see.
+
+    private const string DifferentialBoundary = "----WPShieldSyntheticBoundary7d91f2a4";
+
+    /// <summary>
+    /// The F1 and F2 bodies, every measured variant, framed with one ordinary
+    /// <c>Content-Type</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>F1 — a closing delimiter anywhere but the end.</b> <c>MultipartReaderStream</c> stops the
+    /// moment it sees <c>--X--</c> at a line start, and before the fix the reader read that as
+    /// "the body ended, cleanly". PHP has no terminating boundary at all: <c>find_boundary</c> reads
+    /// lines until one matches <c>--X</c> and <c>multipart_buffer_headers</c> drops lines without a
+    /// colon, so everything behind the decoy is an upload. Measured on the shipped assembly, the
+    /// first row was <c>Complete</c> with zero files, scored 0, and was <b>forwarded in Block
+    /// mode</b> with nothing above Information in the log.
+    /// </para>
+    /// <para>
+    /// <b>F2 — an obs-fold in a part header.</b> A header line beginning with SP or HTAB is a folded
+    /// continuation under RFC 5322, which PHP implements and <c>MultipartReader</c> does not, so the
+    /// smuggled <c>filename</c> never reaches <c>disposition.Parameters</c>. Measured: the fold-onto-
+    /// a-field row reported a form field, which is counted and never sampled and never inspected,
+    /// while PHP wrote <c>$_FILES['f']</c>; the fold-over-a-benign-name row reported
+    /// <c>photo.jpg</c>, so WPShield inspected and passed a file the backend was never going to
+    /// write.
+    /// </para>
+    /// </remarks>
+    public static TheoryData<string, byte[]> SmuggledBodies()
+    {
+        var php = SyntheticPhpFile();
+
+        return new TheoryData<string, byte[]>
+        {
+            {
+                "F1 closing delimiter in front of the body",
+                Concat(
+                    Encoding.ASCII.GetBytes($"--{DifferentialBoundary}--\r\n"),
+                    new MultipartBuilder(DifferentialBoundary)
+                        .AddFile("f", "shell.php", "application/octet-stream", php)
+                        .Build().Bytes)
+            },
+            {
+                "F1 whole part smuggled into the epilogue",
+                Concat(
+                    new MultipartBuilder(DifferentialBoundary)
+                        .AddFile("async-upload", "photo.jpg", "image/jpeg", BenignJpeg())
+                        .Build().Bytes,
+                    new MultipartBuilder(DifferentialBoundary)
+                        .AddFile("f", "shell.php", "application/octet-stream", php)
+                        .Build().Bytes)
+            },
+            {
+                "F1 bare delimiter inside a prose epilogue",
+                Concat(
+                    new MultipartBuilder(DifferentialBoundary)
+                        .AddFile("async-upload", "photo.jpg", "image/jpeg", BenignJpeg())
+                        .Build().Bytes,
+                    Encoding.ASCII.GetBytes(
+                        $"Thank you for uploading.\r\n--{DifferentialBoundary}\r\nnothing follows\r\n"))
+            },
+            {
+                "F2 space fold smuggling a file name onto a field",
+                new MultipartBuilder(DifferentialBoundary)
+                    .AddRawPart(
+                        "Content-Disposition: form-data; name=\"f\"\r\n" +
+                        " ; filename=\"shell.php\" : x",
+                        php)
+                    .Build().Bytes
+            },
+            {
+                "F2 space fold overriding a benign file name",
+                new MultipartBuilder(DifferentialBoundary)
+                    .AddRawPart(
+                        "Content-Disposition: form-data; name=\"f\"; filename=\"photo.jpg\"\r\n" +
+                        " ; filename=\"shell.php\" : x",
+                        php)
+                    .Build().Bytes
+            },
+            {
+                "F2 tab fold",
+                new MultipartBuilder(DifferentialBoundary)
+                    .AddRawPart(
+                        "Content-Disposition: form-data; name=\"f\"\r\n" +
+                        "\t; filename=\"shell.php\" : x",
+                        php)
+                    .Build().Bytes
+            }
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(SmuggledBodies))]
+    public async Task BlockMode_SmuggledPart_Returns415AndReachesNoBackend(string caseName, byte[] bytes)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync(siteOneMode: "Block");
+        var body = new MultipartBody(bytes, $"multipart/form-data; boundary={DifferentialBoundary}");
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+        var payload = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+
+        // The whole point. Before the fix these bodies were forwarded here, in Block mode, with the
+        // gateway reporting a clean inspection of a request it had not read.
+        Assert.Empty(harness.SiteOne.Requests);
+
+        using var document = JsonDocument.Parse(payload);
+        Assert.Equal("multipart_not_inspectable", document.RootElement.GetProperty("error").GetString());
+        Assert.Equal("malformed", document.RootElement.GetProperty("reason").GetString());
+        Assert.NotNull(caseName);
+    }
+
+    /// <summary>
+    /// The same bodies in Monitor mode: forwarded byte for byte, and recorded.
+    /// </summary>
+    /// <remarks>
+    /// Monitor's promise is that WPShield never refuses a request on a finding, and "we could not
+    /// see all of this body" is a finding like any other. The warning is what makes the promise
+    /// affordable: an operator watching Monitor sees these before turning Block on, and can tell a
+    /// probe from a client that frames its bodies oddly before the switch turns either one into a
+    /// refusal.
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(SmuggledBodies))]
+    public async Task MonitorMode_SmuggledPart_IsForwardedIntactAndWarned(string caseName, byte[] bytes)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync();
+        var body = new MultipartBody(bytes, $"multipart/form-data; boundary={DifferentialBoundary}");
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AssertBodyForwardedIntact(body, Assert.Single(harness.SiteOne.Requests));
+        Assert.Contains(
+            harness.Records,
+            record => record.Level == LogLevel.Warning &&
+                      record.Text.Contains(
+                          "Multipart body could not be fully inspected.", StringComparison.Ordinal) &&
+                      record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
+                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+        Assert.NotNull(caseName);
+    }
+
+    /// <summary>
+    /// <b>F3.</b> One comma in <c>Content-Type</c> used to make the request invisible to the
+    /// gateway entirely.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These four values were measured against the shipped assembly as <c>Declares=False</c>,
+    /// <c>Boundary=False</c> — both halves of the fail-closed pairing answering "not multipart" —
+    /// so the request streamed through with no buffer, no rule, no log line, and PHP took
+    /// <c>boundary_end = strpbrk(boundary, ",;")</c>, got the boundary, and populated
+    /// <c>$_FILES</c>. The body below really is a valid upload under that boundary: this is one
+    /// request that installs a file and, before the fix, one request that no rule ever ran against.
+    /// </para>
+    /// <para>
+    /// The comma cannot be sent through <c>HttpClient</c>'s typed header setter, which is itself a
+    /// hint about how rare this is in real traffic — and no argument at all about whether the
+    /// backend accepts it, which it does.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("multipart/form-data; boundary=aaa,", "aaa")]
+    [InlineData("multipart/form-data; boundary=aaa,bbb", "aaa")]
+    [InlineData("multipart/form-data; boundary=aaa, application/json", "aaa")]
+    [InlineData("multipart/form-data;boundary=----WebKitFormBoundaryABC,", "----WebKitFormBoundaryABC")]
+    public async Task BlockMode_CommaInTheContentType_Returns415AndReachesNoBackend(
+        string contentType, string boundary)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync(siteOneMode: "Block");
+        var parseable = new MultipartBuilder(boundary)
+            .AddField("action", "upload-attachment")
+            .AddFile("async-upload", "shell.php", "application/octet-stream", SyntheticPhpFile())
+            .Build();
+        var body = parseable with { ContentType = contentType };
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+        var payload = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+        Assert.Empty(harness.SiteOne.Requests);
+        Assert.Contains("\"error\":\"multipart_not_inspectable\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"malformed\"", payload, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("multipart/form-data; boundary=aaa,", "aaa")]
+    [InlineData("multipart/form-data; boundary=aaa,bbb", "aaa")]
+    [InlineData("multipart/form-data; boundary=aaa, application/json", "aaa")]
+    [InlineData("multipart/form-data;boundary=----WebKitFormBoundaryABC,", "----WebKitFormBoundaryABC")]
+    public async Task MonitorMode_CommaInTheContentType_IsForwardedIntactAndWarned(
+        string contentType, string boundary)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync();
+        var parseable = new MultipartBuilder(boundary)
+            .AddFile("async-upload", "shell.php", "application/octet-stream", SyntheticPhpFile())
+            .Build();
+        var body = parseable with { ContentType = contentType };
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AssertBodyForwardedIntact(body, Assert.Single(harness.SiteOne.Requests));
+        Assert.Contains(
+            harness.Records,
+            record => record.Level == LogLevel.Warning &&
+                      record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
+                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The fifth row of the F3 measurement, and the one that has to keep working: the same upload
+    /// with the comma removed is inspected, and refused as a <i>finding</i>.
+    /// </summary>
+    /// <remarks>
+    /// 403 with <c>WP-UPLOAD-001</c> named, not 415. The pair of tests is the whole story of F3 in
+    /// two requests that differ by one character: with the comma, WPShield cannot parse the framing
+    /// and says so; without it, WPShield reads the body and blocks the file. Before the fix the
+    /// first request was forwarded and the second was blocked, which is the definition of a bypass.
+    /// </remarks>
+    [Fact]
+    public async Task BlockMode_TheSameUploadWithoutTheComma_IsInspectedAndBlockedOnItsContents()
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync(siteOneMode: "Block");
+        var body = new MultipartBuilder("aaa")
+            .AddField("action", "upload-attachment")
+            .AddFile("async-upload", "shell.php", "application/octet-stream", SyntheticPhpFile())
+            .Build();
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+        var payload = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Empty(harness.SiteOne.Requests);
+
+        using var document = JsonDocument.Parse(payload);
+        Assert.Equal("upload_blocked", document.RootElement.GetProperty("error").GetString());
+        Assert.Contains(
+            "WP-UPLOAD-001",
+            document.RootElement.GetProperty("ruleIds").EnumerateArray().Select(element => element.GetString()));
+    }
+
+    /// <summary>
+    /// <b>F3b.</b> Two boundary declarations in one <c>Content-Type</c>, against a body that is
+    /// genuinely valid multipart under both of them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>boundary=aaa; boundary=bbb</c> gives <c>MediaTypeHeaderValue.Boundary</c> the first match
+    /// and nothing says IIS, ARR and PHP agree with it.
+    /// <c>xboundary=bbb; boundary=aaa</c> parses cleanly as two different parameters, so WPShield
+    /// gets <c>aaa</c> — while PHP's <c>strstr(content_type, "boundary")</c> matches inside
+    /// <c>xboundary</c> and gets <c>bbb</c>. The fixture is the review's probe: read with
+    /// <c>aaa</c> the request is one photograph, read with <c>bbb</c> it is
+    /// <c>shell.php</c>. Whichever end is wrong, one of them inspected a request the other one is
+    /// going to execute, which is why the gateway now refuses to choose.
+    /// </para>
+    /// <para>
+    /// The refusal is deliberately not "pick the one PHP would pick". PHP's choice depends on a
+    /// <c>strstr</c> over a header it also lowercases and re-parses, across versions and SAPIs;
+    /// imitating it is an arms race a gateway loses, while refusing a header no real client sends
+    /// costs a 415 nobody legitimate will ever see.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("multipart/form-data; boundary=aaa; boundary=bbb")]
+    [InlineData("multipart/form-data; xboundary=bbb; boundary=aaa")]
+    public async Task BlockMode_ShadowedBoundaryParameter_Returns415AndReachesNoBackend(string contentType)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync(siteOneMode: "Block");
+        var body = new MultipartBody(DualBoundaryBody(), contentType);
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+        var payload = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.UnsupportedMediaType, response.StatusCode);
+        Assert.Empty(harness.SiteOne.Requests);
+        Assert.Contains("\"error\":\"multipart_not_inspectable\"", payload, StringComparison.Ordinal);
+        Assert.Contains("\"reason\":\"malformed\"", payload, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("multipart/form-data; boundary=aaa; boundary=bbb")]
+    [InlineData("multipart/form-data; xboundary=bbb; boundary=aaa")]
+    public async Task MonitorMode_ShadowedBoundaryParameter_IsForwardedIntactAndWarned(string contentType)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync();
+        var body = new MultipartBody(DualBoundaryBody(), contentType);
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AssertBodyForwardedIntact(body, Assert.Single(harness.SiteOne.Requests));
+        Assert.Contains(
+            harness.Records,
+            record => record.Level == LogLevel.Warning &&
+                      record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
+                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+    }
+
+    #endregion
+
+    #region Ordinary traffic — these fixes tighten a gate every request passes through
+
+    // A fix that closes a bypass by breaking WordPress is not a fix. Everything above narrows what
+    // the gateway will call inspectable, and each narrowing is one edit away from refusing a real
+    // media-library upload: the F1 audit walks every byte of every body looking for a delimiter,
+    // the F2 check reads every part header name, and the F3 declaration test decides whether a
+    // request is buffered at all. So the shapes below are asserted as explicitly as the attacks —
+    // an ordinary upload, several of them at once, a body with the preamble and epilogue RFC 2046
+    // allows, and the boundary a real browser generates.
+
+    public static TheoryData<string, byte[], string, int> OrdinaryUploadShapes()
+    {
+        var ordinary = new MultipartBuilder(DifferentialBoundary)
+            .AddField("action", "upload-attachment")
+            .AddFile("async-upload", "photo.jpg", "image/jpeg", BenignJpeg())
+            .Build();
+
+        var several = new MultipartBuilder(DifferentialBoundary)
+            .AddFile("file0", "photo.jpg", "image/jpeg", BenignJpeg())
+            .AddFile("file1", "diagram.jpg", "image/jpeg", BenignJpeg())
+            .AddFile("file2", "notes.txt", "text/plain", BenignText())
+            .Build();
+
+        // RFC 2046 §5.1.1 allows both, and real clients send both. The epilogue is prose: an
+        // epilogue containing the delimiter is the F1 attack and is refused, which is the one place
+        // where closing that bypass genuinely narrowed what the gateway accepts.
+        var wrapped = ordinary with
+        {
+            Bytes = Concat(
+                Encoding.ASCII.GetBytes("This is a preamble a client may legally send.\r\n"),
+                ordinary.Bytes,
+                Encoding.ASCII.GetBytes("And this is an epilogue.\r\n"))
+        };
+
+        var webKit = new MultipartBuilder("----WebKitFormBoundary7MA4YWxkTrZu0gW")
+            .AddField("action", "upload-attachment")
+            .AddFile("async-upload", "photo.jpg", "image/jpeg", BenignJpeg())
+            .Build();
+
+        return new TheoryData<string, byte[], string, int>
+        {
+            { "one ordinary upload", ordinary.Bytes, ordinary.ContentType, 1 },
+            { "several files in one request", several.Bytes, several.ContentType, 3 },
+            { "a prose preamble and a prose epilogue", wrapped.Bytes, wrapped.ContentType, 1 },
+            { "the boundary a real browser generates", webKit.Bytes, webKit.ContentType, 1 }
+        };
+    }
+
+    [Theory]
+    [MemberData(nameof(OrdinaryUploadShapes))]
+    public async Task MonitorMode_OrdinaryUploadShapes_AreInspectedAndForwardedIntact(
+        string caseName, byte[] bytes, string contentType, int expectedFiles)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync();
+        var body = new MultipartBody(bytes, contentType);
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var received = Assert.Single(harness.SiteOne.Requests);
+        Assert.Equal(body.ContentType, received.ContentType);
+        AssertBodyForwardedIntact(body, received);
+
+        // Inspected, and inspected completely. "Forwarded" alone would also be true of a request
+        // the gateway had given up on, which is exactly the state these fixes create on purpose —
+        // so the status is asserted next to the delivery.
+        Assert.Contains("Status=Complete", harness.LogText, StringComparison.Ordinal);
+        Assert.Contains($"Files={expectedFiles}", harness.LogText, StringComparison.Ordinal);
+        Assert.Contains("Score=0", harness.LogText, StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            "could not be fully inspected", harness.LogText, StringComparison.Ordinal);
+        Assert.NotNull(caseName);
+    }
+
+    /// <summary>
+    /// The same shapes in Block mode, which is where a false positive costs a refused upload rather
+    /// than a log line.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(OrdinaryUploadShapes))]
+    public async Task BlockMode_OrdinaryUploadShapes_AreStillDeliveredToWordPress(
+        string caseName, byte[] bytes, string contentType, int expectedFiles)
+    {
+        await using var harness = await UploadGatewayHarness.StartAsync(siteOneMode: "Block");
+        var body = new MultipartBody(bytes, contentType);
+
+        using var response = await harness.PostAsync(SiteOneHost, UploadPath, body);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        AssertBodyForwardedIntact(body, Assert.Single(harness.SiteOne.Requests));
+        Assert.Contains("Status=Complete", harness.LogText, StringComparison.Ordinal);
+        Assert.Contains($"Files={expectedFiles}", harness.LogText, StringComparison.Ordinal);
+        Assert.NotNull(caseName);
+    }
+
+    #endregion
     #region Boundary conditions the buffered path must not have regressed
 
     /// <summary>
@@ -647,6 +1057,8 @@ public sealed class UploadInspectionIntegrationTests
     [InlineData("POST", "application/x-www-form-urlencoded", "action=heartbeat&interval=15")]
     [InlineData("POST", "application/json", "{\"title\":\"synthetic post\"}")]
     [InlineData("POST", "text/xml", "<?xml version=\"1.0\"?><methodCall/>")]
+    [InlineData("POST", "application/json; x=multipart/form-data", "{\"title\":\"synthetic\"}")]
+    [InlineData("POST", "multipart/mixed; boundary=synthetic", "--synthetic--\r\n")]
     public async Task NonMultipartTraffic_IsForwardedOnTheUnbufferedPath(
         string method,
         string? contentType,
@@ -1110,6 +1522,50 @@ public sealed class UploadInspectionIntegrationTests
             "Release notes for the synthetic upload fixture.\nNothing here resembles a script.\n");
     }
 
+    /// <summary>
+    /// One body that is valid <c>multipart/form-data</c> under two different boundaries at once.
+    /// </summary>
+    /// <remarks>
+    /// Read with <c>aaa</c> it is a single part named <c>photo.jpg</c> whose content happens to
+    /// carry some trailing text; read with <c>bbb</c> the <c>aaa</c> framing is preamble and
+    /// epilogue and the only part is <c>shell.php</c>. The JPEG is deliberately larger than the
+    /// 4096-byte sample, so the <c>aaa</c> reading is genuinely clean — the synthetic PHP marker
+    /// sits past the end of what would be sampled, which is exactly what the review's probe
+    /// measured: <c>photo.jpg</c>, Complete, no findings, forwarded, while the other reading
+    /// installs <c>shell.php</c>.
+    /// </remarks>
+    private static byte[] DualBoundaryBody()
+    {
+        var body = new MemoryStream();
+        void Ascii(string text) => body.Write(Encoding.ASCII.GetBytes(text));
+
+        Ascii("--aaa\r\n");
+        Ascii("Content-Disposition: form-data; name=\"async-upload\"; filename=\"photo.jpg\"\r\n");
+        Ascii("Content-Type: image/jpeg\r\n\r\n");
+        body.Write(BenignJpeg(8192));
+        Ascii("\r\n--bbb\r\n");
+        Ascii("Content-Disposition: form-data; name=\"async-upload\"; filename=\"shell.php\"\r\n");
+        Ascii("Content-Type: application/octet-stream\r\n\r\n");
+        body.Write(SyntheticPhpFile());
+        Ascii("\r\n--bbb--\r\n");
+        Ascii("--aaa--\r\n");
+
+        return body.ToArray();
+    }
+
+    private static byte[] Concat(params byte[][] parts)
+    {
+        var combined = new byte[parts.Sum(part => part.Length)];
+        var offset = 0;
+        foreach (var part in parts)
+        {
+            part.CopyTo(combined, offset);
+            offset += part.Length;
+        }
+
+        return combined;
+    }
+
     private static void AssertBodyForwardedIntact(MultipartBody sent, ReceivedRequest received)
     {
         Assert.Equal(sent.Bytes.Length, received.Body.Length);
@@ -1165,6 +1621,19 @@ public sealed class UploadInspectionIntegrationTests
                 $"--{_boundary}\r\n" +
                 $"Content-Disposition: form-data; name=\"{fieldName}\"; filename=\"{fileName}\"\r\n" +
                 $"Content-Type: {contentType}\r\n\r\n");
+            _buffer.Write(content);
+            WriteAscii("\r\n");
+            return this;
+        }
+
+        /// <summary>
+        /// Writes one part with a verbatim header block, for the shapes no client library will
+        /// produce: a folded continuation line, a header with no colon, a part with no headers
+        /// at all. Every parser differential in this suite needs one.
+        /// </summary>
+        public MultipartBuilder AddRawPart(string headerBlock, byte[] content)
+        {
+            WriteAscii($"--{_boundary}\r\n{headerBlock}\r\n\r\n");
             _buffer.Write(content);
             WriteAscii("\r\n");
             return this;

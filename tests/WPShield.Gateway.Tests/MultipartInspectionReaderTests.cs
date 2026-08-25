@@ -778,6 +778,18 @@ public sealed class MultipartInspectionReaderTests
     /// send both. Rejecting either would be a false positive on ordinary traffic, so the reader has
     /// to tolerate them without letting anything in them count as a part.
     /// </summary>
+    /// <remarks>
+    /// <b>This test is deliberately narrower than it was.</b> It used to say that anything at
+    /// all could follow the closing delimiter, and F1 turned that tolerance into a bypass: a body
+    /// prefixed with a lone <c>--X--</c> line reported <c>Complete</c> with no files, no fields
+    /// and nothing above Information in the log, while PHP — which has no concept of a
+    /// terminating boundary — parsed the part behind the decoy and wrote <c>$_FILES</c>. What is
+    /// tolerated now is an epilogue of <i>prose</i>, which is what RFC 2046 §5.1.1 is actually
+    /// about and what real clients send. An epilogue containing the delimiter is
+    /// <see cref="MultipartReadStatus.Malformed"/>; see
+    /// <c>DelimiterInsideTheEpilogue_IsMalformedWithNoPartBehindIt</c> and the three F1 tests
+    /// beside it. The narrowing is the fix, not collateral damage from it.
+    /// </remarks>
     [Fact]
     public async Task PreambleAndEpilogue_AreToleratedAndCountAsNothing()
     {
@@ -870,6 +882,15 @@ public sealed class MultipartInspectionReaderTests
     [InlineData("multipart/form-data; charset=utf-8; boundary=afterotherparams", "afterotherparams")]
     [InlineData("multipart/form-data; boundary=----WebKitFormBoundary7MA4YWxkTrZu0gW", "----WebKitFormBoundary7MA4YWxkTrZu0gW")]
     [InlineData("multipart/form-data; boundary=b", "b")]
+
+    // The literal string "boundary" as the boundary value, which is what keeps
+    // HasAmbiguousBoundaryParameter honest. Requiring a "=" after the token is what makes this
+    // second occurrence a value rather than a second declaration: PHP's
+    // strstr(content_type, "boundary") plus strchr(..., '=') pair reads the same delimiter
+    // WPShield does, so there is no differential, and refusing it would be a false positive on a
+    // client that is unusual but not hostile.
+    [InlineData("multipart/form-data; boundary=boundary", "boundary")]
+    [InlineData("multipart/form-data; boundary=\"boundary\"", "boundary")]
     public void TryGetBoundary_AcceptsWellFormedDeclarations(string contentType, string expected)
     {
         Assert.True(MultipartInspectionReader.TryGetBoundary(
@@ -895,56 +916,125 @@ public sealed class MultipartInspectionReaderTests
         Assert.Equal(boundary70, boundary);
     }
 
+    /// <summary>
+    /// Every declaration the gateway refuses to extract a boundary from, and — the half that was
+    /// missing — whether each one still counts as declaring <c>multipart/form-data</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>UploadInspectionService</c> reads the two answers as a pair: no usable boundary
+    /// <i>and</i> not multipart means "ordinary traffic, stream it through untouched", while no
+    /// usable boundary <i>and</i> multipart means "fail closed" — a 415 in Block, a warning in
+    /// Monitor. Asserting only the first half is what let F3 ship. Four of the rows below returned
+    /// <see langword="false"/> from <i>both</i> halves, so a body PHP parses happily was classified
+    /// as ordinary traffic and forwarded with no buffer, no rule and no log line. The string
+    /// <c>multipart/form-data; boundary=aaa, application/json</c> was already in this data before
+    /// the fix — only the boundary half of it was ever asserted.
+    /// </para>
+    /// <para>
+    /// The third column is therefore a security decision per row, and belongs where it is written.
+    /// <see langword="true"/> costs a refusal in Block mode for a request no mainstream client
+    /// sends. <see langword="false"/> means the request is never inspected at all, and is defensible
+    /// only where the backend cannot turn it into an upload either.
+    /// </para>
+    /// </remarks>
     [Theory]
     [MemberData(nameof(RejectedBoundaryDeclarations))]
-    public void TryGetBoundary_RejectsUnusableDeclarations(string caseName, string contentType)
+    public void TryGetBoundary_RejectsUnusableDeclarations(
+        string caseName, string contentType, bool declaresMultipart)
     {
+        var request = Request(contentType);
+
         Assert.False(MultipartInspectionReader.TryGetBoundary(
-            Request(contentType), new MultipartInspectionOptions(), out var boundary));
+            request, new MultipartInspectionOptions(), out var boundary));
         Assert.Equal(string.Empty, boundary);
+
+        // The pairing. Without this assertion the suite cannot tell "refused, and therefore
+        // inspected as malformed" apart from "refused, and therefore forwarded uninspected" — and
+        // those two differ by an entire rule set.
+        Assert.Equal(declaresMultipart, MultipartInspectionReader.DeclaresMultipartFormData(request));
         Assert.NotNull(caseName);
     }
 
-    public static TheoryData<string, string> RejectedBoundaryDeclarations()
+    public static TheoryData<string, string, bool> RejectedBoundaryDeclarations()
     {
-        return new TheoryData<string, string>
+        return new TheoryData<string, string, bool>
         {
-            { "no boundary parameter", "multipart/form-data" },
-            { "empty boundary", "multipart/form-data; boundary=\"\"" },
+            { "no boundary parameter", "multipart/form-data", true },
+            { "empty boundary", "multipart/form-data; boundary=\"\"", true },
             {
                 "one character over the RFC 2046 cap",
                 "multipart/form-data; boundary=" +
-                new string('b', MultipartInspectionReader.MaximumBoundaryLength + 1)
+                new string('b', MultipartInspectionReader.MaximumBoundaryLength + 1),
+                true
             },
             {
                 "Kestrel would accept this one — the entire known false-positive band",
-                "multipart/form-data; boundary=" + new string('b', 128)
+                "multipart/form-data; boundary=" + new string('b', 128),
+                true
             },
 
             // A trailing space is legal inside a quoted boundary but is invisible in a log and is
             // stripped by some parsers, so the two ends can disagree about where the delimiter ends.
-            { "trailing space", "multipart/form-data; boundary=\"trailing \"" },
+            { "trailing space", "multipart/form-data; boundary=\"trailing \"", true },
 
             // The characters that would let a boundary carry header structure into the parser.
-            { "semicolon", "multipart/form-data; boundary=\"a;b\"" },
-            { "backslash", "multipart/form-data; boundary=\"a\\\\b\"" },
-            { "carriage return", "multipart/form-data; boundary=\"a\rb\"" },
-            { "line feed", "multipart/form-data; boundary=\"a\nb\"" },
-            { "tab", "multipart/form-data; boundary=\"a\tb\"" },
-            { "non-ASCII", "multipart/form-data; boundary=\"boundaría\"" },
+            { "semicolon", "multipart/form-data; boundary=\"a;b\"", true },
+            { "backslash", "multipart/form-data; boundary=\"a\\\\b\"", true },
+            { "carriage return", "multipart/form-data; boundary=\"a\rb\"", true },
+            { "line feed", "multipart/form-data; boundary=\"a\nb\"", true },
+            { "tab", "multipart/form-data; boundary=\"a\tb\"", true },
+            { "non-ASCII", "multipart/form-data; boundary=\"boundaría\"", true },
+
+            // F3, every measured row. Kestrel neither rejects nor splits a comma-joined value, so
+            // each of these arrives as one header line that no strict whole-value parser accepts —
+            // and that PHP reduces to "aaa" with boundary_end = strpbrk(boundary, ",;"). All four
+            // were measured as forwarded uninspected: Declares=False, Boundary=False, no buffer, no
+            // rule, no log line. They are the reason the declaration check is textual.
+            { "trailing comma", "multipart/form-data; boundary=aaa,", true },
+            { "comma-joined second boundary", "multipart/form-data; boundary=aaa,bbb", true },
+            {
+                "comma-joined second media type",
+                "multipart/form-data; boundary=aaa, application/json",
+                true
+            },
+            {
+                "trailing comma on a browser-shaped boundary",
+                "multipart/form-data;boundary=----WebKitFormBoundaryABC,",
+                true
+            },
+
+            // F3b. Two things in one value that PHP will read as a boundary declaration. WPShield
+            // takes aaa in both rows; PHP takes bbb in both, the first because nothing says the
+            // parsers agree on which duplicate wins, the second because strstr(ct, "boundary")
+            // matches inside xboundary.
+            { "boundary declared twice", "multipart/form-data; boundary=aaa; boundary=bbb", true },
+            {
+                "boundary shadowed by an earlier xboundary",
+                "multipart/form-data; xboundary=bbb; boundary=aaa",
+                true
+            },
+
+            // The honest false positive, written down rather than hidden. PHP's strstr finds the
+            // real parameter first here, so it agrees with us and there is no differential behind
+            // this refusal. Telling the two orders apart means re-implementing PHP's scan, which is
+            // the arms race the design refuses to enter — so it costs a 415 in Block mode for a
+            // request no real client sends.
+            {
+                "decoy boundary parameter after the real one",
+                "multipart/form-data; boundary=aaa; xboundary=bbb",
+                true
+            },
 
             // Out of scope by subtype. PHP populates $_FILES only for form-data, so these cannot
-            // become an upload through the path WPShield defends.
-            { "multipart/mixed", "multipart/mixed; boundary=synthetic" },
-            { "multipart/related", "multipart/related; boundary=synthetic" },
-            { "not multipart at all", "application/x-www-form-urlencoded" },
-            { "json", "application/json" },
-            { "unparseable header", "this is not a media type" },
-
-            // One header line carrying a comma-joined second media type. Kestrel does not reject
-            // it and does not split it, so this is a single value that no strict parser accepts.
-            { "comma-joined second media type", "multipart/form-data; boundary=aaa, application/json" },
-            { "empty header", "" }
+            // become an upload through the path WPShield defends — which is what makes "never
+            // inspected" the right answer rather than a gap.
+            { "multipart/mixed", "multipart/mixed; boundary=synthetic", false },
+            { "multipart/related", "multipart/related; boundary=synthetic", false },
+            { "not multipart at all", "application/x-www-form-urlencoded", false },
+            { "json", "application/json", false },
+            { "unparseable header", "this is not a media type", false },
+            { "empty header", "", false }
         };
     }
 
@@ -1407,6 +1497,395 @@ public sealed class MultipartInspectionReaderTests
         Assert.Equal(MultipartReadStatus.Complete, outcome.Status);
         Assert.Equal(0, stream.SeekCalls);
         Assert.True(stream.Position > 0, "the reader must leave the rewind to its caller");
+    }
+
+    // =================================================================================================
+    // 11. Parser differentials — the bypasses an adversarial review measured against M2
+    // =================================================================================================
+    //
+    // Every test below is one request that this reader and PHP's main/rfc1867.c read as two
+    // different requests, and every one of them was measured as a working bypass against the
+    // assemblies M2 shipped: WPShield inspected one thing, WordPress would have written another,
+    // and the request was forwarded.
+    //
+    // The fix is the same shape in all four cases, and it is worth saying out loud because the
+    // obvious alternative is worse. WPShield does not imitate PHP's parser — its quirks are
+    // undocumented, version-dependent and occasionally deliberate, and matching them is an arms
+    // race a gateway loses. Instead the reader fails closed the moment it cannot be sure it is
+    // seeing what the backend will see. So the assertions here are deliberately not "WPShield now
+    // finds shell.php": they are "WPShield now refuses to call this Complete", which is what turns
+    // each of these into a 415 in Block mode and a warning in Monitor.
+
+    /// <summary>
+    /// <b>F1.</b> One closing delimiter in front of the body made the entire body invisible.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured against the shipped M2 assembly, this body reported <c>Complete</c> with zero files
+    /// and zero fields, scored 0, and was forwarded in Block mode with nothing above Information in
+    /// the log. <c>MultipartReaderStream</c> matches <c>--X</c> at offset 0, sees the trailing
+    /// <c>--</c>, sets <c>FinalBoundaryFound</c> and returns <see langword="null"/> from the very
+    /// first <c>ReadNextSectionAsync</c>; the loop broke on "section is null" and nothing checked
+    /// whether the parse had consumed the buffer. PHP has no concept of a terminating boundary at
+    /// all — <c>find_boundary</c> reads lines until one matches <c>--X</c>, and
+    /// <c>multipart_buffer_headers</c> drops lines with no colon — so PHP parses the part behind the
+    /// decoy and writes <c>$_FILES['f']</c>.
+    /// </para>
+    /// <para>
+    /// The assertion that the reader still sees nothing is the deliberate half. The smuggled part
+    /// remains invisible to this parser and that is fine; what changed is that a parse which did not
+    /// reach the end of the body may no longer call itself
+    /// <see cref="MultipartReadStatus.Complete"/>, so the caller fails closed on a body it did not
+    /// actually see rather than vouching for it.
+    /// </para>
+    /// </remarks>
+    [Fact]
+    public async Task ClosingDelimiterBeforeTheBody_IsMalformedRatherThanAnEmptyComplete()
+    {
+        var body = Concat(
+            Encoding.ASCII.GetBytes($"--{Boundary}--\r\n"),
+            new MultipartBodyBuilder()
+                .File("f", "shell.php", null, Encoding.ASCII.GetBytes(SyntheticPhpMarker))
+                .Build());
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Malformed, outcome.Status);
+        Assert.Empty(outcome.Files);
+        Assert.Equal(0, outcome.FieldCount);
+    }
+
+    /// <summary>
+    /// <b>F1.</b> The same trick with the decoy at the end instead of the start: a complete, benign
+    /// upload, and a second complete part smuggled into the epilogue.
+    /// </summary>
+    /// <remarks>
+    /// This variant shows what the differential costs, because here the reader does produce a file —
+    /// the wrong one. WPShield inspects and passes <c>photo.jpg</c> while PHP, which keeps reading
+    /// lines after a closing delimiter it does not treat as terminal, writes <c>shell.php</c>. The
+    /// status is the only thing standing between that request and the media library, so the file
+    /// list is asserted next to it: <c>photo.jpg</c> is what was inspected, and <c>Malformed</c> is
+    /// the admission that it was not all there was.
+    /// </remarks>
+    [Fact]
+    public async Task PartSmuggledIntoTheEpilogue_IsMalformedEvenThoughTheFirstPartParsedCleanly()
+    {
+        var body = Concat(
+            new MultipartBodyBuilder()
+                .File("async-upload", "photo.jpg", "image/jpeg", "GIF89a"u8.ToArray())
+                .Build(),
+            new MultipartBodyBuilder()
+                .File("f", "shell.php", null, Encoding.ASCII.GetBytes(SyntheticPhpMarker))
+                .Build());
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Malformed, outcome.Status);
+        Assert.Equal("photo.jpg", Assert.Single(outcome.Files).FileName);
+    }
+
+    /// <summary>
+    /// <b>F1.</b> A bare delimiter in the epilogue, with no part behind it at all.
+    /// </summary>
+    /// <remarks>
+    /// Nothing is smuggled here, and it is still refused. That is the point: the check is "did a
+    /// delimiter appear after the close?", not "did a part appear after the close?" — because
+    /// deciding whether the bytes behind the delimiter would have parsed for PHP means implementing
+    /// PHP's parser, and a differential the gateway has to resolve correctly on every input is a
+    /// differential the gateway has already lost.
+    /// </remarks>
+    [Fact]
+    public async Task DelimiterInsideTheEpilogue_IsMalformedWithNoPartBehindIt()
+    {
+        var body = Concat(
+            new MultipartBodyBuilder()
+                .File("async-upload", "photo.jpg", "image/jpeg", "GIF89a"u8.ToArray())
+                .Build(),
+            Encoding.ASCII.GetBytes($"Thank you for uploading.\r\n--{Boundary}\r\nnothing follows\r\n"));
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Malformed, outcome.Status);
+        Assert.Equal("photo.jpg", Assert.Single(outcome.Files).FileName);
+    }
+
+    /// <summary>
+    /// <b>F1.</b> The closing delimiter in the middle of an otherwise ordinary body, which hides
+    /// every part after a benign first one.
+    /// </summary>
+    /// <remarks>
+    /// The shape a real attacker would reach for, because the request looks entirely normal to
+    /// anyone reading a log: one photograph, forwarded, nothing found. Everything after the stray
+    /// close was never parsed by WPShield, and all of it is parsed by PHP. Two parts are hidden
+    /// rather than one on purpose — with a single part on each side of the stray delimiter this
+    /// body would be byte-for-byte the one
+    /// <c>PartSmuggledIntoTheEpilogue_IsMalformedEvenThoughTheFirstPartParsedCleanly</c> sends, and
+    /// a second test asserting the same bytes under a different name proves nothing twice.
+    /// </remarks>
+    [Fact]
+    public async Task ClosingDelimiterInTheMiddle_IsMalformedAndHidesEverythingAfterIt()
+    {
+        var body = Concat(
+            new MultipartBodyBuilder()
+                .File("async-upload", "photo.jpg", "image/jpeg", "GIF89a"u8.ToArray())
+                .BuildWithoutFinalDelimiter(),
+            Encoding.ASCII.GetBytes($"--{Boundary}--\r\n"),
+            new MultipartBodyBuilder()
+                .File("f", "shell.php", null, Encoding.ASCII.GetBytes(SyntheticPhpMarker))
+                .File("g", "web.config", null, "<configuration/>"u8.ToArray())
+                .Build());
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Malformed, outcome.Status);
+        Assert.Equal("photo.jpg", Assert.Single(outcome.Files).FileName);
+    }
+
+    /// <summary>
+    /// The false-positive fence for F1: a file whose own bytes contain the client's delimiter, but
+    /// never at the start of a line.
+    /// </summary>
+    /// <remarks>
+    /// A delimiter counts only at a line start — the first byte of the body, or a byte after CR or
+    /// LF — which is a superset of what <c>MultipartReaderStream</c> requires (a leading CRLF) and
+    /// of what PHP's line-oriented <c>find_boundary</c> requires (a leading LF), so nothing either
+    /// parser would act on can be missed. Without the line-start requirement, any file that happened
+    /// to quote the boundary — a saved HTTP trace, a bug report, a test fixture like this one —
+    /// would become a 415 in Block mode. That is a false positive on precisely the upload a site
+    /// owner uses to report a WPShield problem.
+    /// </remarks>
+    [Fact]
+    public async Task DelimiterInsideFileContentButNotAtALineStart_IsStillComplete()
+    {
+        var content = Encoding.ASCII.GetBytes($"GIF89a a support ticket quoting --{Boundary} mid-line");
+        var body = new MultipartBodyBuilder()
+            .File("async-upload", "trace.txt", "text/plain", content)
+            .Build();
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Complete, outcome.Status);
+        Assert.Equal("trace.txt", Assert.Single(outcome.Files).FileName);
+        Assert.Equal(content.Length, outcome.Files[0].ByteCount);
+    }
+
+    /// <summary>
+    /// <b>F2.</b> A folded continuation line in a part's headers smuggles a file name past the
+    /// disposition parser.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both parsers are doing something defensible, which is what let this survive review. A
+    /// part-header line beginning with SP or HTAB is a folded continuation under RFC 5322, and PHP's
+    /// <c>multipart_buffer_headers</c> implements exactly that — <c>space in the beginning means
+    /// same header</c>, as its own comment puts it — appending the line to the previous header and
+    /// then keeping the <b>last</b> <c>filename</c> it finds.
+    /// <c>MultipartReader.ReadHeadersAsync</c> has no concept of folding and splits every line at
+    /// the first colon, so the folded line becomes a junk header whose <i>name</i> is
+    /// <c>&#32;; filename="shell.php"&#32;</c> while <c>Content-Disposition</c> keeps its first-line
+    /// value. The smuggled parameter never enters <c>disposition.Parameters</c>, which is why
+    /// <c>HasRepeatedFileNameParameter</c> could not see it.
+    /// </para>
+    /// <para>
+    /// Measured on the shipped assembly: the first row reported <c>Complete</c> with
+    /// <c>Fields=1</c> and no files — a form field, which is counted and never sampled and never
+    /// inspected — while PHP wrote <c>$_FILES['f']</c> with <c>shell.php</c>. The second row is
+    /// worse, because it reported <c>Files=[photo.jpg]</c>: WPShield inspected a benign file, found
+    /// nothing, and forwarded a request that writes a different file entirely. The trailing
+    /// <c>&#32;: x</c> exists only to give ASP.NET Core a colon to split on; the last row drops it
+    /// and is here so the two shapes cannot drift apart — that one already failed closed, and it has
+    /// to keep doing so for a reason the code states rather than by accident.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [MemberData(nameof(ObsFoldedPartHeaders))]
+    public async Task ObsFoldedPartHeader_IsMalformed(string caseName, string headerBlock)
+    {
+        var body = new MultipartBodyBuilder()
+            .Part(headerBlock, Encoding.ASCII.GetBytes(SyntheticPhpMarker))
+            .Build();
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Malformed, outcome.Status);
+
+        // Neither a file nor a field. The part is refused before its disposition is parsed, because
+        // once GetContentDispositionHeader() has answered there is nothing left to notice.
+        Assert.Empty(outcome.Files);
+        Assert.Equal(0, outcome.FieldCount);
+        Assert.NotNull(caseName);
+    }
+
+    public static TheoryData<string, string> ObsFoldedPartHeaders()
+    {
+        return new TheoryData<string, string>
+        {
+            // Measured: Complete, Fields=1, Files=[]. WPShield saw a form field; PHP saw shell.php.
+            {
+                "space fold smuggling a file name onto a field",
+                "Content-Disposition: form-data; name=\"f\"\r\n ; filename=\"shell.php\" : x"
+            },
+
+            // Measured: Complete, Files=[photo.jpg]. WPShield inspected and passed the wrong file.
+            {
+                "space fold overriding a benign file name",
+                "Content-Disposition: form-data; name=\"f\"; filename=\"photo.jpg\"\r\n" +
+                " ; filename=\"shell.php\" : x"
+            },
+
+            // A tab folds identically, under RFC 5322 and under PHP's isspace() test alike.
+            {
+                "tab fold",
+                "Content-Disposition: form-data; name=\"f\"\r\n\t; filename=\"shell.php\" : x"
+            },
+
+            // No colon on the folded line: ASP.NET Core has nothing to split on and this one already
+            // failed closed. Pinned so the two shapes stay together.
+            {
+                "space fold with no colon on the folded line",
+                "Content-Disposition: form-data; name=\"f\"\r\n ; filename=\"shell.php\""
+            }
+        };
+    }
+
+    /// <summary>
+    /// The false-positive fence for F2: whitespace <i>after</i> the colon is ordinary and must not
+    /// be read as a fold.
+    /// </summary>
+    /// <remarks>
+    /// The test is on the header name the framework produced, not on the raw line, and such a name
+    /// can begin with SP or HTAB only if the line was a continuation. Header values are routinely
+    /// padded — a double space after the colon is legal and some clients emit a tab — so a check
+    /// written against the raw line instead would refuse real uploads.
+    /// </remarks>
+    [Fact]
+    public async Task PartHeaderWithPaddedValues_IsNotMistakenForAFold()
+    {
+        var body = new MultipartBodyBuilder()
+            .Part(
+                "Content-Disposition:  form-data; name=\"async-upload\"; filename=\"photo.jpg\"\r\n" +
+                "Content-Type:\timage/jpeg",
+                "GIF89a"u8.ToArray())
+            .Build();
+
+        var outcome = await ReadAsync(body);
+
+        Assert.Equal(MultipartReadStatus.Complete, outcome.Status);
+        Assert.Equal("photo.jpg", Assert.Single(outcome.Files).FileName);
+    }
+
+    /// <summary>
+    /// <b>F3.</b> A comma in <c>Content-Type</c> used to mean WPShield never noticed the request was
+    /// multipart at all.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// These are the five values the review measured against the shipped assembly. Only the first
+    /// was inspected; the other four answered <see langword="false"/> to <i>both</i> halves of the
+    /// fail-closed pairing in <c>UploadInspectionService</c> — no usable boundary <i>and</i> not
+    /// multipart — so the request streamed through with no buffer, no rule and no log line, while
+    /// PHP took <c>boundary_end = strpbrk(boundary, ",;")</c>, got <c>aaa</c>, and populated
+    /// <c>$_FILES</c>. One trailing comma was a complete bypass of every rule WPShield ships.
+    /// </para>
+    /// <para>
+    /// The cause was that <c>DeclaresMultipartFormData</c> asked
+    /// <c>MediaTypeHeaderValue.TryParse</c>, a strict whole-value parser that treats a comma as a
+    /// value separator. A strict parser may decide whether a value is <i>usable</i>; it must never
+    /// decide whether a request is <i>in scope</i>. So the first assertion is the one that matters
+    /// in every row: the declaration is now matched textually and is <see langword="true"/>
+    /// throughout, which is what turns rows two to five into <c>Malformed</c> and a 415 instead of
+    /// into silence.
+    /// </para>
+    /// </remarks>
+    [Theory]
+    [InlineData("multipart/form-data; boundary=aaa", true)]
+    [InlineData("multipart/form-data; boundary=aaa,", false)]
+    [InlineData("multipart/form-data; boundary=aaa,bbb", false)]
+    [InlineData("multipart/form-data; boundary=aaa, application/json", false)]
+    [InlineData("multipart/form-data;boundary=----WebKitFormBoundaryABC,", false)]
+    public void ContentTypeWithAComma_IsStillInScopeEvenWhenItsBoundaryIsUnusable(
+        string contentType, bool boundaryUsable)
+    {
+        var request = Request(contentType);
+
+        Assert.True(MultipartInspectionReader.DeclaresMultipartFormData(request));
+        Assert.Equal(
+            boundaryUsable,
+            MultipartInspectionReader.TryGetBoundary(request, new MultipartInspectionOptions(), out _));
+    }
+
+    /// <summary>
+    /// The false-positive fence for F3: a textual match must be a match on the <i>media type</i>,
+    /// not a substring search of the header.
+    /// </summary>
+    /// <remarks>
+    /// Widening <c>DeclaresMultipartFormData</c> is only safe while it stays exact. A substring
+    /// search would put every <c>application/json</c> request carrying the string in a parameter
+    /// onto the buffered path, and <c>StartsWith</c> would do the same for
+    /// <c>multipart/form-data-x</c>. Neither reaches <c>rfc1867_post_handler</c> — PHP's lookup is
+    /// an exact hash match on the type — so inspecting them would cost memory and, in Block mode,
+    /// refuse traffic PHP treats as an ordinary body.
+    /// </remarks>
+    [Theory]
+    [InlineData("application/json; x=multipart/form-data")]
+    [InlineData("multipart/form-data-x; boundary=aaa")]
+    [InlineData("multipart/form-datax; boundary=aaa")]
+    [InlineData("\"multipart/form-data\"; boundary=aaa")]
+    [InlineData("application/x-www-form-urlencoded")]
+    public void ContentTypeThatMerelyMentionsMultipart_IsNotInScope(string contentType)
+    {
+        Assert.False(MultipartInspectionReader.DeclaresMultipartFormData(Request(contentType)));
+    }
+
+    /// <summary>
+    /// The other half of F3's fence: the spacing and casing variants that <i>are</i> in scope,
+    /// because each one can still become an upload on the backend.
+    /// </summary>
+    /// <remarks>
+    /// The HTAB row is the interesting one. PHP does <i>not</i> terminate its media-type lookup on a
+    /// tab, so <c>multipart/form-data\t;boundary=x</c> reaches PHP as an unknown type and never
+    /// populates <c>$_FILES</c> — WPShield still treats it as in scope, because the direction to err
+    /// in is inspecting a request the backend will ignore, never ignoring one the backend will act
+    /// on.
+    /// </remarks>
+    [Theory]
+    [InlineData("multipart/form-data;boundary=aaa")]
+    [InlineData("multipart/form-data ; boundary=aaa")]
+    [InlineData("multipart/form-data\t; boundary=aaa")]
+    [InlineData("  multipart/form-data; boundary=aaa")]
+    [InlineData("MULTIPART/FORM-DATA; boundary=aaa")]
+    public void ContentTypeWithUnusualSpacingOrCasing_IsStillInScope(string contentType)
+    {
+        Assert.True(MultipartInspectionReader.DeclaresMultipartFormData(Request(contentType)));
+    }
+
+    /// <summary>
+    /// <b>F3b.</b> The doubled-<c>filename</c> differential one level up: a doubled — or merely
+    /// PHP-visible — <c>boundary</c>, which makes the two ends disagree about where every part of
+    /// the body begins.
+    /// </summary>
+    /// <remarks>
+    /// <c>boundary=aaa; boundary=bbb</c> hands <c>MediaTypeHeaderValue.Boundary</c> the first match,
+    /// and nothing says IIS, ARR and PHP agree with it. <c>xboundary=bbb; boundary=aaa</c> parses as
+    /// two distinct parameters, so WPShield gets <c>aaa</c>, while PHP's
+    /// <c>strstr(content_type, "boundary")</c> matches inside <c>xboundary</c> and gets <c>bbb</c>.
+    /// The review confirmed with a probe that one body can be valid multipart under both boundaries
+    /// at once, presenting <c>photo.jpg</c> to the reading WPShield takes and <c>shell.php</c> to the
+    /// reading PHP takes; <c>BlockMode_ShadowedBoundaryParameter_Returns415AndReachesNoBackend</c>
+    /// in the integration suite sends exactly that body.
+    /// </remarks>
+    [Theory]
+    [InlineData("multipart/form-data; boundary=aaa; boundary=bbb")]
+    [InlineData("multipart/form-data; xboundary=bbb; boundary=aaa")]
+    [InlineData("multipart/form-data; BOUNDARY=aaa; boundary=bbb")]
+    public void AmbiguousBoundaryParameter_IsRefusedRatherThanResolved(string contentType)
+    {
+        var request = Request(contentType);
+
+        Assert.True(MultipartInspectionReader.DeclaresMultipartFormData(request));
+        Assert.False(MultipartInspectionReader.TryGetBoundary(
+            request, new MultipartInspectionOptions(), out var boundary));
+        Assert.Equal(string.Empty, boundary);
     }
 
     // =================================================================================================
