@@ -36,7 +36,7 @@ if you establish a new invariant, record it there.
 | `docs/assets/` | Figures used inside the documentation, as light/dark SVG pairs. |
 | `assets/` | The project mark, the hero figure and the social preview. |
 | `site/` | The GitHub Pages landing page. |
-| `scripts/` | Read-only operator validation scripts. They must never change a machine. |
+| `scripts/` | Read-only operator scripts: triage and IIS validation. They must never change a machine. |
 
 ## Validation
 
@@ -49,6 +49,17 @@ dotnet test WPShield.slnx --configuration Release --no-build
 dotnet format WPShield.slnx --verify-no-changes
 git diff --check
 ```
+
+If you touched anything under `scripts/`, also run:
+
+```powershell
+pwsh -File scripts/Test-WPShieldScripts.ps1
+```
+
+`dotnet build` never looks at a `.ps1`, so nothing above would notice a syntax error, a non-ASCII
+byte that Windows PowerShell 5.1 cannot read, a new write path in a tool documented as read-only, or
+a copy of the gateway's rule vocabulary that has drifted away from the gateway. That last one is the
+quiet failure: a drifted copy does not break, it reports coverage WPShield does not have.
 
 `dotnet format --verify-no-changes` is a CI job, not a suggestion — a pull request that fails it is
 red before anyone reads the diff.

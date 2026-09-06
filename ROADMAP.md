@@ -146,6 +146,54 @@ not read as more than they claim:
 - **Responses.** The exploitation traffic was distinguishable by its responses — 200 with a 24-byte
   body for a probe, 500 for the payload — and WPShield does not look at responses at all.
 
+## M2.6 — Triage tool
+
+> The other half of what the compromise taught. M2.5 closed the gap the incident exposed in the
+> gateway; this puts the investigation itself into the repository, so that the next person to find a
+> strange file on a Windows WordPress host does not have to reinvent an afternoon of ad-hoc
+> PowerShell. A gateway protects a site going forward. It says nothing about a site that was already
+> compromised before the gateway arrived — which was the situation this project was actually
+> deployed into.
+>
+> See [triage tool](docs/en/triage-tool.md) for the complete behaviour.
+
+- [x] `scripts/Invoke-WPShieldTriage.ps1` — read-only triage, fully parameterized, with no real
+      hostname, path or topology anywhere in it.
+- [x] Discover WordPress installations from IIS rather than assuming a layout, with an explicit
+      `-DiscoverOnly` first pass for a host the operator does not know.
+- [x] Nine checks, each traceable to something the incident actually showed: executables in data and
+      asset directories, a `web.config` below the site root, names Windows will not store literally,
+      PHP that can run what a request sends it, timestamp-named dropper markers, the creation-after-
+      modification skew a mass-rewriter leaves, IIS log correlation per artifact, and a component
+      inventory.
+- [x] Emit findings as JSON Lines **in the gateway's own log envelope**, so a forensic report and a
+      gateway log are read by one parser and correlated on the same field names.
+- [x] Report, for every artifact, whether WPShield would refuse a request to it — including when it
+      would not.
+- [x] Carry no file contents and nothing outside ASCII, so a report is safe to attach to a public
+      issue and cannot carry an escape sequence into whoever reads it.
+- [x] Verify the scripts in CI: they parse under PowerShell 7 and Windows PowerShell 5.1, they are
+      pure ASCII, the triage tool has no write path but its own report, its copy of the gateway's
+      rule vocabulary has not drifted, and it runs end to end against a fixture and reaches the
+      right verdicts.
+
+### What M2.6 does not cover
+
+- **A verdict.** It reports; it does not decide, and it never repairs. Deleting a webshell before
+  understanding how it arrived destroys the evidence and leaves the way in.
+- **A clean bill of health.** It reads what is on disk today. An intruder who cleaned up leaves a
+  disk that looks healthy, and a run with no findings says only that.
+- **The database.** Injected `wp_posts` and `wp_options` content, and an attacker's administrator
+  account, are invisible to it.
+- **Alternate data streams.** A stream suffix in a *name* is reported; the tool does not ask each
+  file whether it carries hidden streams, which would be one more system call per file across tens
+  of thousands of them.
+- **Proof of read-only-ness.** The gateway's disk-freedom guarantee is proved by scanning assembly
+  type references. A script has no equivalent, so what CI enforces is an inventory of write-capable
+  constructs plus a ban on the two — invocation through a variable, and `Invoke-Expression` — that
+  would let a command escape it. That is weaker, and the documentation says so rather than implying
+  otherwise.
+
 ## M3 — Rate limiting and automated behavior
 
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
