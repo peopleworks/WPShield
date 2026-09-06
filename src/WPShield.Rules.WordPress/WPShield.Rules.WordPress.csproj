@@ -2,4 +2,9 @@
   <ItemGroup>
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- Tests assert against the rule score constants so calibration changes cannot drift silently. -->
+    <InternalsVisibleTo Include="WPShield.Rules.WordPress.Tests" />
+    <InternalsVisibleTo Include="WPShield.Core.Tests" />
+  </ItemGroup>
 </Project>

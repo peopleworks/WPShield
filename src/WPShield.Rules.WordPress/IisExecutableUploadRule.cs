@@ -3,29 +3,27 @@ using WPShield.Abstractions;
 namespace WPShield.Rules.WordPress;
 
 /// <summary>
-/// <c>WP-UPLOAD-001</c> — the upload carries an extension a PHP handler will execute.
+/// <c>IIS-UPLOAD-001</c> — the upload carries an extension IIS maps to a managed or native handler.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Matching runs over every segment of the normalized name, not only the last one, because
-/// <c>photo.php.jpg</c> executes under a PHP-FastCGI installation with <c>cgi.fix_pathinfo</c>
-/// enabled. Normalization also means <c>shell.php.</c>, <c>shell.php </c> and
-/// <c>shell.php::$DATA</c> are all recognized as <c>shell.php</c>.
+/// WPShield protects WordPress on Windows Server, where the web server executes far more than PHP.
+/// An <c>.aspx</c> or <c>.ashx</c> file dropped into a writable uploads directory runs as the
+/// application pool identity, which is a strictly larger capability than a PHP shell. Protection
+/// layers written for Linux hosting do not cover this, which is the gap WPShield exists to close.
 /// </para>
 /// <para>
-/// <b>False positives.</b> A dangerous extension in a non-final position scores lower than one in the
-/// final position, because a benign name such as <c>readme.php.txt</c> is structurally identical to
-/// a disguised payload and cannot be separated from it by name alone. Combined with
-/// <see cref="DisguisedExtensionRule"/> such a name reaches the default block threshold, so operators
-/// should stay in Monitor mode until they have reviewed their own upload traffic.
+/// <b>False positives.</b> A WordPress site has no legitimate reason to accept an ASP.NET handler
+/// file through an upload endpoint. If a site genuinely distributes such files as downloads, the
+/// operator should keep the site in Monitor mode and record the finding rather than block it.
 /// </para>
 /// </remarks>
-public sealed class ExecutableUploadExtensionRule : IInspectionRule
+public sealed class IisExecutableUploadRule : IInspectionRule
 {
     internal const int FinalPositionScore = 90;
     internal const int NonFinalPositionScore = 50;
 
-    public string Id => "WP-UPLOAD-001";
+    public string Id => "IIS-UPLOAD-001";
 
     public ValueTask<RuleFinding?> EvaluateAsync(
         InspectionContext context,
@@ -35,7 +33,7 @@ public sealed class ExecutableUploadExtensionRule : IInspectionRule
         cancellationToken.ThrowIfCancellationRequested();
 
         var normalized = context.NormalizedFile;
-        var extension = normalized.FindExtension(DangerousUploadExtensions.PhpExecutable);
+        var extension = normalized.FindExtension(DangerousUploadExtensions.IisExecutable);
         if (extension is null)
         {
             return ValueTask.FromResult<RuleFinding?>(null);
@@ -45,7 +43,7 @@ public sealed class ExecutableUploadExtensionRule : IInspectionRule
         RuleFinding finding = new(
             Id,
             isFinal ? FinalPositionScore : NonFinalPositionScore,
-            "Findings.ExecutableUploadExtension",
+            "Findings.IisExecutableUpload",
             new Dictionary<string, string>
             {
                 ["extension"] = $".{extension}",

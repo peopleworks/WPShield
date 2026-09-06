@@ -53,9 +53,11 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 - [x] Reject oversized `Content-Length` early and count unknown-length bodies while streaming.
 - [ ] Enforce upload, file-count, field-count, header, boundary, and multipart-read timeout limits.
 - [ ] Parse multipart requests without buffering complete uploads or writing them to disk.
-- [ ] Normalize filenames, reject control characters and unsafe path forms, and bound metadata.
-- [ ] Extend inspection context with bounded per-file metadata and sample data only.
-- [ ] Implement high-confidence executable-extension, multiple-extension, PHP-content, MIME/signature, and filename rules.
+- [x] Normalize filenames, reject control characters and unsafe path forms, and bound metadata.
+- [x] Extend inspection context with bounded per-file metadata and sample data only.
+- [x] Implement high-confidence executable-extension, multiple-extension, PHP-content, and filename rules.
+- [x] Cover the Windows attack surface: IIS-executable extensions and `web.config` upload.
+- [ ] Implement MIME and file-signature mismatch rules (`FILE-TYPE-001`, `PHP-CONTENT-002`).
 - [ ] Preserve Monitor forwarding where operationally safe and explicitly document absolute safety limits.
 - [ ] In Block mode, stop forwarding and return policy-appropriate 403, 413, or 415 responses.
 - [ ] Add malformed, truncated, Unicode, cancellation, disconnect, limit, false-positive, and multi-file tests.

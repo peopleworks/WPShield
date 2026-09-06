@@ -7,6 +7,7 @@
     <Project Path="src/WPShield.Gateway/WPShield.Gateway.csproj" />
   </Folder>
   <Folder Name="/tests/">
+    <Project Path="tests/WPShield.Abstractions.Tests/WPShield.Abstractions.Tests.csproj" />
     <Project Path="tests/WPShield.Core.Tests/WPShield.Core.Tests.csproj" />
     <Project Path="tests/WPShield.Gateway.Tests/WPShield.Gateway.Tests.csproj" />
     <Project Path="tests/WPShield.Rules.WordPress.Tests/WPShield.Rules.WordPress.Tests.csproj" />

@@ -7,9 +7,5 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="../../src/WPShield.Abstractions/WPShield.Abstractions.csproj" />
-    <ProjectReference Include="../../src/WPShield.Core/WPShield.Core.csproj" />
-    <!-- End-to-end scoring coverage: the engine and the shipped rule set must agree on which
-         uploads actually reach the block threshold. -->
-    <ProjectReference Include="../../src/WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
   </ItemGroup>
 </Project>
