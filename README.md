@@ -324,6 +324,7 @@ The full acceptance criteria and task lists live in [ROADMAP.md](ROADMAP.md).
 | M1 laboratory | [Laboratory gateway](docs/en/m1-lab-gateway.md) | [Gateway de laboratorio](docs/es/m1-gateway-laboratorio.md) |
 | M2 request limits | [Bounded request controls](docs/en/m2-request-limits.md) | [Controles limitados de solicitud](docs/es/m2-limites-solicitud.md) |
 | M2 upload rules | [Upload rules](docs/en/m2-upload-rules.md) | [Reglas de carga](docs/es/m2-reglas-carga.md) |
+| ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 
 Project-wide references:
 

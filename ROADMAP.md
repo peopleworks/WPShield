@@ -64,6 +64,10 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 
 ## M3 — Rate limiting and automated behavior
 
+> Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
+> traffic path chosen in [ADR 0001](docs/en/adr/0001-production-traffic-path.md) every request
+> arrives from a local proxy, so `Gateway:TrustedProxies` must exist before this milestone starts.
+
 - [ ] Add per-IP and per-site burst controls with IPv4 and IPv6 support.
 - [ ] Define separate policies for login, XML-RPC, uploads, REST, and administrative AJAX.
 - [ ] Add expiring temporary blocks and configurable exceptions.
@@ -94,6 +98,13 @@ WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only
 
 ## M7 — Controlled public activation
 
+The traffic path is decided in [ADR 0001](docs/en/adr/0001-production-traffic-path.md): IIS keeps
+ports 80 and 443 and forwards to the loopback gateway through URL Rewrite and ARR, because bypass
+must remain a single rule toggle. Installing ARR is a prerequisite, and the trusted-proxy design that
+ADR requires must land before M3 rate limiting can identify clients correctly.
+
+- [ ] Install and configure ARR with the validated loop-safe rewrite rule.
+- [ ] Implement `Gateway:TrustedProxies` with an empty, strip-everything default.
 - [ ] Complete synthetic and loopback IIS validation.
 - [ ] Verify backups, alternate administrative access, monitoring, bypass, and rollback.
 - [ ] Run one test site, then one real site, then both sites in Monitor mode.
