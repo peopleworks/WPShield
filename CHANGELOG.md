@@ -45,6 +45,12 @@ must complete first.
 
 ### Fixed
 
+- **The installer aborted at step five if it could not set a directory's owner.** Setting the owner
+  needs a privilege that writing the permissions does not, so on a directory somebody else created
+  the install would stop *after* copying the files and registering the service - the worst place for
+  an installer to stop. The permissions are the control and still fail the install; ownership is
+  defence in depth and is now attempted separately and reported when it does not work. Found by
+  writing the test that exercises the ACL code against a real directory.
 - **The triage tool's JSON escaper corrupted every Windows path it wrote.** Inside a `switch`,
   PowerShell's `continue` ends the switch and resumes the enclosing loop body rather than skipping
   it, so a matched character was escaped and then emitted again: every path separator came out as
@@ -64,6 +70,38 @@ must complete first.
 
 ### Added
 
+- **An install kit: publish, install, uninstall.** `Publish-WPShield.ps1` produces a self-contained
+  `win-x64` build with a SHA-256 beside it, refuses to package `appsettings.Local.json`, and checks
+  the binary version against `Directory.Build.props`. Self-contained on purpose: the host WPShield
+  is written for is a shared one, and somebody else's patch to a shared runtime must not be able to
+  stop a security gateway. Not trimmed, because a trimmer removes types that configuration binding
+  resolves by reflection and a gateway that will not start at 3am is worse than a large directory.
+- **The service runs as the virtual account `NT SERVICE\WPShield`.** No password stored anywhere, no
+  account to manage, and a per-service identity that can be named in an ACL. It gets read and
+  execute on the program files - a gateway that can overwrite its own executable is a persistence
+  mechanism waiting for a bug - and modify on the logs, and nothing else.
+- **The install replaces the permissions on both directories rather than adding to them.** Three
+  entries: SYSTEM, the local Administrators group, and the service account. Inheritance is disabled
+  and the inherited entries are **discarded rather than copied**, because copying them keeps exactly
+  the broad access this removes. Principals are granted by well-known SID, not by name:
+  `BUILTIN\Administrators` is `BUILTIN\Administradores` on a Spanish Windows, and a script that grants
+  by name silently grants nothing there.
+- **Neither installer touches IIS, and that is now structural.** No binding, no rewrite rule, no
+  proxy setting. Those changes take a live site down, they need a person looking at the site, and on
+  a shared host they affect applications with nothing to do with WPShield. CI fails the build if an
+  IIS-writing cmdlet appears in any script, or if a service-mutating cmdlet names a service with a
+  literal instead of the script's own constant - the failure that guard prevents is somebody writing
+  `Stop-Service 'W3SVC'` into an installer that runs on a host carrying sixty applications.
+- **The rollback is documented as what it actually is.** Once the rewrite rule is live, **stopping
+  the service does not bypass WPShield - it takes the site down**, because IIS keeps forwarding to a
+  port with nothing behind it. The bypass is the rewrite rule. The uninstaller refuses to run while
+  it can see an enabled WPShield rule, and refuses equally when it cannot read IIS at all, because
+  "nobody could look" is not "there is nothing there" and on an uninstall that difference decides
+  whether the site stays up. Logs are kept by default: an uninstall during an incident is the worst
+  moment to delete the record of what the gateway saw.
+- **Both installers support `-WhatIf`, and a preview does not require elevation.** Reading what an
+  installer intends to do should not be harder to reach than running it, and during an incident the
+  preview is what somebody needs first.
 - **A preflight check, because the production traffic path has four ways to fail on the live site
   with an error that does not say what is wrong.** `scripts/Invoke-WPShieldPreflight.ps1` is
   read-only and changes nothing. Two of the checks are the reason it exists: **ARR's server-level

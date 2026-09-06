@@ -191,6 +191,36 @@ there.
   does not fail loudly: it reports coverage the gateway does not have, which is worse than reporting
   nothing. The lists are compared entry by entry in CI, including the deliberate exclusions from the
   asset list.
+- **No script here writes to the IIS configuration.** Not a binding, not a rewrite rule, not a proxy
+  setting, not an application pool. Those changes take a live site down, they need a person looking
+  at the site while they happen, and on a shared host they affect applications that have nothing to
+  do with WPShield. The IIS steps are documented as manual and they stay manual.
+  `Test-WPShieldScripts.ps1` bans the writing cmdlets outright; the reading ones stay allowed,
+  because preflight and uninstall have to be able to ask what IIS is configured to do.
+- **A service-mutating cmdlet binds its name to the script's own constant, never to a literal.** The
+  failure this prevents is `Stop-Service 'W3SVC'` in an installer that runs on a host carrying sixty
+  applications. `Install-WPShield.ps1` may create, configure, start and stop exactly one service,
+  and it is the one named in `$script:ServiceName`.
+- **The service runs as the virtual account `NT SERVICE\WPShield`.** No password is stored anywhere,
+  there is no account to manage, and the identity can be named in an ACL. It gets read and execute
+  on the program files - a gateway able to overwrite its own executable is a persistence mechanism
+  waiting for a bug - and modify on the log directory. Nothing else, and never `LocalSystem`.
+- **Restricting a directory replaces its permissions; it never adds to them.** Disable inheritance
+  and *discard* the inherited entries rather than copying them, because copying keeps exactly the
+  broad access being removed. Grant by well-known SID, never by name: `BUILTIN\Administrators` is
+  `BUILTIN\Administradores` on a Spanish Windows, and granting by name there silently grants nothing.
+- **An install step that can fail on its own must not abort one that has already half-completed.**
+  Setting a directory owner needs a privilege that writing its permissions does not; failing there
+  stopped the install after the files were copied and the service was registered. Order the steps so
+  the ones that can fail come first, and make best-effort hardening report rather than throw.
+- **The bypass is the rewrite rule, not the service, and every document that mentions rollback must
+  say so.** Once IIS forwards to the gateway, stopping the service does not bypass WPShield - it
+  takes the site down, because IIS keeps forwarding to a port with nothing behind it. An uninstaller
+  must refuse to run while a WPShield rewrite rule is still enabled, and must refuse equally when it
+  cannot read IIS at all: "nobody could look" is not "there is nothing there", and on an uninstall
+  that difference decides whether a live site stays up.
+- **Keep the logs on uninstall unless explicitly told otherwise.** An uninstall during an incident is
+  the worst moment to delete the record of what the gateway saw.
 - **Report the gap.** The tool prints how many artifacts WPShield would *not* refuse, and lists them.
   Removing that, or quietly folding non-executable artifacts into the covered count to make the
   number smaller, turns a measurement into an advertisement. `not-applicable` exists so that
