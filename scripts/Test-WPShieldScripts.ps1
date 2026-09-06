@@ -822,6 +822,33 @@ else {
         Add-Failure 'Set-RestrictedDirectoryAcl was not found in the installer.'
     }
     else {
+        # A structural check beside the behavioural ones below, because the behavioural check can
+        # only fail where the code path actually runs. Writing the owner needs SeSecurityPrivilege,
+        # so on an unelevated machine the ownership step throws and is skipped entirely - it goes
+        # wrong only on an elevated install, which is the one place it matters.
+        #
+        # What went wrong: a freshly constructed DirectorySecurity carries an empty, unprotected
+        # DACL, and Set-Acl writes that too. Setting the owner through one silently undid the
+        # permissions applied moments earlier, putting the log directory back to inheriting
+        # C:\ProgramData and its read-for-BUILTIN\Users. The descriptor must be read back with
+        # Get-Acl and modified, so exactly one is ever constructed here: the DACL itself.
+        $constructed = @($parsed[$installerName].FindAll({
+            param($node)
+            $node -is [System.Management.Automation.Language.CommandAst] -and
+            $node.Extent.Text -match 'New-Object\s+System\.Security\.AccessControl\.DirectorySecurity'
+        }, $true))
+
+        $checks++
+        if ($constructed.Count -ne 1) {
+            Add-Failure ('the installer constructs ' + $constructed.Count +
+                ' DirectorySecurity objects; there should be exactly one, the DACL. A fresh one ' +
+                'carries an empty unprotected DACL that Set-Acl will write over the permissions ' +
+                'just applied. Read the descriptor back with Get-Acl instead.')
+        }
+        else {
+            Add-Pass 'exactly one security descriptor is constructed; the owner is set on one read back'
+        }
+
         # The installer reports ownership failures through Write-Detail, which lives in its outer
         # scope. The extracted function needs one.
         function Write-Detail {

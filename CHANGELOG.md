@@ -45,6 +45,15 @@ must complete first.
 
 ### Fixed
 
+- **The installer's ownership step silently undid the permissions it had just applied.** It wrote a
+  freshly constructed `DirectorySecurity` carrying only an owner, and `Set-Acl` writes that object's
+  empty, unprotected DACL too - so the log directory went straight back to inheriting
+  `C:\ProgramData` and its read for `BUILTIN\Users`, which is the exact condition `PRE-016` exists to
+  report. **It could not fail on an unelevated machine**, because setting an owner needs
+  `SeSecurityPrivilege` and the write threw before it did any harm; it only went wrong on an
+  elevated install, which is the one place it mattered. CI found it on the first run. The descriptor
+  is now read back with `Get-Acl` and modified, and a check pins that exactly one security
+  descriptor is ever constructed.
 - **The installer aborted at step five if it could not set a directory's owner.** Setting the owner
   needs a privilege that writing the permissions does not, so on a directory somebody else created
   the install would stop *after* copying the files and registering the service - the worst place for
