@@ -74,6 +74,16 @@ must complete first.
   live. It also reports port ownership, the site inventory, existing rewrite rules that the WPShield
   rule must be ordered against, whether a service already exists, and whether unprivileged accounts
   can read the log directory.
+- **Preflight reports the blast radius of its own remedy.** `preserveHostHeader` is a server-level
+  setting with no per-site override, so fixing `PRE-008` changes the `Host` header that *every* ARR
+  proxy on the machine sends downstream. `PRE-017` finds those other proxies - rewrite rules whose
+  action is a `Rewrite` to an absolute URL - and names them before the switch is flipped rather than
+  after something stops working. Added after a real run on a host with 65 sites, where the one
+  blocker was `PRE-008` and one of the other sites was already an ARR reverse proxy to a container.
+- **`PRE-018` reports catch-all rules that stop processing.** A rule with `stopProcessing="true"` and
+  a `.*` match swallows every request before any later rule is evaluated, and **the WordPress
+  permalink rule has exactly that shape** - so on a WordPress site the WPShield rule must be ordered
+  first or it never runs, and the failure is silent: the site keeps working and nothing is inspected.
 - **Preflight prints the configuration and the rewrite rule to use**, filled in from the sites it
   found, because those are exactly the values that get retyped and mistyped - and a mistyped
   hostname here is a 421 on a live site. The configuration is printed and never written: it belongs
