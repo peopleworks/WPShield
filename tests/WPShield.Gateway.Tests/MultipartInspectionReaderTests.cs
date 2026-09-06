@@ -1379,6 +1379,17 @@ public sealed class MultipartInspectionReaderTests
     /// a number a future contributor can edit. A guarantee that can be undone by changing a
     /// constant is not the guarantee AGENTS.md asks for.
     /// </summary>
+    /// <remarks>
+    /// <b>This is why <c>WPShield.Logging</c> is a separate assembly.</b> The gateway has to write a
+    /// log file — under a Windows service it is the only way to observe anything Monitor mode
+    /// records — and the scan below is assembly-wide, so it cannot tell a log line apart from a
+    /// request body. Adding a file writer to <c>WPShield.Gateway</c> would therefore have forced this
+    /// list to be relaxed, and a guard relaxed once is a guard that erodes. The writer lives in its
+    /// own assembly instead, which leaves this test exactly as strict as it was written and makes
+    /// the claim stronger than an exclusion list could: the assembly that handles requests does not
+    /// merely avoid the file APIs, it cannot name them. If a future change needs to write a file from
+    /// the request path, that is the design decision to revisit — not this list.
+    /// </remarks>
     [Fact]
     public void GatewayAssembly_ReferencesNoTypeThatCanWriteToDisk()
     {

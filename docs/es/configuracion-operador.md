@@ -239,6 +239,93 @@ info: WPShield.Gateway.Configuration
       Multipart upload inspection enabled. MaximumRequestBytes=6291456 MaximumFileCount=20 MaximumFieldCount=200 MaximumPartHeaderBytes=16384 SampleBytes=4096 ReadTimeoutSeconds=30
 ```
 
+## Archivos de log
+
+En modo Monitor el log es lo único que WPShield produce. Reenvía todas las solicitudes de cualquier
+forma, así que un gateway sin dónde escribir está observando tráfico y no se lo está contando a
+nadie — y bajo un servicio de Windows no hay consola a la cual recurrir.
+
+```json
+{
+  "Logging": {
+    "File": {
+      "Enabled": true,
+      "Directory": "logs",
+      "FileNamePrefix": "wpshield",
+      "MaximumFileBytes": 33554432,
+      "RetainedFileCount": 14,
+      "MaximumQueuedEntries": 10000
+    }
+  }
+}
+```
+
+Un objeto JSON por línea, UTF-8, sin indentación:
+
+```json
+{"timestamp":"2026-09-06T04:12:31.4180000+00:00","level":"Information","category":"WPShield.Gateway.Request","message":"Request forwarding. RequestId=8f3a… SiteId=site-one Client=203.0.113.5 Method=GET Path=/wp-admin/","state":{"RequestId":"8f3a…","SiteId":"site-one","Client":"203.0.113.5","Method":"GET","Path":"/wp-admin/"}}
+```
+
+Están presentes tanto el mensaje ya compuesto como los campos estructurados, de modo que el archivo
+lo puede leer una persona que lo sigue durante un despliegue y lo puede parsear lo que sea que lo
+agregue después. La plantilla del mensaje no se escribe: duplicaría el tamaño de cada línea y el
+mensaje compuesto ya dice lo mismo.
+
+`Directory` es relativo a la **raíz de contenido**, que para un servicio de Windows es el directorio
+de instalación y no `C:\Windows\System32`. Una ruta absoluta se usa tal cual. El filtrado por nivel
+usa el mecanismo estándar de proveedores, así que `Logging:File:LogLevel:Default` funciona igual que
+para la consola.
+
+### Rotación y retención
+
+Un archivo se cierra y se abre uno nuevo cuando alcanza `MaximumFileBytes` o cuando cambia la fecha
+UTC. Los nombres son `wpshield-20260906.jsonl` y luego `wpshield-20260906_0001.jsonl` para el segundo
+archivo del mismo día.
+
+> [!NOTE]
+> El separador del ordinal es `_` y no `-` a propósito. La retención ordena los archivos por nombre, y
+> `-` ordena *antes* que `.`, así que `wpshield-20260906-1.jsonl` se compararía como más antiguo que
+> el `wpshield-20260906.jsonl` al que en realidad sucede — y la retención habría borrado los archivos
+> más nuevos de un día con mucho tráfico conservando los más viejos.
+
+Se conservan `RetainedFileCount` archivos y el resto se borra al abrir uno nuevo. Un archivo que no
+se puede borrar, porque un visor de logs lo tiene abierto, se omite en lugar de reintentarse: la
+retención es tarea doméstica y nunca debe convertirse en el motivo por el que el log deja de
+escribirse.
+
+### Qué pasa cuando la cola se llena
+
+Las entradas se componen en el hilo que llama y se entregan a una cola acotada que drena un único
+escritor. Cuando esa cola se llena, la entrada se **descarta**, no se pone a esperar:
+
+```json
+{"timestamp":"…","level":"Warning","category":"WPShield.Gateway.Logging","message":"Log entries were dropped because the write queue was full. The gap is in this file, not in what the gateway did.","state":{"DroppedEntries":42}}
+```
+
+Bloquear la ruta de la solicitud en E/S de disco dejaría que un disco lento o lleno se convierta en
+una caída del servicio, y una cola sin cota dejaría que se convierta en un fallo por falta de
+memoria. Descartar es la única de las tres opciones que el log puede admitir después — y lo admite,
+en cuanto baja la presión.
+
+### Los permisos del archivo no los pone el gateway
+
+WPShield crea el directorio pero no lo restringe. Los logs llevan nombres de host reales, rutas
+reales y direcciones de cliente reales, así que el ACL del directorio es parte de la instalación y no
+de la configuración. Hasta que exista el procedimiento de instalación, restrínjalo usted:
+
+```powershell
+icacls "C:\ProgramData\WPShield\logs" /inheritance:r `
+  /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "<cuenta del servicio>:(OI)(CI)M"
+```
+
+### Ejecución como servicio de Windows
+
+El gateway detecta por sí mismo al administrador de control de servicios; no hace falta ningún
+interruptor. Bajo un servicio fija su raíz de contenido al directorio de instalación, instala el
+ciclo de vida que responde a las peticiones de parada y apagado, y agrega el Registro de eventos de
+Windows como segundo destino — de modo que un gateway que no arranca dice por qué en algún lugar
+donde un operador lo va a encontrar.
+
 ## La configuración no se recarga en caliente
 
 Las opciones del gateway y de los sitios se validan una sola vez al arrancar y se capturan durante

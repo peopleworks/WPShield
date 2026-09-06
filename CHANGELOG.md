@@ -12,6 +12,42 @@ must complete first.
 
 ## [Unreleased]
 
+### Added
+
+- **A JSON Lines log destination, because in Monitor mode the log is the only thing WPShield
+  produces.** Until now every line went to the console, and under a Windows service the console is
+  nowhere: a gateway could observe an entire rollout and tell no one. One JSON object per line, with
+  both the rendered message and the structured fields, so the file is readable by a person tailing it
+  and parseable by whatever aggregates it later. Rotation by size and by UTC date, retention by file
+  count, and a bounded queue that **drops rather than blocks** when the disk cannot keep up — because
+  blocking the request path on disk I/O turns a slow disk into an outage and an unbounded queue turns
+  it into an out-of-memory failure, while dropping is the only one of the three the log can
+  afterwards admit to. It does: the count of lost entries is written into the file as soon as the
+  pressure clears. Disabled by default in code and enabled in the shipped `appsettings.json`, so a
+  deployment gets a log while the test host, which configures itself in memory, never opens a file.
+- **`WPShield.Logging`, a separate assembly, for one structural reason.** `AGENTS.md` requires the
+  gateway's disk-freedom to be a property of the code rather than of a configured threshold, and a
+  test enforces it by scanning the `WPShield.Gateway` assembly for any reference to `File`,
+  `FileStream`, `Directory` or `FileBufferingReadStream`. That scan is assembly-wide and cannot tell a
+  log line from a request body, so putting the writer in `WPShield.Gateway` would have forced the
+  guard to be relaxed — and a guard relaxed once is a guard that erodes. The only code that opens a
+  file now lives in its own assembly, which leaves the test exactly as strict as it was written and
+  makes the claim stronger than an exclusion list could: the assembly that handles requests does not
+  merely avoid the file APIs, it cannot name them.
+- **The gateway runs as a Windows service** when the service control manager starts it, and is
+  unchanged when anything else does. The content root is pinned to the installation directory before
+  the host is built, because a service starts in `C:\Windows\System32` and the host refuses a content
+  root that changes afterwards. The Windows Event Log is attached as a second destination, so a
+  gateway that fails to start says why somewhere an operator will find it.
+
+### Fixed
+
+- **Log retention would have deleted the newest files of a busy day and kept the oldest.** Rotated
+  names used a `-` ordinal, and `-` (0x2D) sorts before `.` (0x2E), so `wpshield-20260906-1.jsonl`
+  compared as older than the `wpshield-20260906.jsonl` it actually succeeds. Found before the code
+  shipped rather than after; the separator is now `_`, which sorts after the extension dot, and the
+  ordinal is zero-padded so `_0002` stays below `_0010`.
+
 ### Security
 
 - **`Gateway:TrustedProxies` makes the "never trust forwarding headers" invariant conditional, and

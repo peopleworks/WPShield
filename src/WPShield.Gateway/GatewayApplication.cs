@@ -2,8 +2,10 @@ using System.Diagnostics;
 using System.Net;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting.WindowsServices;
 using WPShield.Abstractions;
 using WPShield.Core;
+using WPShield.Gateway.Logging;
 using WPShield.Rules.WordPress;
 using Yarp.ReverseProxy.Forwarder;
 
@@ -11,9 +13,32 @@ namespace WPShield.Gateway;
 
 public static class GatewayApplication
 {
+    /// <summary>
+    /// The service name WPShield registers under, and the source name its Windows Event Log entries
+    /// carry. The installation script uses the same literal.
+    /// </summary>
+    public const string WindowsServiceName = "WPShield";
+
     public static WebApplication Build(string[] args)
     {
-        var builder = WebApplication.CreateBuilder(args);
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            Args = args,
+            // A Windows service starts with the current directory set to C:\Windows\System32, not to
+            // the directory the executable lives in. Pinning the content root here rather than
+            // letting UseWindowsService do it later is what keeps the two agreeing: the host refuses
+            // a content root that changes after the builder exists, so setting it up front is the
+            // only order in which both calls can succeed. Outside a service this stays null and the
+            // ordinary console behaviour is untouched.
+            ContentRootPath = WindowsServiceHelpers.IsWindowsService() ? AppContext.BaseDirectory : null
+        });
+
+        // A complete no-op unless the process really was started by the service control manager, so
+        // console runs, the test host and `dotnet run` are unaffected. When it is a service it
+        // installs the lifetime that answers stop and shutdown requests, and adds the Windows Event
+        // Log as a second destination — which matters because a service has no console to write to,
+        // and a gateway that fails to start would otherwise fail invisibly.
+        builder.Host.UseWindowsService(options => options.ServiceName = WindowsServiceName);
 
         builder.Configuration.Sources.Clear();
         builder.Configuration
@@ -45,6 +70,10 @@ public static class GatewayApplication
 
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.Logging.AddFilter("Yarp.ReverseProxy", LogLevel.Warning);
+
+        // Attached before the host is built, because a configuration failure here must stop startup
+        // rather than produce a gateway that runs with nowhere to record what it did.
+        var logDirectory = builder.AddJsonLinesFileLogging();
         builder.Services.Configure<GatewayOptions>(builder.Configuration.GetSection("Gateway"));
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
@@ -63,6 +92,7 @@ public static class GatewayApplication
 
         var app = builder.Build();
         var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
+        LogLogDestination(loggerFactory, logDirectory);
         LogResolvedSites(loggerFactory, sites);
         LogInspectionConfiguration(loggerFactory, gatewayOptions, multipartOptions);
 
@@ -481,6 +511,30 @@ public static class GatewayApplication
                 multipartOptions.SampleBytes,
                 gatewayOptions.MaximumRequestBytes);
         }
+    }
+
+    /// <summary>
+    /// Reports where the log is being written, or that it is not being written anywhere.
+    /// </summary>
+    /// <remarks>
+    /// The absent case is a Warning, and it is the reason this method exists. Monitor mode produces
+    /// exactly one artefact - the log - so a gateway running in Monitor with no file destination is
+    /// observing traffic and telling nobody. Under a Windows service there is no console either, so
+    /// the only remaining channel is the Windows Event Log at Warning and above. Saying so on the way
+    /// up is cheaper than an operator discovering it a week into a rollout with nothing to review.
+    /// </remarks>
+    private static void LogLogDestination(ILoggerFactory loggerFactory, string? logDirectory)
+    {
+        var logger = loggerFactory.CreateLogger("WPShield.Gateway.Configuration");
+
+        if (logDirectory is null)
+        {
+            logger.LogWarning(
+                "File logging is disabled. Nothing the gateway observes is recorded to disk; under a Windows service the only remaining destination is the Windows Event Log. Set Logging:File:Enabled to true.");
+            return;
+        }
+
+        logger.LogInformation("Writing JSON Lines log files. Directory={Directory}", logDirectory);
     }
 
     /// <summary>
