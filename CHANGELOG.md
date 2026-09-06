@@ -79,6 +79,14 @@ must complete first.
 
 ### Added
 
+- **The triage tool can look outside the web root.** `-IncludeHost` adds scheduled tasks, local
+  accounts and Administrators membership, services running from temporary or web directories,
+  autorun keys, executable content recently written into staging directories such as
+  `C:\Windows\Temp`, and Microsoft Defender's own threat history. Added because the repository
+  version was **narrower than the throwaway script it replaced**, in exactly the dimension that
+  matters during a live incident: a webshell is a foothold, not the whole of it, and stopping a
+  website does nothing about a scheduled task or an account. The summary always states whether the
+  host checks ran, because a silently absent section reads exactly like one that found nothing.
 - **An install kit: publish, install, uninstall.** `Publish-WPShield.ps1` produces a self-contained
   `win-x64` build with a SHA-256 beside it, refuses to package `appsettings.Local.json`, and checks
   the binary version against `Directory.Build.props`. Self-contained on purpose: the host WPShield

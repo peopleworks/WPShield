@@ -77,6 +77,12 @@ arrancar.
 | `TRIAGE-007` | Un archivo ejecutable creado *después* de escribirse el contenido que guarda. Uno es una herramienta de respaldo; cientos en un árbol de plugins es un reescritor masivo recorriendo el sitio. |
 | `TRIAGE-008` | Las peticiones que los registros de IIS recuerdan haber llegado a un artefacto marcado: cuántas, cuándo empezaron y terminaron, desde qué direcciones, con qué métodos y códigos de estado. |
 | `TRIAGE-009` | Plugins y temas instalados, con sus versiones. |
+| `TRIAGE-010` | **Host.** Una tarea programada registrada hace poco, o cuya acción ejecuta un intérprete. |
+| `TRIAGE-011` | **Host.** Una cuenta local cuya contraseña se fijó hace poco, y quién está en el grupo de administradores. |
+| `TRIAGE-012` | **Host.** Un servicio de Windows cuyo binario vive en un directorio temporal, de usuario o web. |
+| `TRIAGE-013` | **Host.** Claves de arranque automático. |
+| `TRIAGE-014` | **Host.** Código ejecutable escrito hace poco en un directorio de paso como `C:\Windows\Temp`. |
+| `TRIAGE-015` | **Host.** El registro propio de Microsoft Defender sobre amenazas en esta máquina. |
 
 ### Por qué `TRIAGE-005` no es una simple lista de nombres de función
 
@@ -102,6 +108,33 @@ Porque una lista de CVE incrustada en un script queda obsoleta el día en que se
 operador que confía en una lista vieja está peor que el que consulta la versión. La herramienta
 informa nombres y versiones y dice dónde comprobarlos. En el incidente del que salió esto, una sola
 línea — la versión del plugin de slider — fue lo que identificó la puerta de entrada.
+
+
+## Las comprobaciones de host, y por qué van aparte
+
+Todo lo demás de esta herramienta mira dentro de un sitio WordPress. Ese es el alcance correcto para
+una herramienta que lleva WordPress en el nombre, y es el alcance equivocado para la pregunta que el
+operador tiene de verdad, que es *«¿sigo comprometido?»*.
+
+Un webshell es un punto de apoyo, no el conjunto. En el incidente del que sale esta herramienta, el
+intruso ya estaba escribiendo en `C:\Windows\Temp` — fuera de la raíz web, fuera de todas las demás
+comprobaciones, y sin que detener el sitio lo tocara. **Detener IIS cierra la puerta por la que
+entraron y no hace nada con una tarea programada, un servicio, una clave de arranque o una cuenta.**
+
+```powershell
+.\scripts\Invoke-WPShieldTriage.ps1 -IncludeHost -OutputPath .\triage.jsonl
+```
+
+`-IncludeHost` es opcional porque responde a una pregunta distinta del resto del script y necesita
+elevación para responderla bien. **El resumen siempre dice si se ejecutó**, porque una sección
+ausente en silencio se lee exactamente igual que una sección que no encontró nada — el mismo
+principio que la verificación previa aplica a una configuración de IIS ilegible.
+
+Sigue siendo de solo lectura. Nada se desactiva, se borra ni se repara.
+
+La pertenencia al grupo se resuelve desde el SID conocido y no desde el nombre `Administrators`,
+porque el grupo es `Administradores` en un Windows en español y una comprobación escrita contra el
+nombre inglés no encuentra nada allí — y reporta esa ausencia en la dirección tranquilizadora.
 
 ## El veredicto del gateway
 
