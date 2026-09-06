@@ -19,7 +19,9 @@ appsettings.Local.json
 appsettings.*.Local.json
 DEVELOPMENT_PLAN.local.md
 
-# JSON Lines gateway logs. They carry real hostnames, real paths and real client
-# addresses, so a stray commit of one leaks more than any configuration file would.
+# JSON Lines gateway logs and triage reports. Both carry real hostnames, real paths
+# and real client addresses, so a stray commit of one leaks more than any
+# configuration file would. The triage tool writes its report into the current
+# directory by default, which for anyone running it from a clone is this one.
 logs/
 *.jsonl

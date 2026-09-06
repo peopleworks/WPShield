@@ -45,6 +45,16 @@ must complete first.
 
 ### Fixed
 
+- **The triage tool's JSON escaper corrupted every Windows path it wrote.** Inside a `switch`,
+  PowerShell's `continue` ends the switch and resumes the enclosing loop body rather than skipping
+  it, so a matched character was escaped and then emitted again: every path separator came out as
+  three backslashes and no parser would accept the report — which still looked fine to a person
+  reading it. Rewritten with `if`/`elseif`, and the escaper now has a round-trip test of its own
+  through a real JSON parser.
+- **The triage tool could not read the one file most worth reading.** A name ending in a dot or a
+  space cannot be opened through the ordinary Win32 path layer, which normalizes the name away
+  before the request reaches NTFS — so the artifact whose name was itself the anomaly was also the
+  artifact whose hash came back null. It now falls back to the verbatim `\\?\` form.
 - **The synthetic backend in the integration suite could not serve any path containing a dot.** It
   used `MapFallback(handler)`, whose default `{**path:nonfile}` pattern rejects a path whose last
   segment contains one — the same defect this project already found and fixed in the gateway itself,
@@ -54,6 +64,46 @@ must complete first.
 
 ### Added
 
+- **A triage tool, because a gateway says nothing about a site that was already compromised before
+  it arrived.** `scripts/Invoke-WPShieldTriage.ps1` is the investigation that produced the rules
+  above, generalized into something anyone can run: read-only, fully parameterized, discovering
+  WordPress installations from IIS rather than assuming a layout. Nine checks, each traceable to
+  something the incident actually showed — executables in data and asset directories, a `web.config`
+  below the site root, names Windows accepts but does not store literally, PHP that can run what a
+  request sends it, timestamp-named dropper markers, the creation-after-modification skew a
+  mass-rewriter leaves behind, IIS log correlation per artifact, and a component inventory. It
+  reads, and it never deletes, quarantines, renames, moves, repairs or executes anything: deleting a
+  webshell before understanding how it arrived destroys the evidence and leaves the way in.
+- **Every triage finding carries the verdict WPShield would return for a request to that file** —
+  computed from the same directory lists, extension lists, summed scoring and thresholds the gateway
+  uses. The run ends by counting how many artifacts the gateway would block and how many it would
+  forward, and printing the second list in full. **A tool that only reported what its own product
+  catches would be an advertisement**; this one prints the number that is sometimes not zero, and on
+  the incident that produced it, was not. A fourth verdict, `not-applicable`, keeps `not-covered`
+  meaningful: an uploaded `web.config` is remote code execution on IIS but not because anyone
+  requests it, and folding it into the gap count would inflate the one number a reader acts on with
+  a case no request-path rule could ever close.
+- **Triage findings use the gateway's own log envelope**, field for field and timestamp format
+  included, so a forensic report and a gateway log are read by one parser, sort together as text,
+  and correlate on the same field names.
+- **The triage report carries no file contents and nothing outside ASCII.** A report is written to
+  be attached to a support thread or a public issue: one that reproduced the payload would
+  distribute the webshell to everyone who read it, and a file name recovered from a compromised host
+  can carry a control character or an ANSI escape sequence into a terminal, a log viewer, or a
+  browser rendering an issue. Marker names, sizes, hashes and timestamps identify a file without
+  republishing it.
+- **CI now verifies the PowerShell scripts, which `dotnet build` never looked at.** They must parse
+  under PowerShell 7 *and* under Windows PowerShell 5.1 — the version a Windows Server host has
+  without anything installed on it — and they must be pure ASCII, because 5.1 reads a BOM-less
+  `.ps1` as ANSI and a UTF-8 em dash becomes a typographic quote that silently breaks quote parity a
+  hundred lines further down. That defect had already shipped a triage script that would not run.
+  The triage tool is additionally checked to have no write path but its own report, and to run end
+  to end against a fixture reproducing the incident's directory structure, reaching the documented
+  verdicts including the known gap.
+- **The triage tool's copy of the gateway's rule vocabulary is compared against the C# sources on
+  every build.** It carries copies because it has to run on a server with no .NET runtime and no
+  build of WPShield on it. Copies drift, and a drifted copy does not fail loudly — it quietly
+  reports coverage the gateway does not have, which is worse than reporting nothing.
 - **A JSON Lines log destination, because in Monitor mode the log is the only thing WPShield
   produces.** Until now every line went to the console, and under a Windows service the console is
   nowhere: a gateway could observe an entire rollout and tell no one. One JSON object per line, with

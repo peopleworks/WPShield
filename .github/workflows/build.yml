@@ -43,6 +43,41 @@ jobs:
             dotnet test "$project" --configuration Release
           done
 
+  # The operator-facing PowerShell scripts are not built by dotnet, so nothing above would notice
+  # a syntax error, a non-ASCII byte that Windows PowerShell 5.1 cannot read, or a triage tool
+  # whose copy of the gateway's rule vocabulary has drifted away from the gateway.
+  verify-scripts:
+    name: Verify PowerShell scripts (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Parse, encoding, read-only inventory, vocabulary drift, end-to-end run
+        shell: pwsh
+        run: ./scripts/Test-WPShieldScripts.ps1
+
+      # The scripts are written for Windows PowerShell 5.1, because that is what a Windows Server
+      # host has without anything being installed on it. PowerShell 7 accepting a script is not
+      # evidence that 5.1 will, so 5.1 parses them too - which is the version the encoding trap
+      # these checks exist for belongs to.
+      - name: Parse under Windows PowerShell 5.1
+        shell: powershell
+        run: |
+          $failed = $false
+          Get-ChildItem ./scripts -Filter *.ps1 | ForEach-Object {
+              $errors = $null
+              $tokens = $null
+              [System.Management.Automation.Language.Parser]::ParseFile(
+                  $_.FullName, [ref]$tokens, [ref]$errors) | Out-Null
+              if ($errors.Count -gt 0) {
+                  $failed = $true
+                  $errors | ForEach-Object {
+                      Write-Host ("{0} line {1}: {2}" -f $_.Extent.File, $_.Extent.StartLineNumber, $_.Message)
+                  }
+              }
+          }
+          if ($failed) { exit 1 }
+          Write-Host 'All scripts parse under Windows PowerShell 5.1.'
+
   format:
     name: Verify formatting
     runs-on: ubuntu-latest

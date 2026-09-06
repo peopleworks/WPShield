@@ -514,9 +514,10 @@ WPShield/
 |   |-- WPShield.Core/               Site resolution and rule evaluation
 |   |-- WPShield.Rules.WordPress/    WordPress-focused defensive rules
 |   |-- WPShield.Service/            Inspection engine demonstration
+|   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
-|-- tests/                            xUnit test projects, 215 tests
-|-- scripts/                          Read-only operator validation scripts
+|-- tests/                            xUnit test projects, 1058 tests
+|-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/
 |   |-- assets/                      Light and dark figure pairs
@@ -588,6 +589,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | M2 multipart inspection | [Bounded multipart inspection](docs/en/m2-multipart-inspection.md) | [Inspección multipart acotada](docs/es/m2-inspeccion-multipart.md) |
 | M2 upload rules | [Upload rules](docs/en/m2-upload-rules.md) | [Reglas de carga](docs/es/m2-reglas-carga.md) |
 | M2.5 request path inspection | [Request path inspection](docs/en/m2-5-request-path-inspection.md) | [Inspección de la ruta de la solicitud](docs/es/m2-5-inspeccion-ruta-solicitud.md) |
+| Triage tool | [Triage tool](docs/en/triage-tool.md) | [Herramienta de triage](docs/es/herramienta-de-triage.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.

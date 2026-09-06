@@ -131,6 +131,53 @@ Before modifying code:
   Core, YARP, IIS and Windows-only dependencies. The Linux CI leg builds and tests exactly those
   three so the claim is falsifiable rather than asserted.
 
+## Operator scripts
+
+Everything under `scripts/` is run by a person, once, on a server that is usually having a bad day.
+That is a different failure budget from code that runs under a test suite, and these rules follow
+from it. `scripts/Test-WPShieldScripts.ps1` enforces them in CI; run it before changing anything
+there.
+
+- **Pure ASCII, no exceptions.** Windows PowerShell 5.1 reads a `.ps1` without a byte order mark as
+  ANSI, so a UTF-8 em dash arrives as two characters — one of which is a typographic quote that
+  PowerShell treats as a string delimiter. Quote parity then breaks silently and the parser reports
+  an error a hundred lines further down, in code that is correct. This has already shipped a script
+  that would not run. Write English prose in these files and keep the accented text in `docs/es/`.
+- **Target Windows PowerShell 5.1**, and verify against it, not only against PowerShell 7. 5.1 is
+  what a Windows Server host has before anything is installed on it, and the host being triaged is
+  not a host to install things on. PowerShell 7 accepting a script is not evidence 5.1 will.
+- **`Invoke-WPShieldTriage.ps1` reads and reports. It never repairs.** No deletion, no quarantine,
+  no rename, no move, no service or firewall change, and it never executes a file it finds. Deleting
+  a webshell before understanding how it arrived destroys the evidence and leaves the way in. Its
+  only write is its own report, through a single `StreamWriter`, and every `[System.IO.File]::Open`
+  asks for read access only.
+- **Do not invoke a command through a variable, and do not use `Invoke-Expression`, in any script
+  here.** The read-only guarantee is enforced by an inventory of write-capable constructs, and a
+  command whose name is computed at runtime escapes that inventory. This is weaker than the
+  gateway's structural disk-freedom proof, which is why the two constructs that would make it
+  meaningless are banned outright rather than merely discouraged. Do not describe the guard as a
+  proof.
+- **A triage report carries no file contents and nothing outside printable ASCII.** Reports are
+  written to be attached to a support thread or a public issue: one that reproduced the payload
+  would distribute the webshell to everyone who read it, and a file name recovered from a
+  compromised host can carry a control character or an ANSI escape sequence into a terminal, a log
+  viewer or a browser. Marker names, sizes, hashes and timestamps identify a file without
+  republishing it. This is the same reasoning as the gateway's evidence rule, applied to output that
+  travels further.
+- **Findings use the gateway's log envelope** — `timestamp`, `level`, `category`, `message`, `state`,
+  with the same timestamp format — so a forensic report and a gateway log are read by one parser and
+  correlate on the same field names. Do not invent a second evidence format.
+- **The triage tool's copies of the gateway's rule vocabulary must match the C# sources.** It has
+  copies because it must run where there is no .NET runtime and no build of WPShield. A drifted copy
+  does not fail loudly: it reports coverage the gateway does not have, which is worse than reporting
+  nothing. The lists are compared entry by entry in CI, including the deliberate exclusions from the
+  asset list.
+- **Report the gap.** The tool prints how many artifacts WPShield would *not* refuse, and lists them.
+  Removing that, or quietly folding non-executable artifacts into the covered count to make the
+  number smaller, turns a measurement into an advertisement. `not-applicable` exists so that
+  `not-covered` keeps meaning something, and is only for artifacts where a request is genuinely not
+  how the harm happens.
+
 ## Distribution
 
 The project's own documentation says WPShield is not approved for production traffic. Distribution
