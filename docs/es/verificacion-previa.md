@@ -12,6 +12,14 @@ Ejecútela antes de instalar nada. Vuelva a ejecutarla después de arreglar lo q
 .\scripts\Invoke-WPShieldPreflight.ps1 -SiteName 'example-one','example-two' -OutputPath .\preflight.jsonl
 ```
 
+> **Ejecutarlo desde `cmd.exe`.** Un `.ps1` no es ejecutable desde el símbolo del sistema: escribir su
+> nombre allí lo abre en un editor o reporta un comando no reconocido, según la asociación de
+> archivos. Hay que llamar al intérprete de forma explícita, desde un símbolo **elevado**:
+>
+> ```
+> powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Invoke-WPShieldPreflight.ps1 -OutputPath C:\temp\preflight.jsonl
+> ```
+
 Ejecútela elevada. Sin elevación, la configuración de IIS, los puertos a la escucha y los permisos de
 los directorios son parcialmente ilegibles, y la respuesta sale mal **en la dirección optimista** —
 que es la peor dirección para una verificación de preparación. El script reporta su propia falta de
