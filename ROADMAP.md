@@ -109,6 +109,43 @@ not read as more than they claim:
   not detected today, and plugin installation is a genuine WordPress upload path. This is the
   largest single gap and it has no milestone assigned yet.
 
+## M2.5 — Request path inspection
+
+> Unplanned, and pulled in ahead of M3 because of a real compromise rather than a threat model. A
+> WordPress site on IIS was found running six webshells; the server logs recorded every request that
+> reached one. **Every single one was an ordinary `GET` or `POST` to an existing `.php` file, with no
+> body at all** — so not one was visible to any rule this project had, because M2 inspects
+> `multipart/form-data` bodies and nothing else. M2 can refuse a shell as it arrives. It cannot see a
+> shell that is already there being used.
+>
+> See [request path inspection](docs/en/m2-5-request-path-inspection.md) for the complete behaviour.
+
+- [x] Normalize the request path to what a Windows web server resolves: case, backslash separators,
+      traversal, empty segments, trailing dots and spaces, NTFS alternate data streams, control
+      characters, and a bounded length.
+- [x] Evaluate a second view when one further percent-decode changes the path, because some IIS
+      rewrite chains decode twice and `%252e%252e%252f` is inert until they do.
+- [x] Match every path segment and every extension position, so PHP path-info execution
+      (`/uploads/shell.php/logo.jpg`) and `shell.php.jpg` are both covered.
+- [x] `WP-PATH-001` — refuse an executable requested from `wp-content/uploads`, `upgrade` or
+      `updraft`.
+- [x] `WP-PATH-002` — refuse an executable requested from a build-output or asset-only directory.
+- [x] `IIS-PATH-001` — report an unsafe path form as an observation.
+- [x] Run before the body is touched, so a refusal costs no buffer, no parse and no sample.
+- [x] Prove on real gateway traffic that Block refuses and Monitor forwards, and that ordinary
+      WordPress, Elementor and Site Kit paths stay untouched in Block mode.
+
+### What M2.5 does not cover
+
+- **A shell in a directory that legitimately contains PHP.** The sixth shell in the incident sat in
+  its plugin's own PHP directory under a name one character from a real one, and nothing about the
+  path distinguishes it. Five of the six are refused; this one is not, and the test suite asserts
+  that gap so closing it has to be deliberate.
+- **Query strings and request bodies.** Only the path is inspected, and body inspection is unchanged
+  from M2.
+- **Responses.** The exploitation traffic was distinguishable by its responses — 200 with a 24-byte
+  body for a probe, 500 for the payload — and WPShield does not look at responses at all.
+
 ## M3 — Rate limiting and automated behavior
 
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the

@@ -22,6 +22,7 @@ the same set.
 | M1 laboratory gateway · Gateway M1 de laboratorio | [Laboratory gateway](en/m1-lab-gateway.md) | [Gateway de laboratorio](es/m1-gateway-laboratorio.md) |
 | M2 request limits · Límites de solicitud M2 | [Bounded request controls](en/m2-request-limits.md) | [Controles limitados de solicitud](es/m2-limites-solicitud.md) |
 | M2 multipart inspection · Inspección multipart M2 | [Bounded multipart inspection](en/m2-multipart-inspection.md) | [Inspección multipart acotada](es/m2-inspeccion-multipart.md) |
+| M2.5 request path inspection · Inspección de ruta M2.5 | [Request path inspection](en/m2-5-request-path-inspection.md) | [Inspección de la ruta de la solicitud](es/m2-5-inspeccion-ruta-solicitud.md) |
 | M2 upload rules · Reglas de carga M2 | [Upload rules](en/m2-upload-rules.md) | [Reglas de carga](es/m2-reglas-carga.md) |
 | ADR 0001 — production traffic path · Ruta de tráfico en producción | [Production traffic path](en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](es/adr/0001-ruta-de-trafico-en-produccion.md) |
 
