@@ -11,6 +11,14 @@ Run it before anything is installed. Run it again after fixing what it names.
 .\scripts\Invoke-WPShieldPreflight.ps1 -SiteName 'example-one','example-two' -OutputPath .\preflight.jsonl
 ```
 
+> **Running it from `cmd.exe`.** A `.ps1` is not executable from the command prompt: typing its name
+> there opens it in an editor or reports an unrecognized command, depending on the file association.
+> Call the interpreter explicitly, from an **elevated** prompt:
+>
+> ```
+> powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Invoke-WPShieldPreflight.ps1 -OutputPath C:\temp\preflight.jsonl
+> ```
+
 Run it elevated. Without elevation the IIS configuration, the listening ports and the directory
 permissions are all partly unreadable, and the answer comes out wrong **in the optimistic
 direction** — which is the worst direction for a readiness check. The script reports its own lack of

@@ -32,6 +32,14 @@ archivos.
 .\scripts\Invoke-WPShieldTriage.ps1 -OutputPath .\triage.jsonl
 ```
 
+> **Ejecutarlo desde `cmd.exe`.** Un `.ps1` no es ejecutable desde el símbolo del sistema: escribir su
+> nombre allí lo abre en un editor o reporta un comando no reconocido, según la asociación de
+> archivos. Hay que llamar al intérprete de forma explícita, desde un símbolo **elevado**:
+>
+> ```
+> powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Invoke-WPShieldTriage.ps1 -OutputPath C:\temp\triage.jsonl
+> ```
+
 Ejecútela como administrador. Un intérprete sin privilegios no puede leer la configuración de IIS, no
 puede leer los registros de IIS y no ve todos los archivos de la raíz web; la herramienta lo dice y
 continúa en vez de fallar, pero el informe queda entonces incompleto de maneras que ella misma no

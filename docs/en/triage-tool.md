@@ -30,6 +30,14 @@ and it is why this tool reports gateway coverage rather than only listing files.
 .\scripts\Invoke-WPShieldTriage.ps1 -OutputPath .\triage.jsonl
 ```
 
+> **Running it from `cmd.exe`.** A `.ps1` is not executable from the command prompt: typing its name
+> there opens it in an editor or reports an unrecognized command, depending on the file association.
+> Call the interpreter explicitly, from an **elevated** prompt:
+>
+> ```
+> powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Invoke-WPShieldTriage.ps1 -OutputPath C:\temp\triage.jsonl
+> ```
+
 Run it as an administrator. An unprivileged shell cannot read the IIS configuration, cannot read the
 IIS logs, and cannot see every file in the web root; the tool says so and continues rather than
 failing, but the report is then incomplete in ways it cannot fully describe.
