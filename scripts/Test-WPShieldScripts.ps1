@@ -686,6 +686,218 @@ finally {
 }
 
 # =====================================================================================
+#  7. The installer changes only what it says it changes.
+#
+#  AGENTS.md: "Never modify IIS, certificates, DNS, firewall rules, or Windows services
+#  automatically." The installer is the one script here that changes the machine at all, so the
+#  boundary has to be checkable rather than merely documented.
+#
+#  Two things are asserted. Neither is a proof - the same limitation as the read-only inventory
+#  applies, and for the same reason - but both catch the realistic mistake.
+#
+#    a. No script here writes to IIS. Not a binding, not a rewrite rule, not a proxy setting.
+#       Those changes take a live site down, they need a person looking at the site, and on a
+#       shared host they affect applications that have nothing to do with WPShield. Preflight and
+#       uninstall READ the IIS configuration, which is why the ban is on the writing cmdlets only.
+#
+#    b. A service-mutating cmdlet binds its name to a variable, never to a literal. The failure
+#       this prevents is someone writing Stop-Service 'W3SVC' into an installer that runs on a
+#       server hosting sixty applications.
+# =====================================================================================
+
+Write-Host ''
+Write-Host 'Installer boundaries' -ForegroundColor Cyan
+
+$iisWritingCommands = @(
+    'Set-WebConfiguration', 'Set-WebConfigurationProperty', 'Add-WebConfiguration',
+    'Add-WebConfigurationProperty', 'Remove-WebConfigurationProperty', 'Clear-WebConfiguration',
+    'New-WebBinding', 'Remove-WebBinding', 'Set-WebBinding',
+    'New-Website', 'Remove-Website', 'Set-Website',
+    'New-WebAppPool', 'Remove-WebAppPool', 'Set-WebAppPool',
+    'New-WebApplication', 'Remove-WebApplication',
+    'New-WebVirtualDirectory', 'Remove-WebVirtualDirectory',
+    'Start-Website', 'Stop-Website', 'Restart-WebAppPool', 'Start-WebAppPool', 'Stop-WebAppPool',
+    'appcmd', 'appcmd.exe'
+)
+
+$serviceMutatingCommands = @(
+    'Stop-Service', 'Start-Service', 'Restart-Service', 'Set-Service',
+    'New-Service', 'Remove-Service', 'Suspend-Service', 'Resume-Service'
+)
+
+foreach ($name in ($parsed.Keys | Sort-Object)) {
+    $ast = $parsed[$name]
+    $commands = @($ast.FindAll(
+        { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
+
+    $iisWrites = 0
+    $literalServiceNames = 0
+
+    foreach ($command in $commands) {
+        $element = $command.CommandElements[0]
+        if (-not ($element -is [System.Management.Automation.Language.StringConstantExpressionAst])) { continue }
+        $commandName = $element.Value
+
+        if ($iisWritingCommands -contains $commandName) {
+            $checks++
+            $iisWrites++
+            Add-Failure ($name + ' line ' + $command.Extent.StartLineNumber + ': ' + $commandName +
+                ' writes to the IIS configuration. Those changes take a live site down and belong to ' +
+                'a person looking at the site, not to a script.')
+        }
+
+        if ($serviceMutatingCommands -notcontains $commandName) { continue }
+
+        # Find what is bound to -Name, or the first positional argument if there is no -Name.
+        $target = $null
+        for ($index = 1; $index -lt $command.CommandElements.Count; $index++) {
+            $current = $command.CommandElements[$index]
+
+            if ($current -is [System.Management.Automation.Language.CommandParameterAst]) {
+                if ($current.ParameterName -like 'Name*' -and
+                    $index + 1 -lt $command.CommandElements.Count) {
+                    $target = $command.CommandElements[$index + 1]
+                    break
+                }
+                # Skip this parameter and, when it takes one, its argument.
+                if ($current.ParameterName -match '^(ErrorAction|WarningAction|Verbose|Force|Confirm|WhatIf|PassThru|StartupType|BinaryPathName|DisplayName|Description)$') {
+                    continue
+                }
+                continue
+            }
+
+            if ($null -eq $target) { $target = $current; break }
+        }
+
+        $checks++
+        if ($target -is [System.Management.Automation.Language.StringConstantExpressionAst]) {
+            $literalServiceNames++
+            Add-Failure ($name + ' line ' + $command.Extent.StartLineNumber + ': ' + $commandName +
+                " names the service with the literal '" + $target.Value + "'. Bind it to the script's " +
+                'service-name constant instead. This script runs on hosts carrying many services, ' +
+                'and it must be unable to act on one it was not written for.')
+        }
+    }
+
+    if ($iisWrites -eq 0 -and $literalServiceNames -eq 0) {
+        Add-Pass ($name + ': writes no IIS configuration, names no service by literal')
+    }
+}
+
+# =====================================================================================
+#  8. The installer's directory hardening actually hardens the directory.
+#
+#  Set-RestrictedDirectoryAcl is extracted and run against a real directory. It earns a test
+#  because it is the one piece of the installer whose failure is silent: an ACL that does not take
+#  leaves the log directory readable by every account on the server, and nothing about the install
+#  looks wrong afterwards. PRE-016 exists to report exactly that condition, so the install must not
+#  be the thing that creates it.
+#
+#  The current user's SID stands in for the service account, which does not exist until the service
+#  does. What is under test is the ACL construction, not the identity.
+#
+#  Writing this test is what found the defect where setting the owner threw and aborted the install
+#  at step five - after the files were copied and the service was registered, which is the worst
+#  place for an installer to stop.
+# =====================================================================================
+
+Write-Host ''
+Write-Host 'Directory hardening' -ForegroundColor Cyan
+
+$installerName = 'Install-WPShield.ps1'
+
+if (-not $parsed.ContainsKey($installerName)) {
+    $checks++
+    Add-Failure ($installerName + ' did not parse, so its ACL logic could not be exercised.')
+}
+else {
+    $aclFunction = @($parsed[$installerName].FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Set-RestrictedDirectoryAcl'
+    }, $true))
+
+    $checks++
+    if ($aclFunction.Count -ne 1) {
+        Add-Failure 'Set-RestrictedDirectoryAcl was not found in the installer.'
+    }
+    else {
+        # The installer reports ownership failures through Write-Detail, which lives in its outer
+        # scope. The extracted function needs one.
+        function Write-Detail {
+            param([string] $Text, [string] $Colour = 'DarkGray')
+            Write-Host ('       ' + $Text) -ForegroundColor $Colour
+        }
+
+        . ([scriptblock]::Create($aclFunction[0].Extent.Text))
+
+        $probe = Join-Path ([System.IO.Path]::GetTempPath()) ('wpshield-acl-' + [guid]::NewGuid().ToString('n'))
+        New-Item -ItemType Directory -Path $probe -Force | Out-Null
+        New-Item -ItemType File -Path (Join-Path $probe 'existing.txt') -Force | Out-Null
+
+        try {
+            $me = ([System.Security.Principal.WindowsIdentity]::GetCurrent()).User
+
+            Set-RestrictedDirectoryAcl -Directory $probe `
+                -ServiceRights ([System.Security.AccessControl.FileSystemRights]'Modify') `
+                -ServiceSid $me
+
+            $acl = Get-Acl -LiteralPath $probe
+            $broadSids = @('S-1-5-32-545', 'S-1-1-0', 'S-1-5-11', 'S-1-5-32-568')
+
+            function Get-BroadEntry {
+                param($Access)
+                return @($Access | Where-Object {
+                    $broadSids -contains $_.IdentityReference.Translate(
+                        [System.Security.Principal.SecurityIdentifier]).Value
+                })
+            }
+
+            $checks++
+            $broad = @(Get-BroadEntry $acl.Access)
+            if ($broad.Count -gt 0) {
+                Add-Failure ('the hardened directory still grants ' +
+                    (($broad | ForEach-Object { $_.IdentityReference.Value }) -join ', ') +
+                    '. A log directory readable by every account is the condition PRE-016 exists to report.')
+            }
+            else {
+                Add-Pass 'no Users, Everyone, Authenticated Users or IIS_IUSRS entry survives'
+            }
+
+            $checks++
+            if (-not $acl.AreAccessRulesProtected) {
+                Add-Failure 'inheritance was not disabled, so the parent keeps granting access.'
+            }
+            else {
+                Add-Pass 'inheritance disabled, and inherited entries discarded rather than copied'
+            }
+
+            $checks++
+            if ($acl.Access.Count -ne 3) {
+                Add-Failure ('expected exactly three access entries, found ' + $acl.Access.Count + '.')
+            }
+            else {
+                Add-Pass 'exactly three entries: Administrators, SYSTEM, the service account'
+            }
+
+            # Without inheritance flags the restriction would apply to the directory alone and every
+            # log file already inside it would keep the permissions it had.
+            $checks++
+            $childBroad = @(Get-BroadEntry (Get-Acl -LiteralPath (Join-Path $probe 'existing.txt')).Access)
+            if ($childBroad.Count -gt 0) {
+                Add-Failure 'a file already inside the directory kept its broad permissions.'
+            }
+            else {
+                Add-Pass 'the restriction reaches files already in the directory'
+            }
+        }
+        finally {
+            Remove-Item -LiteralPath $probe -Recurse -Force -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+# =====================================================================================
 #  Result.
 # =====================================================================================
 

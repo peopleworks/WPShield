@@ -4,6 +4,8 @@
 .vscode/
 .idea/
 TestResults/
+# Publish output. Self-contained builds are ~106 MB and are produced from source on demand;
+# a build in the tree is also the one place a stray appsettings.Local.json could be committed.
 artifacts/
 *.user
 *.suo
