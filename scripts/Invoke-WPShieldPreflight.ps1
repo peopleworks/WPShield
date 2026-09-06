@@ -97,6 +97,13 @@ $script:ServiceName = 'WPShield'
 $script:Results = [System.Collections.Generic.List[object]]::new()
 $script:Writer = $null
 
+# Rewrite rules that proxy to another host, and catch-all rules that stop processing. Collected
+# while walking the sites and reported once at the end, because both matter as a set rather than
+# site by site: the first set is the blast radius of the PRE-008 remedy, and the second decides
+# where the WPShield rule has to sit in the order.
+$script:ProxyingRules = [System.Collections.Generic.List[object]]::new()
+$script:CatchAllRules = [System.Collections.Generic.List[object]]::new()
+
 # =====================================================================================
 #  Output.
 #
@@ -599,6 +606,38 @@ if ($iisAvailable) {
         $names = @($rules | ForEach-Object { $_.name })
         $hasWPShield = @($names | Where-Object { $_ -like '*WPShield*' }).Count -gt 0
 
+        # A rule whose action rewrites to an absolute URL is an ARR proxy. It matters twice: those
+        # rules are the ones the server-wide preserveHostHeader switch changes, and they are also
+        # the ones most likely to already be doing what WPShield is about to do.
+        foreach ($rule in $rules) {
+            $actionType = ''
+            $actionUrl = ''
+            try { $actionType = [string] $rule.action.type } catch { }
+            try { $actionUrl = [string] $rule.action.url } catch { }
+
+            if ($actionType -eq 'Rewrite' -and $actionUrl -match '^https?://') {
+                [void] $script:ProxyingRules.Add([pscustomobject] @{
+                    Site = $website.Name
+                    Rule = [string] $rule.name
+                    Url  = $actionUrl
+                })
+            }
+
+            # A catch-all that stops processing will swallow every request before a rule placed
+            # after it is ever evaluated. The WordPress permalink rule is exactly this shape.
+            $matchUrl = ''
+            $stops = $false
+            try { $matchUrl = [string] $rule.match.url } catch { }
+            try { $stops = [bool] $rule.stopProcessing } catch { }
+
+            if ($stops -and ($matchUrl -eq '.*' -or $matchUrl -eq '^(.*)$' -or $matchUrl -eq '.')) {
+                [void] $script:CatchAllRules.Add([pscustomobject] @{
+                    Site = $website.Name
+                    Rule = [string] $rule.name
+                })
+            }
+        }
+
         if ($hasWPShield) {
             Add-Check ('PRE-013.' + $website.Name) 'Warn' ('A WPShield rewrite rule already exists on ' + $website.Name) `
                 ('rules: ' + ($names -join ', ')) '' @{ site = $website.Name; rules = $names }
@@ -608,6 +647,48 @@ if ($iisAvailable) {
                 ('rules: ' + ($names -join ', ') + '. The WPShield rule must be ordered so these still behave as intended.') '' `
                 @{ site = $website.Name; rules = $names }
         }
+    }
+
+    # ---------------------------------------------------------------------------------
+    # PRE-017 - the blast radius of the PRE-008 remedy.
+    #
+    # preserveHostHeader is configured in applicationHost.config under system.webServer/proxy,
+    # which is a server-level section: there is no per-site override. So the fix for PRE-008
+    # changes the Host header that EVERY ARR proxy on this machine sends downstream, not only the
+    # ones WPShield will use.
+    #
+    # On a server hosting one application that is a fair trade. On a server hosting sixty, of which
+    # some are reverse proxies to other processes, it is a change that has to be made deliberately
+    # and verified immediately - and the operator has to be told which applications to check, by
+    # name, before they flip it rather than after.
+    # ---------------------------------------------------------------------------------
+    if ($script:ProxyingRules.Count -gt 0) {
+        $descriptions = @($script:ProxyingRules | ForEach-Object { $_.Site + '/' + $_.Rule })
+
+        $status = 'Info'
+        $detail = 'These rules proxy to another host, so they are the ones the server-wide preserveHostHeader setting affects: ' +
+            ($descriptions -join ', ') + '.'
+        $remedy = ''
+
+        if ($null -ne $preserveHost -and -not $preserveHost) {
+            $status = 'Warn'
+            $detail = 'Fixing PRE-008 turns on preserveHostHeader for the whole server, because that setting has no per-site override. ' +
+                'These existing proxies will start receiving the public hostname instead of the destination: ' +
+                ($descriptions -join ', ') + '.'
+            $remedy = 'Enable it, then test each application listed above straight away. Most reverse-proxied applications want the original Host and improve; some are configured around not getting it. Either way this is not a WPShield-only change and it should not be discovered later.'
+        }
+
+        Add-Check 'PRE-017' $status 'Other applications on this server are proxied through ARR' `
+            $detail $remedy `
+            @{ proxyingRules = $descriptions }
+    }
+
+    if ($script:CatchAllRules.Count -gt 0) {
+        $descriptions = @($script:CatchAllRules | ForEach-Object { $_.Site + '/' + $_.Rule })
+        Add-Check 'PRE-018' 'Warn' 'A catch-all rewrite rule already stops processing on some sites' `
+            ('The WPShield rule has to be ordered BEFORE these, or it is never evaluated: ' + ($descriptions -join ', ') +
+             '. WordPress permalink rules have exactly this shape.') `
+            '' @{ catchAllRules = $descriptions }
     }
 }
 

@@ -58,6 +58,8 @@ Every one of those is a five-minute fix and a very bad twenty minutes if you fin
 | `PRE-014` | Does a WPShield service already exist? Then this is an upgrade, not an install. |
 | `PRE-015` | The installation directory and its permissions. |
 | `PRE-016` | The log directory: **can unprivileged accounts read it?** |
+| `PRE-017` | **Which other applications ARR already proxies** — the blast radius of the `PRE-008` fix. |
+| `PRE-018` | Catch-all rewrite rules that stop processing, which the WPShield rule must be ordered before. |
 
 `PRE-016` is a blocker rather than a warning. `C:\ProgramData` is the conventional place for a log
 directory and its default ACL grants `BUILTIN\Users` read — so a WPShield log holding request paths,
@@ -67,6 +69,29 @@ people's applications.
 Each status is one of `Pass`, `Warn`, `Blocker` or `Info`, and **every blocker carries a remedy**. A
 readiness check that reports a problem without saying what to do about it has moved the problem
 rather than solved it.
+
+## `PRE-017` — the fix for `PRE-008` is server-wide
+
+`preserveHostHeader` lives in `applicationHost.config` under `system.webServer/proxy`, which is a
+**server-level section with no per-site override**. So the remedy for `PRE-008` changes the `Host`
+header that *every* ARR proxy on the machine sends downstream — not only the ones WPShield will use.
+
+On a server hosting one application that is a fair trade. On a server hosting sixty, some of which
+are reverse proxies to other processes, it is a change that has to be made deliberately and verified
+immediately. `PRE-017` finds those other proxies by looking for rewrite rules whose action is a
+`Rewrite` to an absolute `http://` or `https://` URL, and names them — **before** the switch is
+flipped rather than after something stops working.
+
+Most reverse-proxied applications want the original `Host` and improve when they get it. Some are
+configured around not getting it. Either way it is not a WPShield-only change, and the operator
+should know which applications to re-test.
+
+## `PRE-018` — ordering against a catch-all
+
+A rewrite rule with `stopProcessing="true"` and a `.*` match swallows every request before any rule
+placed after it is evaluated. **The WordPress permalink rule has exactly this shape**, so on a
+WordPress site the WPShield rule must be ordered *first* or it never runs at all — and the failure
+mode is silent: everything keeps working, and nothing is ever inspected.
 
 ## The absence of findings is not a finding
 

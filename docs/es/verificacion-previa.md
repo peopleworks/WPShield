@@ -61,6 +61,8 @@ producción.
 | `PRE-014` | ¿Ya existe un servicio WPShield? Entonces esto es una actualización, no una instalación. |
 | `PRE-015` | El directorio de instalación y sus permisos. |
 | `PRE-016` | El directorio de registros: **¿pueden leerlo cuentas sin privilegios?** |
+| `PRE-017` | **Qué otras aplicaciones ya pasan por ARR** — el radio de impacto del arreglo de `PRE-008`. |
+| `PRE-018` | Reglas atrapa-todo que detienen el procesamiento, antes de las cuales debe ir la de WPShield. |
 
 `PRE-016` es bloqueante y no advertencia. `C:\ProgramData` es el sitio convencional para un directorio
 de registros y su ACL por omisión concede lectura a `BUILTIN\Users` — así que un registro de WPShield
@@ -70,6 +72,30 @@ un servidor que ejecuta aplicaciones de otras personas.
 Cada estado es `Pass`, `Warn`, `Blocker` o `Info`, y **todo bloqueante lleva un remedio**. Una
 verificación que informa de un problema sin decir qué hacer con él ha movido el problema, no lo ha
 resuelto.
+
+## `PRE-017` — el arreglo de `PRE-008` es de servidor entero
+
+`preserveHostHeader` vive en `applicationHost.config`, bajo `system.webServer/proxy`, que es una
+**sección de nivel de servidor sin anulación por sitio**. Así que el remedio de `PRE-008` cambia la
+cabecera `Host` que *todo* proxy de ARR de la máquina envía aguas abajo, no solo los que usará
+WPShield.
+
+En un servidor con una aplicación eso es un intercambio razonable. En uno con sesenta, algunas de
+ellas proxies inversos hacia otros procesos, es un cambio que hay que hacer a conciencia y verificar
+de inmediato. `PRE-017` encuentra esos otros proxies buscando reglas cuya acción sea un `Rewrite` a
+una URL absoluta `http://` o `https://`, y los nombra **antes** de accionar el interruptor, no después
+de que algo deje de funcionar.
+
+La mayoría de las aplicaciones tras un proxy inverso quieren el `Host` original y mejoran al
+recibirlo. Algunas están configuradas asumiendo que no lo reciben. En cualquier caso no es un cambio
+que afecte solo a WPShield, y el operador debe saber qué aplicaciones volver a probar.
+
+## `PRE-018` — el orden frente a una regla atrapa-todo
+
+Una regla con `stopProcessing="true"` y coincidencia `.*` se traga toda petición antes de que se
+evalúe cualquier regla posterior. **La regla de enlaces permanentes de WordPress tiene exactamente esa
+forma**, así que en un sitio WordPress la regla de WPShield tiene que ir *primero* o no se ejecuta
+nunca — y el modo de fallo es silencioso: todo sigue funcionando, y no se inspecciona nada.
 
 ## La ausencia de hallazgos no es un hallazgo
 
