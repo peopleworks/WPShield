@@ -22,4 +22,24 @@ public sealed record InspectionContext(
     /// evaluates many rules per file it should hoist this into a local.
     /// </remarks>
     public NormalizedFileName NormalizedFile => NormalizedFileName.Create(FileName);
+
+    /// <summary>
+    /// <see cref="Path"/> after Windows-aware normalization, in every view a Windows web server
+    /// could resolve differently. Rules must match against this rather than against
+    /// <see cref="Path"/>, for the same reason they must never match a raw file name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Recomputed on each access, exactly as <see cref="NormalizedFile"/> is, so a <c>with</c>
+    /// expression cannot hand a rule a normalization of a path that was replaced. A pass that
+    /// evaluates several rules against one context should hoist it into a local; the request-path
+    /// engine does.
+    /// </para>
+    /// <para>
+    /// Available to upload rules too, not only to path rules. An upload is posted <i>to</i> a path,
+    /// and "this file arrived at an endpoint that never handles uploads" is a question worth being
+    /// able to ask later without reshaping this record.
+    /// </para>
+    /// </remarks>
+    public NormalizedRequestPath NormalizedPath => NormalizedRequestPath.Create(Path);
 }

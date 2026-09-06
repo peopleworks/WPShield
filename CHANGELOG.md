@@ -12,6 +12,46 @@ must complete first.
 
 ## [Unreleased]
 
+### Security
+
+- **WPShield now inspects the request line of every request, and this one is not from a threat
+  model.** A WordPress site on IIS was found running six webshells, and its server logs held the
+  exploitation traffic in full. Every request that reached one was an ordinary `GET` or `POST` to an
+  existing `.php` file, and **not one carried a body** — so not one was visible to any rule this
+  project had. M2 inspects `multipart/form-data` and nothing else: it can refuse a shell as it
+  arrives, and it cannot see a shell that is already there being used. Three rules close that half.
+  `WP-PATH-001` refuses an executable requested from `wp-content/uploads`, `upgrade` or `updraft`,
+  which are data directories WordPress never routes execution through. `WP-PATH-002` refuses one
+  requested from a build-output or asset-only directory — `dist`, `build`, `node_modules`, `static`,
+  `fonts`, `images` and their kin — where a script is either an intruder or a packaging accident.
+  `IIS-PATH-001` reports an unsafe path form as an observation. **Five of the six recovered shell
+  locations reach the default block threshold from the request line alone; the sixth does not, and
+  the test suite asserts that gap** rather than leaving it as an impression.
+- **Paths are normalized to what a Windows web server resolves, in two views.** Case, backslash
+  separators, traversal, empty segments, trailing dots and spaces, NTFS alternate data stream
+  suffixes and control characters, all bounded in segment count and length. Every segment is checked
+  and every extension position within it, because `cgi.fix_pathinfo` makes
+  `/uploads/shell.php/logo.jpg` execute `shell.php` while the last segment is an image. A second view
+  is built when one further percent-decode changes the path, because some IIS rewrite chains decode
+  twice and `%252e%252e%252f` is inert until they do — the same reasoning that made the upload rules
+  evaluate WordPress's filename rewrite alongside the Windows one.
+- The pass runs **before anything reads a body**, so a refused request costs no buffer, no multipart
+  parse and no sample — strictly less than a forwarded one — and applies to the overwhelming majority
+  of traffic that carries no body at all.
+- **`assets`, `css`, `js`, `media` and `vendor` are deliberately absent** from the asset directory
+  list, and that absence is the reason `WP-PATH-002` can score 100. Older plugins genuinely serve
+  generated stylesheets and scripts from PHP, and a security tool that breaks a working site gets
+  switched off, taking the rules that were right with it.
+
+### Fixed
+
+- **The synthetic backend in the integration suite could not serve any path containing a dot.** It
+  used `MapFallback(handler)`, whose default `{**path:nonfile}` pattern rejects a path whose last
+  segment contains one — the same defect this project already found and fixed in the gateway itself,
+  surviving in the harness that was supposed to catch it. Every path in the suite was extensionless,
+  so nothing noticed, and no test could have exercised `/wp-login.php` or a stylesheet even after the
+  gateway was corrected.
+
 ### Added
 
 - **A JSON Lines log destination, because in Monitor mode the log is the only thing WPShield
