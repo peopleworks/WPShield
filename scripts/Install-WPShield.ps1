@@ -193,10 +193,17 @@ function Set-RestrictedDirectoryAcl {
     # Setting it needs a privilege the DACL write does not, though, and failing here would abort
     # the install at step 5 - after the files are copied and the service is registered, which is
     # the worst place to stop. So it is attempted, and reported when it does not work.
+    #
+    # Read the descriptor back and modify it, rather than writing a freshly constructed one. A new
+    # DirectorySecurity carries an empty, unprotected DACL, and Set-Acl writes that too - so the
+    # first version of this silently undid the permissions three lines above, putting the log
+    # directory back to inheriting from C:\ProgramData and its read-for-BUILTIN\Users. It could not
+    # fail on an unelevated machine, because SetOwner threw before Set-Acl was reached; it only
+    # ever went wrong where it mattered, on an elevated install. CI found it.
     try {
-        $owner = New-Object System.Security.AccessControl.DirectorySecurity
-        $owner.SetOwner($administrators)
-        Set-Acl -LiteralPath $Directory -AclObject $owner
+        $descriptor = Get-Acl -LiteralPath $Directory
+        $descriptor.SetOwner($administrators)
+        Set-Acl -LiteralPath $Directory -AclObject $descriptor
     }
     catch {
         $current = 'unknown'
