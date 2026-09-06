@@ -105,6 +105,7 @@ public static class GatewayApplication
         // gatewayOptions is: it is a process-lifetime singleton, and capturing it keeps the
         // signature of the fallback handler down to what actually varies per request.
         var inspectionService = app.Services.GetRequiredService<UploadInspectionService>();
+        var pathInspectionService = app.Services.GetRequiredService<RequestPathInspectionService>();
 
         var requestConfig = new ForwarderRequestConfig
         {
@@ -206,6 +207,28 @@ public static class GatewayApplication
                     "Site protection disabled; request forwarded. RequestId={RequestId} SiteId={SiteId}",
                     context.TraceIdentifier,
                     site.Id);
+            }
+
+            // Before anything touches the body. A path refusal costs no buffer, no multipart parse
+            // and no sample - it is answered from the request line alone - and it applies to every
+            // request rather than only to the multipart ones, which is exactly the traffic the upload
+            // rules are structurally unable to examine. A webshell already on disk is fetched with a
+            // plain GET that carries nothing for them to inspect.
+            var pathRejection = await pathInspectionService.EvaluateAsync(
+                context,
+                site,
+                logger,
+                context.RequestAborted);
+
+            if (pathRejection is { } refusal)
+            {
+                await WriteGatewayErrorAsync(
+                    context,
+                    refusal.StatusCode,
+                    refusal.Error,
+                    refusal.Reason,
+                    refusal.RuleIds.Count == 0 ? null : refusal.RuleIds);
+                return;
             }
 
             logger.LogInformation(
@@ -435,7 +458,18 @@ public static class GatewayApplication
         services.AddSingleton<IInspectionRule, PhpContentInUploadRule>();
         services.AddSingleton<IInspectionRule, FileTypeMismatchRule>();
         services.AddSingleton<IInspectionRule, PhpPolyglotUploadRule>();
+
+        // The request-path family. Registered against IRequestPathRule rather than IInspectionRule,
+        // which is what keeps the two passes apart: an upload rule would be asked to decide with no
+        // sample, and a path rule registered into the per-file pass would be evaluated once per
+        // uploaded file and contribute its score several times for one path.
+        services.AddSingleton<IRequestPathRule, ExecutableRequestUnderUploadsRule>();
+        services.AddSingleton<IRequestPathRule, ExecutableRequestInAssetDirectoryRule>();
+        services.AddSingleton<IRequestPathRule, UnsafeRequestPathRule>();
+
         services.AddSingleton<InspectionEngine>();
+        services.AddSingleton<RequestPathEngine>();
+        services.AddSingleton<RequestPathInspectionService>();
         services.AddSingleton<MultipartInspectionReader>();
         services.AddSingleton<UploadInspectionService>();
     }

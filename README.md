@@ -587,6 +587,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | M2 request limits | [Bounded request controls](docs/en/m2-request-limits.md) | [Controles limitados de solicitud](docs/es/m2-limites-solicitud.md) |
 | M2 multipart inspection | [Bounded multipart inspection](docs/en/m2-multipart-inspection.md) | [Inspección multipart acotada](docs/es/m2-inspeccion-multipart.md) |
 | M2 upload rules | [Upload rules](docs/en/m2-upload-rules.md) | [Reglas de carga](docs/es/m2-reglas-carga.md) |
+| M2.5 request path inspection | [Request path inspection](docs/en/m2-5-request-path-inspection.md) | [Inspección de la ruta de la solicitud](docs/es/m2-5-inspeccion-ruta-solicitud.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.

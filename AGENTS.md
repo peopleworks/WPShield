@@ -69,6 +69,31 @@ Before modifying code:
 - Use central package management.
 - Keep `WPShield.Core` independent from ASP.NET Core and YARP where possible.
 - Preserve explainable rule results and stable, untranslated rule IDs.
+- **Never match a rule against a raw request path either.** Use `InspectionContext.NormalizedPath`,
+  which lowercases (Windows paths are case-insensitive), treats a backslash as a separator (IIS does),
+  resolves traversal and empty segments, strips NTFS alternate data stream suffixes, control
+  characters and the trailing dots and spaces Windows removes at open time, and bounds both the
+  segment count and the segment length. Report the normalized value as evidence, never the raw target:
+  a raw path can carry control characters and ANSI escapes straight into a terminal or a log viewer.
+- **Check every path segment, not only the last one, and every extension position within a segment.**
+  With `cgi.fix_pathinfo` enabled — the default on many Windows PHP-FastCGI installations —
+  `/uploads/shell.php/logo.jpg` executes `shell.php`, so a rule that reads the final segment sees an
+  image. This is the same invariant the upload rules already follow for extension segments, applied
+  one level up.
+- **Evaluate the second path view.** Some IIS URL Rewrite chains percent-decode a second time, so
+  `%252e%252e%252f` reaches the gateway looking inert and becomes traversal after WPShield has stopped
+  looking. `NormalizedRequestPath` builds that view when — and only when — one more decode changes the
+  path, and rules take the first result across views. Removing it reopens a real bypass, for the same
+  reason removing WordPress's filename view reopened `web.con{f}ig`.
+- **A request-path rule scoring 100 must be narrow enough that the score cannot be wrong.**
+  `WP-PATH-001` and `WP-PATH-002` block alone because they fire only where a script cannot have a
+  legitimate HTTP caller. `assets`, `css`, `js`, `media` and `vendor` are excluded from the asset
+  directory list on purpose — older plugins really do serve generated CSS and JS from PHP — and adding
+  a name for which that sentence stops being true makes the score wrong, not the list longer.
+- **Path rules implement `IRequestPathRule`, never `IInspectionRule`.** The separation is what keeps a
+  path rule out of the per-file pass, where it would be evaluated once per uploaded file and
+  contribute its score several times for one path, and keeps an upload rule from being asked to decide
+  with no sample.
 - Never match a rule against a raw client-supplied file name. Use `InspectionContext.NormalizedFile`,
   which strips control characters, directory prefixes, NTFS alternate data stream suffixes, and the
   trailing dots and spaces Windows removes on write. Check every extension segment, not only the

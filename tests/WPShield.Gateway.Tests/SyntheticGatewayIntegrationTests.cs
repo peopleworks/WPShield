@@ -273,6 +273,114 @@ public sealed class SyntheticGatewayIntegrationTests
         Assert.Equal("http", recorded.ForwardedProto);
     }
 
+    // =================================================================================================
+    // Request-path inspection, on real traffic
+    // =================================================================================================
+
+    /// <summary>
+    /// The webshell shapes recovered from a real compromise, refused before anything reads a body.
+    /// </summary>
+    /// <remarks>
+    /// These are ordinary <c>GET</c> requests with no body at all, which is exactly why the upload
+    /// rules could never have seen them: a shell already on disk is fetched, not uploaded. Reduced to
+    /// their directory structure — no hostname, no client address, no payload.
+    /// </remarks>
+    [Theory]
+    [InlineData("/wp-content/uploads/2021/02/tuto1.php", "WP-PATH-001")]
+    [InlineData("/wp-content/plugins/exampleslider/static/codemirror/addon/display/index.php", "WP-PATH-002")]
+    [InlineData("/wp-content/plugins/exampleslider/static/exampleslider/skins/lightskin/terms.php", "WP-PATH-002")]
+    public async Task BlockMode_RefusesAWebshellRequestAndReachesNoBackend(string path, string expectedRuleId)
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(siteMode: "Block");
+
+        using var response = await harness.SendAsync("site-one.test", HttpMethod.Get, path);
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains("\"error\":\"request_blocked\"", content, StringComparison.Ordinal);
+        Assert.Contains(expectedRuleId, content, StringComparison.Ordinal);
+
+        // The whole point of deciding from the request line: WordPress never saw it.
+        Assert.Empty(harness.SiteOne.Requests);
+        Assert.Empty(harness.SiteTwo.Requests);
+    }
+
+    /// <summary>
+    /// Monitor is the default and it forwards. The finding is recorded; the request is not refused.
+    /// </summary>
+    [Fact]
+    public async Task MonitorMode_ForwardsAWebshellRequestRatherThanRefusingIt()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync();
+
+        using var response = await harness.SendAsync(
+            "site-one.test", HttpMethod.Get, "/wp-content/uploads/2021/02/tuto1.php");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.Equal("/wp-content/uploads/2021/02/tuto1.php", recorded.PathAndQuery);
+    }
+
+    /// <summary>
+    /// The refusal discloses the rule identifiers and nothing else. The complete catalogue is
+    /// published in this repository, so withholding the identifiers protects nothing an attacker
+    /// cannot read — while the score and the thresholds stay hidden, because a number turns evasion
+    /// into hill-climbing.
+    /// </summary>
+    [Fact]
+    public async Task BlockedRequest_DisclosesRuleIdsButNeitherScoreNorThresholds()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(siteMode: "Block");
+
+        using var response = await harness.SendAsync(
+            "site-one.test", HttpMethod.Get, "/wp-content/uploads/shell.php");
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains("WP-PATH-001", content, StringComparison.Ordinal);
+        Assert.DoesNotContain("score", content, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("threshold", content, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal("no-store", response.Headers.CacheControl?.ToString());
+        Assert.True(response.Headers.Contains("X-WPShield-Request-ID"));
+    }
+
+    /// <summary>
+    /// Ordinary WordPress traffic is untouched in Block mode, which is the assertion that decides
+    /// whether this rule family can be switched on at all.
+    /// </summary>
+    [Theory]
+    [InlineData("/")]
+    [InlineData("/wp-login.php")]
+    [InlineData("/wp-admin/admin-ajax.php")]
+    [InlineData("/wp-json/wp/v2/posts")]
+    [InlineData("/wp-content/uploads/2026/09/photo.jpg")]
+    [InlineData("/wp-content/plugins/elementor/assets/js/frontend.min.js")]
+    [InlineData("/wp-content/themes/example/style.css")]
+    public async Task BlockMode_LeavesOrdinaryTrafficAlone(string path)
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(siteMode: "Block");
+
+        using var response = await harness.SendAsync("site-one.test", HttpMethod.Get, path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Single(harness.SiteOne.Requests);
+    }
+
+    /// <summary>
+    /// A site an operator has switched off is forwarded untouched, path rules included. Disabled has
+    /// to mean disabled, or the escape hatch is not one.
+    /// </summary>
+    [Fact]
+    public async Task DisabledSite_ForwardsEvenAWebshellRequest()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(siteMode: "Disabled");
+
+        using var response = await harness.SendAsync(
+            "site-one.test", HttpMethod.Get, "/wp-content/uploads/shell.php");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Single(harness.SiteOne.Requests);
+    }
+
     [Fact]
     public async Task SlowBackend_ReturnsPrivacySafe502AfterConfiguredTimeout()
     {
@@ -328,7 +436,8 @@ public sealed class SyntheticGatewayIntegrationTests
 
         public static async Task<SyntheticGatewayHarness> StartAsync(
             int activityTimeoutSeconds = 10,
-            string[]? trustedProxies = null)
+            string[]? trustedProxies = null,
+            string siteMode = "Monitor")
         {
             var siteOne = await SyntheticBackend.StartAsync("site-one");
             SyntheticBackend? siteTwo = null;
@@ -351,13 +460,13 @@ public sealed class SyntheticGatewayIntegrationTests
                     ["Sites:0:Id"] = "site-one",
                     ["Sites:0:Hosts:0"] = "site-one.test",
                     ["Sites:0:Destination"] = siteOne.Address.ToString(),
-                    ["Sites:0:Mode"] = "Monitor",
+                    ["Sites:0:Mode"] = siteMode,
                     ["Sites:0:ObserveThreshold"] = "30",
                     ["Sites:0:BlockThreshold"] = "80",
                     ["Sites:1:Id"] = "site-two",
                     ["Sites:1:Hosts:0"] = "site-two.test",
                     ["Sites:1:Destination"] = siteTwo.Address.ToString(),
-                    ["Sites:1:Mode"] = "Monitor",
+                    ["Sites:1:Mode"] = siteMode,
                     ["Sites:1:ObserveThreshold"] = "30",
                     ["Sites:1:BlockThreshold"] = "80"
                 };
@@ -436,7 +545,14 @@ public sealed class SyntheticGatewayIntegrationTests
             var application = builder.Build();
             SyntheticBackend? backend = null;
 
-            application.MapFallback(async context =>
+            // The pattern is explicit for the same reason it is explicit in GatewayApplication, and
+            // this is the second place the same default caused the same blind spot. MapFallback's
+            // default is "{**path:nonfile}", whose nonfile constraint rejects any path whose last
+            // segment contains a dot — so this synthetic backend answered 404 to /wp-login.php,
+            // /style.css and every image, while extensionless routes worked. Every path in the suite
+            // was extensionless, so nothing noticed: the harness could not have exercised a dotted
+            // path even after the gateway itself was fixed.
+            application.MapFallback("{*path}", async context =>
             {
                 var request = new SyntheticRequest(
                     name,
