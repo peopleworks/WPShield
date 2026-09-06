@@ -133,7 +133,7 @@ not read as more than they claim:
 
 - [ ] Emit structured gateway, routing, inspection, rule, backend, and configuration events.
 - [ ] Add per-site request, action, rule, byte, error, and duration metrics.
-- [ ] Store privacy-safe JSON Lines with rotation, size limits, retention, and restricted permissions.
+- [x] Store privacy-safe JSON Lines with rotation, size limits and retention. **Restricted permissions are not done here**: the gateway creates the log directory but does not set its ACL, because logs carry real hostnames, real paths and real client addresses, and locking that down belongs to the M6 installation procedure rather than to configuration. Documented in [operator configuration](docs/en/operator-configuration.md#log-files).
 - [ ] Add automated redaction tests for sensitive headers, secrets, forms, query strings, and upload content.
 
 ## M5 — Local multilingual dashboard
@@ -146,7 +146,7 @@ not read as more than they claim:
 ## M6 — Windows Service and releases
 
 - [ ] Publish self-contained `win-x64` artifacts.
-- [ ] Run as a least-privilege Windows service account.
+- [x] Run under the Windows service control manager. The **least-privilege account** is still open: the host detects and answers the SCM, but nothing yet creates the account, grants it the log and configuration directories, or takes away what it does not need.
 - [ ] Provide installation, update, uninstall, bypass, rollback, and recovery procedures.
 - [ ] Add restricted configuration and log directories.
 - [ ] Produce signed releases, checksums, versions, and bilingual release notes.

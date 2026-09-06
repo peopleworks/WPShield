@@ -18,3 +18,8 @@ secrets.json
 appsettings.Local.json
 appsettings.*.Local.json
 DEVELOPMENT_PLAN.local.md
+
+# JSON Lines gateway logs. They carry real hostnames, real paths and real client
+# addresses, so a stray commit of one leaks more than any configuration file would.
+logs/
+*.jsonl

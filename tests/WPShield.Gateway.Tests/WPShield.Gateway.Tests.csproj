@@ -9,5 +9,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/WPShield.Core/WPShield.Core.csproj" />
     <ProjectReference Include="../../src/WPShield.Gateway/WPShield.Gateway.csproj" />
+    <ProjectReference Include="../../src/WPShield.Logging/WPShield.Logging.csproj" />
   </ItemGroup>
 </Project>

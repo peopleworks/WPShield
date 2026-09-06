@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    A separate assembly for one structural reason, recorded here because the reason is not visible
+    from the file list.
+
+    AGENTS.md requires that the gateway's disk-freedom be a property of the code rather than of a
+    configured threshold, and MultipartInspectionReaderTests.GatewayAssembly_ReferencesNoTypeThatCanWriteToDisk
+    enforces it by scanning the WPShield.Gateway assembly's type references for File, FileStream,
+    Directory, StreamWriter and FileBufferingReadStream. That scan is assembly-wide and cannot tell a
+    request body apart from a log line, so a log writer living in WPShield.Gateway would have forced
+    the guard to be relaxed - and a guarantee relaxed once is a guarantee that erodes.
+
+    Putting the only code that opens a file in its own assembly keeps the guard exactly as strict as
+    it was, and makes the claim stronger than an exclusion list could: the assembly that handles
+    requests does not merely avoid the file APIs, it cannot name them.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+</Project>

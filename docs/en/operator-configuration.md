@@ -230,6 +230,90 @@ info: WPShield.Gateway.Configuration
       Multipart upload inspection enabled. MaximumRequestBytes=6291456 MaximumFileCount=20 MaximumFieldCount=200 MaximumPartHeaderBytes=16384 SampleBytes=4096 ReadTimeoutSeconds=30
 ```
 
+## Log files
+
+In Monitor mode the log is the only thing WPShield produces. It forwards every request either way, so
+a gateway with nowhere to write is observing traffic and telling nobody — and under a Windows service
+there is no console to fall back on.
+
+```json
+{
+  "Logging": {
+    "File": {
+      "Enabled": true,
+      "Directory": "logs",
+      "FileNamePrefix": "wpshield",
+      "MaximumFileBytes": 33554432,
+      "RetainedFileCount": 14,
+      "MaximumQueuedEntries": 10000
+    }
+  }
+}
+```
+
+One JSON object per line, UTF-8, no indentation:
+
+```json
+{"timestamp":"2026-09-06T04:12:31.4180000+00:00","level":"Information","category":"WPShield.Gateway.Request","message":"Request forwarding. RequestId=8f3a… SiteId=site-one Client=203.0.113.5 Method=GET Path=/wp-admin/","state":{"RequestId":"8f3a…","SiteId":"site-one","Client":"203.0.113.5","Method":"GET","Path":"/wp-admin/"}}
+```
+
+The rendered message and the structured fields are both present, so the file is readable by a person
+tailing it during a rollout and parseable by whatever aggregates it later. The message template
+itself is not written: it would double the size of every line and the rendered message already says
+the same thing.
+
+`Directory` is relative to the **content root**, which for a Windows service is the installation
+directory rather than `C:\Windows\System32`. An absolute path is used as given. Level filtering uses
+the standard provider mechanism, so `Logging:File:LogLevel:Default` works exactly as it does for the
+console.
+
+### Rotation and retention
+
+A file is closed and a new one started when it reaches `MaximumFileBytes` or when the UTC date
+changes. Names are `wpshield-20260906.jsonl`, then `wpshield-20260906_0001.jsonl` for the second file
+of the same day.
+
+> [!NOTE]
+> The ordinal separator is `_` rather than `-` on purpose. Retention orders files by name, and `-`
+> sorts *before* `.`, so `wpshield-20260906-1.jsonl` would compare as older than the
+> `wpshield-20260906.jsonl` it actually succeeds — and retention would have deleted the newest files
+> of a busy day while keeping the oldest.
+
+`RetainedFileCount` files are kept and the rest are deleted when a new file opens. A file that cannot
+be deleted, because a log viewer holds it open, is skipped rather than retried: retention is
+housekeeping and must never become the reason logging stops.
+
+### What a full queue does
+
+Entries are rendered on the calling thread and handed to a bounded queue that a single writer drains.
+When that queue is full an entry is **dropped**, not made to wait:
+
+```json
+{"timestamp":"…","level":"Warning","category":"WPShield.Gateway.Logging","message":"Log entries were dropped because the write queue was full. The gap is in this file, not in what the gateway did.","state":{"DroppedEntries":42}}
+```
+
+Blocking the request path on disk I/O would let a slow or full disk become an outage, and an
+unbounded queue would let it become an out-of-memory failure. Dropping is the only one of the three
+that the log can afterwards admit to — and it does, as soon as the pressure clears.
+
+### File permissions are not set by the gateway
+
+WPShield creates the directory but does not restrict it. Logs carry real hostnames, real paths and
+real client addresses, so the directory ACL is part of installation, not of configuration. Until the
+installation procedure lands, restrict it yourself:
+
+```powershell
+icacls "C:\ProgramData\WPShield\logs" /inheritance:r `
+  /grant:r "SYSTEM:(OI)(CI)F" "Administrators:(OI)(CI)F" "<service account>:(OI)(CI)M"
+```
+
+### Running as a Windows service
+
+The gateway detects the service control manager on its own; no switch is needed. Under a service it
+pins its content root to the installation directory, installs the lifetime that answers stop and
+shutdown, and adds the Windows Event Log as a second destination — so a gateway that fails to start
+says why somewhere an operator will find it.
+
 ## Configuration is not hot-reloaded
 
 Gateway and site options are validated once at startup and captured for the lifetime of the process.
