@@ -590,6 +590,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | M2 upload rules | [Upload rules](docs/en/m2-upload-rules.md) | [Reglas de carga](docs/es/m2-reglas-carga.md) |
 | M2.5 request path inspection | [Request path inspection](docs/en/m2-5-request-path-inspection.md) | [Inspección de la ruta de la solicitud](docs/es/m2-5-inspeccion-ruta-solicitud.md) |
 | Triage tool | [Triage tool](docs/en/triage-tool.md) | [Herramienta de triage](docs/es/herramienta-de-triage.md) |
+| Preflight | [Preflight](docs/en/preflight.md) | [Verificación previa](docs/es/verificacion-previa.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.

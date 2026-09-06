@@ -146,11 +146,30 @@ there.
 - **Target Windows PowerShell 5.1**, and verify against it, not only against PowerShell 7. 5.1 is
   what a Windows Server host has before anything is installed on it, and the host being triaged is
   not a host to install things on. PowerShell 7 accepting a script is not evidence 5.1 will.
-- **`Invoke-WPShieldTriage.ps1` reads and reports. It never repairs.** No deletion, no quarantine,
-  no rename, no move, no service or firewall change, and it never executes a file it finds. Deleting
-  a webshell before understanding how it arrived destroys the evidence and leaves the way in. Its
-  only write is its own report, through a single `StreamWriter`, and every `[System.IO.File]::Open`
-  asks for read access only.
+- **`Invoke-WPShieldTriage.ps1` and `Invoke-WPShieldPreflight.ps1` read and report. They never
+  repair.** No deletion, no quarantine, no rename, no move, no IIS setting, no binding, no rewrite
+  rule, no ACL, no service or firewall change, and the triage tool never executes a file it finds.
+  Deleting a webshell before understanding how it arrived destroys the evidence and leaves the way
+  in; changing an IIS setting on a server running other people's applications must never be a side
+  effect of asking a question. The only write either makes is its own report, through a single
+  `StreamWriter`, and every `[System.IO.File]::Open` asks for read access only. **Preflight prints
+  the suggested configuration; it does not write it.**
+- **A preflight blocker carries a remedy, and the absence of a finding is never rendered as a
+  finding.** When IIS cannot be read, say so as a blocker rather than printing an empty site list:
+  on a readiness check "there are no sites" and "nobody could look" must not look alike, because the
+  first invites the operator to continue. For the same reason, an unelevated run is itself a
+  blocker — without elevation every check answers optimistically, which is the worst direction for
+  this question.
+- **`ARR proxy enabled` and `ARR preserveHostHeader` are checked, and both default to the value that
+  breaks the design.** With the proxy off, the rewrite rule 404s every request with nothing in the
+  log; without the host header, WPShield's Host-based site resolution fails closed and the whole
+  site answers 421. Both fail on the live site at the moment the rule is enabled. Do not remove
+  these checks, and do not soften them to warnings.
+- **The JSON escaper is duplicated across the single-file tools on purpose.** Each has to run alone
+  on a server where nothing may be installed and the only transport may be a chat window; a shared
+  module is two files that must travel together and one that fails obscurely when it does not.
+  `Test-WPShieldScripts.ps1` exercises every copy against the same cases, which is what keeps the
+  duplication honest. Do not consolidate them into a module without replacing that guarantee.
 - **Do not invoke a command through a variable, and do not use `Invoke-Expression`, in any script
   here.** The read-only guarantee is enforced by an inventory of write-capable constructs, and a
   command whose name is computed at runtime escapes that inventory. This is weaker than the

@@ -64,6 +64,24 @@ must complete first.
 
 ### Added
 
+- **A preflight check, because the production traffic path has four ways to fail on the live site
+  with an error that does not say what is wrong.** `scripts/Invoke-WPShieldPreflight.ps1` is
+  read-only and changes nothing. Two of the checks are the reason it exists: **ARR's server-level
+  proxy switch is off by default**, and with it off a rewrite to `http://127.0.0.1:10000` does not
+  proxy - it returns 404 for every request with nothing in the log explaining why; and **ARR does
+  not preserve the client `Host` header by default**, and WPShield resolves the site from that
+  header and fails closed with HTTP 421, so the whole site answers 421 the moment the rule goes
+  live. It also reports port ownership, the site inventory, existing rewrite rules that the WPShield
+  rule must be ordered against, whether a service already exists, and whether unprivileged accounts
+  can read the log directory.
+- **Preflight prints the configuration and the rewrite rule to use**, filled in from the sites it
+  found, because those are exactly the values that get retyped and mistyped - and a mistyped
+  hostname here is a 421 on a live site. The configuration is printed and never written: it belongs
+  on that server, and a script documented as read-only stays read-only.
+- **`PRE-016` is a blocker, not a warning.** `C:\ProgramData` is the conventional home for a log
+  directory and its default ACL grants `BUILTIN\Users` read, so a WPShield log carrying request
+  paths, rule hits and client addresses would be readable by every account on a server that runs
+  other people's applications.
 - **A triage tool, because a gateway says nothing about a site that was already compromised before
   it arrived.** `scripts/Invoke-WPShieldTriage.ps1` is the investigation that produced the rules
   above, generalized into something anyone can run: read-only, fully parameterized, discovering
@@ -97,9 +115,12 @@ must complete first.
   without anything installed on it — and they must be pure ASCII, because 5.1 reads a BOM-less
   `.ps1` as ANSI and a UTF-8 em dash becomes a typographic quote that silently breaks quote parity a
   hundred lines further down. That defect had already shipped a triage script that would not run.
-  The triage tool is additionally checked to have no write path but its own report, and to run end
-  to end against a fixture reproducing the incident's directory structure, reaching the documented
-  verdicts including the known gap.
+  Both tools documented as read-only are additionally checked to have no write path but their own
+  report, every copy of the JSON escaper is round-tripped through a real parser, and the triage tool
+  is run end to end against a fixture reproducing the incident's directory structure, reaching the
+  documented verdicts including the known gap. There is more than one copy of the escaper on
+  purpose - each tool is a single file that has to work alone on a server where nothing may be
+  installed - and testing every copy against the same cases is what keeps that duplication honest.
 - **The triage tool's copy of the gateway's rule vocabulary is compared against the C# sources on
   every build.** It carries copies because it has to run on a server with no .NET runtime and no
   build of WPShield on it. Copies drift, and a drifted copy does not fail loudly — it quietly

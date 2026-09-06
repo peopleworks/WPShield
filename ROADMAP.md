@@ -232,8 +232,9 @@ not read as more than they claim:
 
 - [ ] Publish self-contained `win-x64` artifacts.
 - [x] Run under the Windows service control manager. The **least-privilege account** is still open: the host detects and answers the SCM, but nothing yet creates the account, grants it the log and configuration directories, or takes away what it does not need.
-- [ ] Provide installation, update, uninstall, bypass, rollback, and recovery procedures.
-- [ ] Add restricted configuration and log directories.
+- [x] **Preflight.** `scripts/Invoke-WPShieldPreflight.ps1` checks, read-only, that the ADR 0001 traffic path can work here before anything is installed: the two ARR settings that fail silently on the live site, port ownership, the site inventory, existing rewrite rules, and whether unprivileged accounts can read the log directory. It prints the configuration and the rewrite rule to use, filled in from what it found, and writes nothing.
+- [ ] Provide installation, update, uninstall, bypass, rollback, and recovery procedures. **Preflight is done; the acting half is not.** Nothing yet creates the install and log directories with restricted ACLs, registers the service, or reverses either.
+- [ ] Add restricted configuration and log directories. Preflight reports whether `BUILTIN\Users` can read them, which is the default under `C:\ProgramData`; nothing yet fixes it.
 - [ ] Produce signed releases, checksums, versions, and bilingual release notes.
 
 ## M7 — Controlled public activation

@@ -3,11 +3,11 @@
 <#
 .SYNOPSIS
     Verifies the PowerShell scripts in this repository: that they parse, that they are ASCII, that
-    the triage tool has no way to write outside its own report, and that the rule vocabulary it
-    copies from the gateway has not drifted.
+    the tools documented as read-only have no way to write outside their own report, that the rule
+    vocabulary the triage tool copies from the gateway has not drifted, and that it still runs.
 
 .DESCRIPTION
-    Four checks, each of which exists because of a defect that actually happened.
+    Six checks, each of which exists because of a defect that actually happened.
 
     1. PARSE. Every .ps1 is parsed with the PowerShell parser. A script in this repository is
        something an operator runs, once, on a server that is having a bad day, and discovering a
@@ -20,9 +20,10 @@
        further down, in code that is correct. This exact defect shipped a triage script that would
        not run.
 
-    3. READ-ONLY INVENTORY. The triage tool must not be able to change the host it is examining.
-       This check enumerates every write-capable construct in it and compares that against a fixed
-       inventory, so a new write cannot appear without somebody deciding to add it here too.
+    3. READ-ONLY INVENTORY. The triage tool and the preflight both promise, in their own
+       documentation, to change nothing on the host they examine. This check enumerates every
+       write-capable construct in each and compares that against a fixed inventory, so a new write
+       cannot appear without somebody deciding to add it here too.
 
        Say plainly what this is worth: it is an inventory, not a proof. The gateway's equivalent
        guarantee - that no request body can reach the disk - is proved, by scanning the assembly's
@@ -37,6 +38,15 @@
        directory lists, because it has to run on a server with no .NET runtime and no build of
        WPShield on it. Copies drift. A drifted copy does not fail loudly - it quietly reports
        coverage the gateway does not have, which is worse than reporting nothing.
+
+    5. JSON ESCAPING. Every copy of the JSON escaper is extracted and round-tripped through a real
+       parser. There is more than one copy on purpose - each tool is a single file that has to work
+       alone on a server where nothing may be installed - and testing them all against the same
+       cases is what keeps that duplication honest.
+
+    6. END TO END. The triage tool is run against a fixture reproducing the incident's directory
+       structure, and its verdicts are asserted. The most important check here, because it is the
+       only one that fails when a script does not run at all.
 
 .EXAMPLE
     pwsh -File scripts/Test-WPShieldScripts.ps1
@@ -129,15 +139,26 @@ foreach ($file in $scriptFiles) {
 # =====================================================================================
 
 Write-Host ''
-Write-Host 'Read-only inventory of Invoke-WPShieldTriage.ps1' -ForegroundColor Cyan
+Write-Host 'Read-only inventory' -ForegroundColor Cyan
 
 $triageName = 'Invoke-WPShieldTriage.ps1'
 
-if (-not $parsed.ContainsKey($triageName)) {
-    Add-Failure ($triageName + ' did not parse, so its write inventory could not be checked.')
+# Scripts that promise, in their own documentation, to change nothing on the host they examine.
+# Each maps to the write-capable cmdlets it is allowed and how many times: both create the parent
+# directory of their report, and nothing else.
+$readOnlyScripts = @{
+    'Invoke-WPShieldTriage.ps1'    = @{ 'New-Item' = 1 }
+    'Invoke-WPShieldPreflight.ps1' = @{ 'New-Item' = 1 }
+}
+
+foreach ($readOnlyName in ($readOnlyScripts.Keys | Sort-Object)) {
+
+if (-not $parsed.ContainsKey($readOnlyName)) {
+    Add-Failure ($readOnlyName + ' did not parse, so its write inventory could not be checked.')
 }
 else {
-    $triageAst = $parsed[$triageName]
+    $triageName = $readOnlyName
+    $triageAst = $parsed[$readOnlyName]
 
     # Cmdlets that change something. Get-FileHash, Get-ChildItem and friends are absent on purpose:
     # this list is about what a command does to the host, not about how much it reads.
@@ -154,9 +175,8 @@ else {
 
     # Write-capable, but each has exactly one justified use. The count is pinned so that a second
     # use has to be added here first.
-    $allowedWriteCommands = @{
-        'New-Item' = 1   # creates the report's parent directory, and nothing else
-    }
+    # Per-script allowance: New-Item creates the report's parent directory, and nothing else.
+    $allowedWriteCommands = $readOnlyScripts[$readOnlyName]
 
     $commandAsts = @($triageAst.FindAll(
         { param($node) $node -is [System.Management.Automation.Language.CommandAst] }, $true))
@@ -181,7 +201,7 @@ else {
         if ($forbiddenCommands -contains $name) {
             $checks++
             Add-Failure ($triageName + ' line ' + $command.Extent.StartLineNumber +
-                ': ' + $name + ' changes the host. The triage tool reads and reports; it does not repair.')
+                ': ' + $name + ' changes the host. This script documents itself as read-only: it reports, and it does not repair.')
         }
 
         if ($allowedWriteCommands.ContainsKey($name)) {
@@ -259,8 +279,10 @@ else {
             ' StreamWriters. It should have exactly one: the report.')
     }
     else {
-        Add-Pass 'exactly one StreamWriter: the report'
+        Add-Pass ($readOnlyName + ': exactly one StreamWriter, the report')
     }
+}
+
 }
 
 # =====================================================================================
@@ -369,6 +391,8 @@ function Compare-Vocabulary {
     }
 }
 
+$triageName = 'Invoke-WPShieldTriage.ps1'
+
 if ($parsed.ContainsKey($triageName)) {
     $triageAst = $parsed[$triageName]
     $rulesRoot = Join-Path $RepositoryRoot 'src\WPShield.Rules.WordPress'
@@ -417,70 +441,84 @@ if ($parsed.ContainsKey($triageName)) {
 }
 
 # =====================================================================================
-#  5. The JSON the triage tool writes is JSON.
+#  5. The JSON these tools write is JSON.
 #
-#  The escaper is extracted from the script and exercised directly. It earns a test of its own
-#  because its first version was wrong in a way nothing else would have caught: inside a switch,
+#  Each escaper is extracted from its script and exercised directly. It earns a test of its own
+#  because the first version was wrong in a way nothing else would have caught: inside a switch,
 #  PowerShell's `continue` ends the switch and resumes the loop body rather than skipping it, so
 #  every backslash was escaped and then emitted again. Every Windows path in the report came out
 #  as invalid JSON, and the report still looked fine to a human reading it.
+#
+#  There is deliberately more than one copy of this function. The triage tool and the preflight are
+#  each a single file with no dependencies, because they run on servers where nothing may be
+#  installed and the only transport might be a chat window; a shared module would be two files that
+#  must travel together. Testing every copy against the same cases is what keeps the duplication
+#  honest - they cannot diverge in behaviour without this failing.
 # =====================================================================================
 
 Write-Host ''
 Write-Host 'JSON escaping' -ForegroundColor Cyan
 
-if ($parsed.ContainsKey($triageName)) {
-    $triageAst = $parsed[$triageName]
-
-    $escaper = @($triageAst.FindAll({
+$escapers = @()
+foreach ($name in ($parsed.Keys | Sort-Object)) {
+    foreach ($function in @($parsed[$name].FindAll({
         param($node)
         $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
-        $node.Name -eq 'ConvertTo-TriageJsonString'
-    }, $true))
-
-    $checks++
-    if ($escaper.Count -ne 1) {
-        Add-Failure 'ConvertTo-TriageJsonString was not found in the triage script.'
+        $node.Name -like 'ConvertTo-*JsonString'
+    }, $true))) {
+        $escapers += [pscustomobject] @{ Script = $name; Name = $function.Name; Ast = $function }
     }
-    else {
-        . ([scriptblock]::Create($escaper[0].Extent.Text))
+}
 
-        $cases = @(
-            @{ Input = 'C:\inetpub\wwwroot\example'; Expect = 'C:\inetpub\wwwroot\example' },
-            @{ Input = 'a"b'; Expect = 'a"b' },
-            @{ Input = "tab`there"; Expect = "tab`there" },
-            @{ Input = ('esc' + [char] 0x1B + '[31m'); Expect = ('esc' + [char] 0x1B + '[31m') },
-            @{ Input = ('nul' + [char] 0x00); Expect = ('nul' + [char] 0x00) },
-            @{ Input = 'plain'; Expect = 'plain' }
-        )
+$checks++
+if ($escapers.Count -lt 2) {
+    Add-Failure ('Expected a JSON escaper in each single-file tool; found ' + $escapers.Count + '.')
+}
+else {
+    Add-Pass ($escapers.Count.ToString() + ' JSON escapers found, all exercised below')
+}
 
-        foreach ($case in $cases) {
-            $checks++
-            $encoded = ConvertTo-TriageJsonString $case.Input
+foreach ($escaper in $escapers) {
+    . ([scriptblock]::Create($escaper.Ast.Extent.Text))
 
-            $nonAscii = @([int[]] [char[]] $encoded | Where-Object { $_ -gt 0x7E -or $_ -lt 0x20 })
-            if ($nonAscii.Count -gt 0) {
-                Add-Failure ('the escaper emitted a byte outside printable ASCII for input of length ' + $case.Input.Length)
-                continue
-            }
+    $cases = @(
+        @{ Input = 'C:\inetpub\wwwroot\example'; Expect = 'C:\inetpub\wwwroot\example' },
+        @{ Input = 'a"b'; Expect = 'a"b' },
+        @{ Input = "tab`there"; Expect = "tab`there" },
+        @{ Input = ('esc' + [char] 0x1B + '[31m'); Expect = ('esc' + [char] 0x1B + '[31m') },
+        @{ Input = ('nul' + [char] 0x00); Expect = ('nul' + [char] 0x00) },
+        @{ Input = 'plain'; Expect = 'plain' }
+    )
 
-            $decoded = $null
-            try {
-                # Round-trip through a real JSON parser. Anything the escaper gets wrong fails here.
-                $decoded = ('{"v":' + $encoded + '}' | ConvertFrom-Json).v
-            }
-            catch {
-                Add-Failure ('the escaper produced invalid JSON: ' + $encoded)
-                continue
-            }
+    $failuresBefore = $failures.Count
 
-            if ($decoded -ne $case.Expect) {
-                Add-Failure ('the escaper did not round-trip. Encoded: ' + $encoded)
-            }
-            else {
-                Add-Pass ('round-trips: ' + $encoded)
-            }
+    foreach ($case in $cases) {
+        $checks++
+        $encoded = & $escaper.Name $case.Input
+
+        $nonAscii = @([int[]] [char[]] $encoded | Where-Object { $_ -gt 0x7E -or $_ -lt 0x20 })
+        if ($nonAscii.Count -gt 0) {
+            Add-Failure ($escaper.Script + ': the escaper emitted a byte outside printable ASCII.')
+            continue
         }
+
+        $decoded = $null
+        try {
+            # Round-trip through a real JSON parser. Anything the escaper gets wrong fails here.
+            $decoded = ('{"v":' + $encoded + '}' | ConvertFrom-Json).v
+        }
+        catch {
+            Add-Failure ($escaper.Script + ': the escaper produced invalid JSON: ' + $encoded)
+            continue
+        }
+
+        if ($decoded -ne $case.Expect) {
+            Add-Failure ($escaper.Script + ': the escaper did not round-trip. Encoded: ' + $encoded)
+        }
+    }
+
+    if ($failures.Count -eq $failuresBefore) {
+        Add-Pass ($escaper.Script + ' / ' + $escaper.Name + ': all ' + $cases.Count + ' cases round-trip')
     }
 }
 
