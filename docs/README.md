@@ -25,6 +25,7 @@ the same set.
 | M2.5 request path inspection · Inspección de ruta M2.5 | [Request path inspection](en/m2-5-request-path-inspection.md) | [Inspección de la ruta de la solicitud](es/m2-5-inspeccion-ruta-solicitud.md) |
 | M2 upload rules · Reglas de carga M2 | [Upload rules](en/m2-upload-rules.md) | [Reglas de carga](es/m2-reglas-carga.md) |
 | Triage tool · Herramienta de triage | [Triage tool](en/triage-tool.md) | [Herramienta de triage](es/herramienta-de-triage.md) |
+| Preflight · Verificación previa | [Preflight](en/preflight.md) | [Verificación previa](es/verificacion-previa.md) |
 | ADR 0001 — production traffic path · Ruta de tráfico en producción | [Production traffic path](en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](es/adr/0001-ruta-de-trafico-en-produccion.md) |
 
 The threat model's English original sits at the repository root, because `README.md`, `SECURITY.md`
