@@ -118,7 +118,13 @@ param(
     [ValidateRange(1, 1000000)]
     [int] $MaximumFindings = 5000,
 
-    [switch] $DiscoverOnly
+    [switch] $DiscoverOnly,
+
+    # Read the host as well as the sites: scheduled tasks, accounts, services, autorun keys,
+    # staging directories and the antivirus history. Off by default because it answers a
+    # different question from the rest of the script, and because it needs elevation to answer
+    # it properly. The summary always says whether it ran.
+    [switch] $IncludeHost
 )
 
 Set-StrictMode -Version Latest
@@ -1060,6 +1066,292 @@ function Invoke-TriageInventory {
 }
 
 <#
+    TRIAGE-010 to TRIAGE-015 - what the intruder left outside the web root.
+
+    Everything above this point looks inside a WordPress site. That is the right scope for a tool
+    named after WordPress, and it is the wrong scope for the question an operator actually has,
+    which is "am I still compromised".
+
+    A webshell is a foothold, not the whole of it. In the incident this tool comes from, the
+    intruder had moved on to writing into C:\Windows\Temp - outside the web root, outside every
+    check above, and untouched by stopping the site. Stopping IIS closes the door they came in by
+    and does nothing about a scheduled task, a service, an autorun key or an account.
+
+    So these read the host. They are opt-in behind -IncludeHost, because they answer a different
+    question from the rest of the script and need elevation to answer it properly, and the summary
+    always says whether they ran. A section that is silently absent reads exactly like a section
+    that found nothing.
+
+    Read-only, like everything else here. Nothing is disabled, deleted or repaired.
+#>
+function Invoke-TriageHostScan {
+    $cutoff = [datetime]::UtcNow.AddDays(-$RecentDays)
+
+    # ---------------------------------------------------------------------------------
+    # TRIAGE-010 - scheduled tasks.
+    #
+    # The most durable persistence on Windows and the first place to look. Reported when the task
+    # was registered inside the window, or when its action runs one of the interpreters that turns
+    # a downloaded blob into code - regardless of when it was registered.
+    # ---------------------------------------------------------------------------------
+    $interpreters = 'powershell|pwsh|cmd\.exe|wscript|cscript|mshta|rundll32|regsvr32|certutil|bitsadmin|curl|wget|php'
+
+    try {
+        foreach ($task in (Get-ScheduledTask -ErrorAction Stop)) {
+            $registered = $null
+            try { if ($task.Date) { $registered = [datetime] $task.Date } } catch { }
+
+            $actions = @()
+            try {
+                $actions = @($task.Actions | ForEach-Object {
+                    (([string] $_.Execute) + ' ' + ([string] $_.Arguments)).Trim()
+                })
+            }
+            catch { }
+
+            $actionText = ($actions -join ' | ')
+            $recent = ($null -ne $registered -and $registered.ToUniversalTime() -gt $cutoff)
+            $suspicious = $actionText -match $interpreters
+
+            if (-not $recent -and -not $suspicious) { continue }
+
+            $reasons = New-Object System.Collections.Generic.List[string]
+            if ($recent) { [void] $reasons.Add('registeredRecently') }
+            if ($suspicious) { [void] $reasons.Add('runsAnInterpreter') }
+
+            $registeredText = $null
+            if ($null -ne $registered) {
+                $registeredText = Format-TriageTimestamp ([datetimeoffset] $registered)
+            }
+
+            Write-TriageFinding -Level 'Warning' `
+                -Message 'A scheduled task was registered recently, or runs an interpreter that can execute downloaded content. Scheduled tasks are the most durable persistence on Windows.' `
+                -State @{
+                    ruleId        = 'TRIAGE-010'
+                    scope         = 'host'
+                    taskPath      = ([string] $task.TaskPath + [string] $task.TaskName)
+                    taskState     = [string] $task.State
+                    registeredUtc = $registeredText
+                    action        = $actionText
+                    reasons       = @($reasons.ToArray())
+                    author        = [string] $task.Author
+                }
+        }
+    }
+    catch {
+        Write-TriageHost '  scheduled tasks could not be read; run elevated for this check.' 'Yellow'
+    }
+
+    # ---------------------------------------------------------------------------------
+    # TRIAGE-011 - local accounts, and who is an administrator.
+    #
+    # The incident that produced this tool included an FTP account logging in mid-compromise. An
+    # account is quieter than a webshell and survives every cleanup that only touches the web root.
+    # ---------------------------------------------------------------------------------
+    try {
+        foreach ($account in (Get-LocalUser -ErrorAction Stop)) {
+            $changed = $null
+            try { if ($account.PasswordLastSet) { $changed = [datetime] $account.PasswordLastSet } } catch { }
+            if ($null -eq $changed -or $changed.ToUniversalTime() -le $cutoff) { continue }
+
+            $lastLogonText = $null
+            try {
+                if ($account.LastLogon) {
+                    $lastLogonText = Format-TriageTimestamp ([datetimeoffset] $account.LastLogon)
+                }
+            }
+            catch { }
+
+            Write-TriageFinding -Level 'Warning' `
+                -Message 'A local account had its password set inside the window. On a server nobody administers daily, that is worth explaining.' `
+                -State @{
+                    ruleId             = 'TRIAGE-011'
+                    scope              = 'host'
+                    account            = [string] $account.Name
+                    enabled            = [bool] $account.Enabled
+                    passwordLastSetUtc = Format-TriageTimestamp ([datetimeoffset] $changed)
+                    lastLogonUtc       = $lastLogonText
+                }
+        }
+    }
+    catch {
+        Write-TriageHost '  local accounts could not be read.' 'Yellow'
+    }
+
+    # Membership of the local Administrators group, resolved from its well-known SID rather than
+    # its name: the group is "Administradores" on a Spanish Windows, and a check written against
+    # the English name finds nothing there and says so in the reassuring direction.
+    try {
+        $administrators = (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate(
+            [System.Security.Principal.NTAccount]).Value
+
+        $members = @(Get-LocalGroupMember -Group $administrators -ErrorAction Stop |
+            ForEach-Object { [string] $_.Name })
+
+        Write-TriageFinding -Level 'Information' `
+            -Message 'Members of the local Administrators group. Read this list and confirm every entry belongs.' `
+            -State @{
+                ruleId  = 'TRIAGE-011'
+                scope   = 'host'
+                group   = $administrators
+                members = $members
+            }
+    }
+    catch { }
+
+    # ---------------------------------------------------------------------------------
+    # TRIAGE-012 - services whose binary is somewhere a service binary has no business being.
+    # ---------------------------------------------------------------------------------
+    $suspectRoots = @('\temp\', '\tmp\', '\appdata\', '\users\public\', '\inetpub\', '\downloads\')
+
+    try {
+        foreach ($service in (Get-CimInstance -ClassName Win32_Service -ErrorAction Stop)) {
+            $binary = [string] $service.PathName
+            if ([string]::IsNullOrWhiteSpace($binary)) { continue }
+
+            $lowered = $binary.ToLowerInvariant()
+            $hit = @($suspectRoots | Where-Object { $lowered.Contains($_) })
+            if ($hit.Count -eq 0) { continue }
+
+            Write-TriageFinding -Level 'Warning' `
+                -Message 'A Windows service runs a binary from a temporary, user or web directory. Legitimate services live under Program Files or System32.' `
+                -State @{
+                    ruleId      = 'TRIAGE-012'
+                    scope       = 'host'
+                    service     = [string] $service.Name
+                    displayName = [string] $service.DisplayName
+                    binary      = $binary
+                    startMode   = [string] $service.StartMode
+                    account     = [string] $service.StartName
+                    matched     = @($hit)
+                }
+        }
+    }
+    catch {
+        Write-TriageHost '  services could not be read.' 'Yellow'
+    }
+
+    # ---------------------------------------------------------------------------------
+    # TRIAGE-013 - autorun keys.
+    # ---------------------------------------------------------------------------------
+    $runKeys = @(
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+        'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce',
+        'HKLM:\SOFTWARE\Wow6432Node\Microsoft\Windows\CurrentVersion\Run',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Run',
+        'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\RunOnce'
+    )
+
+    foreach ($key in $runKeys) {
+        if (-not (Test-Path -LiteralPath $key)) { continue }
+
+        $entry = $null
+        try { $entry = Get-ItemProperty -LiteralPath $key -ErrorAction Stop }
+        catch { continue }
+
+        foreach ($property in $entry.PSObject.Properties) {
+            if ($property.Name -like 'PS*') { continue }
+
+            Write-TriageFinding -Level 'Information' `
+                -Message 'An autorun entry. Confirm it belongs; on a server this list should be short and familiar.' `
+                -State @{
+                    ruleId  = 'TRIAGE-013'
+                    scope   = 'host'
+                    key     = $key
+                    name    = [string] $property.Name
+                    command = [string] $property.Value
+                }
+        }
+    }
+
+    # ---------------------------------------------------------------------------------
+    # TRIAGE-014 - recently written code in staging directories.
+    #
+    # This is the check that would have found what the intruder was doing on the day this tool was
+    # written: writing hidden files into C:\Windows\Temp, an hour before anybody looked. Nothing
+    # under the web root sees that, which is the whole reason this section exists.
+    # ---------------------------------------------------------------------------------
+    $stagingDirectories = @(
+        (Join-Path $env:windir 'Temp'),
+        (Join-Path $env:SystemDrive 'Temp'),
+        (Join-Path $env:SystemDrive 'tmp'),
+        $env:TEMP,
+        (Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\StartUp')
+    )
+
+    $codeExtensions = @('exe', 'dll', 'ps1', 'bat', 'cmd', 'vbs', 'js', 'jse', 'wsf', 'hta', 'scr', 'php', 'jar')
+
+    foreach ($directory in ($stagingDirectories | Sort-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace($directory)) { continue }
+        if (-not (Test-Path -LiteralPath $directory)) { continue }
+
+        $entries = @()
+        try { $entries = @(Get-ChildItem -LiteralPath $directory -Force -File -ErrorAction Stop) }
+        catch { continue }
+
+        foreach ($file in $entries) {
+            $isCode = $false
+            foreach ($extension in (Get-ExtensionSegment $file.Name)) {
+                if ($codeExtensions -contains $extension) { $isCode = $true; break }
+            }
+
+            # The dropper marker from the incident: a hidden file named for the second it was
+            # created. It has no extension at all, so the check above cannot see it.
+            $isMarker = $file.Name -match '^\.\d{9,10}$'
+
+            if (-not $isCode -and -not $isMarker) { continue }
+            if ($file.LastWriteTimeUtc -le $cutoff -and $file.CreationTimeUtc -le $cutoff) { continue }
+
+            Write-TriageFinding -Level 'Warning' `
+                -Message 'Executable content was written recently into a staging directory. Stopping a website does not touch anything here.' `
+                -State @{
+                    ruleId      = 'TRIAGE-014'
+                    scope       = 'host'
+                    path        = $file.FullName
+                    sizeBytes   = [long] $file.Length
+                    createdUtc  = Format-TriageTimestamp ([datetimeoffset] $file.CreationTimeUtc)
+                    modifiedUtc = Format-TriageTimestamp ([datetimeoffset] $file.LastWriteTimeUtc)
+                    sha256      = Get-TriageFileHash $file
+                    marker      = $isMarker
+                }
+        }
+    }
+
+    # ---------------------------------------------------------------------------------
+    # TRIAGE-015 - what the antivirus already knows.
+    #
+    # Defender's own history is evidence somebody else already collected, and it is the one source
+    # here that can name a threat family rather than describing a shape.
+    # ---------------------------------------------------------------------------------
+    try {
+        foreach ($detection in (Get-MpThreat -ErrorAction Stop)) {
+            $detectedText = $null
+            try {
+                if ($detection.InitialDetectionTime) {
+                    $detectedText = Format-TriageTimestamp ([datetimeoffset] $detection.InitialDetectionTime)
+                }
+            }
+            catch { }
+
+            Write-TriageFinding -Level 'Warning' `
+                -Message 'Microsoft Defender has a record of this threat on the host.' `
+                -State @{
+                    ruleId          = 'TRIAGE-015'
+                    scope           = 'host'
+                    threat          = [string] $detection.ThreatName
+                    severity        = [string] $detection.SeverityID
+                    active          = [bool] $detection.IsActive
+                    resources       = @(@($detection.Resources) | Select-Object -First 8 | ForEach-Object { [string] $_ })
+                    firstDetectedUtc = $detectedText
+                }
+        }
+    }
+    catch {
+        Write-TriageHost '  Defender history could not be read.' 'Yellow'
+    }
+}
+
+<#
     TRIAGE-008 - what the IIS logs remember about each flagged artifact.
 
     A suspicious file is a hypothesis. The log line that shows it answering a request, the day it
@@ -1325,6 +1617,13 @@ try {
             Invoke-TriageLogCorrelation -LogRoot $IisLogPath -SiteRoot $site -CandidatePaths $candidates
         }
     }
+
+    # Once for the machine, not once per site: persistence belongs to the host.
+    if ($IncludeHost) {
+        Write-TriageHost ''
+        Write-TriageHost 'Scanning the host: tasks, accounts, services, autoruns, staging directories' 'Cyan'
+        Invoke-TriageHostScan
+    }
 }
 finally {
     $script:Writer.Flush()
@@ -1394,6 +1693,18 @@ if ($fileFindings.Count -gt 0) {
             Write-TriageHost ('  ... and ' + ($uncovered.Count - 25) + ' more, in the report.')
         }
     }
+}
+
+if ($IncludeHost) {
+    $hostFindings = @($script:Findings | Where-Object { $_.RuleId -like 'TRIAGE-01*' })
+    Write-TriageHost ''
+    Write-TriageHost ('Host checks ran: ' + $hostFindings.Count + ' finding(s) outside the web root.') 'Cyan'
+}
+else {
+    Write-TriageHost ''
+    Write-TriageHost 'Host checks did NOT run. Nothing here says anything about scheduled tasks, accounts,' 'Yellow'
+    Write-TriageHost 'services, autorun keys or staging directories. Stopping a site does not touch any of' 'Yellow'
+    Write-TriageHost 'those. Re-run elevated with -IncludeHost.' 'Yellow'
 }
 
 Write-TriageHost ''

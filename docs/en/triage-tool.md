@@ -73,6 +73,12 @@ forensic tool that silently truncates is worse than one that refuses to start.
 | `TRIAGE-007` | An executable file created *after* the content it holds was written. One is a backup tool; hundreds across a plugin tree is a mass-rewriter working through the site. |
 | `TRIAGE-008` | The requests the IIS logs remember reaching a flagged artifact: how many, when they started and stopped, from which addresses, with which methods and status codes. |
 | `TRIAGE-009` | Installed plugins and themes, with versions. |
+| `TRIAGE-010` | **Host.** A scheduled task registered recently, or one whose action runs an interpreter. |
+| `TRIAGE-011` | **Host.** A local account whose password was set recently, and who is in the Administrators group. |
+| `TRIAGE-012` | **Host.** A Windows service whose binary lives in a temporary, user or web directory. |
+| `TRIAGE-013` | **Host.** Autorun keys. |
+| `TRIAGE-014` | **Host.** Executable content written recently into a staging directory such as `C:\Windows\Temp`. |
+| `TRIAGE-015` | **Host.** Microsoft Defender's own record of threats on this machine. |
 
 ### Why `TRIAGE-005` is not just a list of function names
 
@@ -96,6 +102,33 @@ Because a list of CVEs baked into a script is out of date the day it is written,
 trusts a stale one is worse off than one who looks the version up. The tool reports names and
 versions and says where to check them. In the incident this came from, one line — the slider plugin's
 version — was what identified the entry point.
+
+
+## The host checks, and why they are separate
+
+Everything else in this tool looks inside a WordPress site. That is the right scope for a tool named
+after WordPress, and it is the wrong scope for the question an operator actually has, which is *"am
+I still compromised?"*
+
+A webshell is a foothold, not the whole of it. In the incident this tool comes from, the intruder
+had moved on to writing into `C:\Windows\Temp` — outside the web root, outside every other check
+here, and untouched by stopping the site. **Stopping IIS closes the door they came in by and does
+nothing about a scheduled task, a service, an autorun key or an account.**
+
+```powershell
+.\scripts\Invoke-WPShieldTriage.ps1 -IncludeHost -OutputPath .\triage.jsonl
+```
+
+`-IncludeHost` is opt-in because it answers a different question from the rest of the script and
+needs elevation to answer it properly. **The summary always says whether it ran**, because a section
+that is silently absent reads exactly like a section that found nothing — the same principle the
+preflight applies to an unreadable IIS configuration.
+
+Still read-only. Nothing is disabled, deleted or repaired.
+
+Group membership is resolved from the well-known SID rather than the name `Administrators`, because
+the group is `Administradores` on a Spanish Windows and a check written against the English name
+finds nothing there — and reports that absence in the reassuring direction.
 
 ## The gateway verdict
 
