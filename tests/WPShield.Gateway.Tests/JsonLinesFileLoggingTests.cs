@@ -12,9 +12,22 @@ namespace WPShield.Gateway.Tests;
 /// </summary>
 public sealed class JsonLinesFileLoggingTests : IDisposable
 {
+    /// <summary>
+    /// Rooted at the test binary's own directory, deliberately not at
+    /// <see cref="Path.GetTempPath"/>.
+    /// </summary>
+    /// <remarks>
+    /// <c>MultipartInspectionReaderTests.ReadingBodiesOfEveryShape_CreatesNoFileOnDisk</c> proves the
+    /// reader writes nothing to disk by redirecting <c>TMP</c> and <c>TEMP</c> to a probe directory
+    /// and asserting that the probe stays empty. Those variables are process-wide, and xUnit runs
+    /// test classes in parallel, so a logging test that resolved the temporary directory while that
+    /// redirection was in force wrote its files straight into the probe — and the disk-freedom guard
+    /// failed, intermittently, blaming the multipart reader for something these tests did. Reading a
+    /// path that no other test can move is what keeps the two independent.
+    /// </remarks>
     private readonly string _root = Path.Combine(
-        Path.GetTempPath(),
-        "wpshield-log-tests",
+        AppContext.BaseDirectory,
+        "log-tests",
         Guid.NewGuid().ToString("N"));
 
     [Fact]
@@ -214,7 +227,7 @@ public sealed class JsonLinesFileLoggingTests : IDisposable
     [Fact]
     public void ResolveDirectory_LeavesAnAbsolutePathAlone()
     {
-        var absolute = Path.Combine(Path.GetTempPath(), "wpshield-absolute");
+        var absolute = Path.Combine(AppContext.BaseDirectory, "wpshield-absolute");
         var options = new FileLogOptions { Directory = absolute };
 
         Assert.Equal(absolute, JsonLinesLogWriter.ResolveDirectory(options, _root));
