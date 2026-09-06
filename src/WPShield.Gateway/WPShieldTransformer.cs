@@ -15,10 +15,18 @@ namespace WPShield.Gateway;
 /// because IIS URL Rewrite treats them as the effective request path.
 /// </para>
 /// <para>
-/// During M1 and M2 the gateway is the only hop, so every inbound forwarding header is untrusted
-/// without exception. When WPShield is placed behind IIS with ARR the client address will arrive in
-/// <c>X-Forwarded-For</c> from a known local proxy and must be honored rather than discarded. That
-/// requires a configured trusted-proxy list; see the production traffic path ADR.
+/// Which values are <i>derived</i> is now decided one step earlier. <see cref="ClientAddressResolver"/>
+/// runs at the top of the pipeline and produces a <see cref="ResolvedClient"/>: the connection's own
+/// address and scheme when the peer is not a configured trusted proxy — the M1 and M2 behavior,
+/// unchanged and still the default — or the values a trusted local proxy forwarded, when it is. This
+/// transformer consumes that decision and never makes it, so the headers WordPress receives and the
+/// evidence WPShield logs cannot disagree about who sent the request.
+/// </para>
+/// <para>
+/// Trust unlocks exactly two headers. Every name in <see cref="UntrustedClientHeaders"/> and every
+/// remaining <c>X-Forwarded-*</c> variant is still removed unconditionally, from every peer,
+/// including a trusted one — <c>X-Original-URL</c> and <c>X-Rewrite-URL</c> are authentication-bypass
+/// vectors regardless of which hop presents them.
 /// </para>
 /// </remarks>
 public sealed class WPShieldTransformer : HttpTransformer
@@ -69,13 +77,22 @@ public sealed class WPShieldTransformer : HttpTransformer
 
         RemoveUntrustedHeaders(proxyRequest);
 
-        var remoteIp = httpContext.Connection.RemoteIpAddress?.ToString();
+        // The fallback is not defensive noise. It covers a pipeline where the resolving middleware
+        // never ran - a transformer exercised directly by a test, or a future reordering - and it
+        // falls back to the connection itself, which is the answer that trusts nothing.
+        var client = httpContext.Features.Get<ResolvedClient>()
+            ?? new ResolvedClient(
+                httpContext.Connection.RemoteIpAddress,
+                httpContext.Request.Scheme,
+                ViaTrustedProxy: false);
+
+        var remoteIp = client.Address?.ToString();
         if (!string.IsNullOrWhiteSpace(remoteIp))
         {
             proxyRequest.Headers.TryAddWithoutValidation("X-Forwarded-For", remoteIp);
         }
 
-        proxyRequest.Headers.TryAddWithoutValidation("X-Forwarded-Proto", httpContext.Request.Scheme);
+        proxyRequest.Headers.TryAddWithoutValidation("X-Forwarded-Proto", client.Scheme);
         proxyRequest.Headers.TryAddWithoutValidation("X-Forwarded-Host", httpContext.Request.Host.Value);
         proxyRequest.Headers.TryAddWithoutValidation(RequestIdHeaderName, httpContext.TraceIdentifier);
     }

@@ -167,6 +167,112 @@ public sealed class SyntheticGatewayIntegrationTests
         Assert.Equal("site-one.test", recorded.ForwardedHost);
     }
 
+    /// <summary>
+    /// The production traffic path, proved on real traffic: the connection is loopback, the peer is a
+    /// configured trusted proxy, and what reaches WordPress is the visitor's address and the
+    /// visitor's scheme rather than the local hop's.
+    /// </summary>
+    /// <remarks>
+    /// The scheme half is what keeps two live sites working. IIS terminates TLS and speaks plain HTTP
+    /// to the gateway over loopback, so without an honored <c>X-Forwarded-Proto</c> WordPress decides
+    /// it was reached over HTTP and generates <c>http://</c> canonical URLs, redirects and login
+    /// targets behind an HTTPS site — a redirect loop, not a subtle degradation.
+    /// </remarks>
+    [Fact]
+    public async Task TrustedProxy_ForwardsTheClientAddressAndSchemeItSupplied()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(
+            trustedProxies: ["127.0.0.1", "::1"]);
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/wp-admin/");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.99");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.Equal("203.0.113.99", recorded.ForwardedFor);
+        Assert.Equal("https", recorded.ForwardedProto);
+        Assert.Equal("site-one.test", recorded.ForwardedHost);
+    }
+
+    /// <summary>
+    /// The spoof the rightmost-entry rule refuses, proved end to end. A client that appends the
+    /// trusted proxy's own address to its chain is trying to make the resolver step over that entry
+    /// and believe the one to its left.
+    /// </summary>
+    [Fact]
+    public async Task TrustedProxy_DoesNotBelieveAnEntryLeftOfTheOneTheProxyWrote()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(
+            trustedProxies: ["127.0.0.1", "::1"]);
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "8.8.8.8, 127.0.0.1");
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.NotEqual("8.8.8.8", recorded.ForwardedFor);
+        Assert.True(IPAddress.TryParse(recorded.ForwardedFor, out var forwarded));
+        Assert.True(IPAddress.IsLoopback(forwarded));
+    }
+
+    /// <summary>
+    /// Trust unlocks two headers and no more. Everything an attacker could use to change the
+    /// perceived origin or the effective path is still removed, including from a trusted peer.
+    /// </summary>
+    [Fact]
+    public async Task TrustedProxy_StillRemovesEveryOtherUntrustedHeader()
+    {
+        const string attackerValue = "attacker-controlled";
+        await using var harness = await SyntheticGatewayHarness.StartAsync(
+            trustedProxies: ["127.0.0.1", "::1"]);
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/wp-admin/");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.99");
+
+        foreach (var header in UntrustedClientHeaders)
+        {
+            request.Headers.TryAddWithoutValidation(header, attackerValue);
+        }
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.Equal("203.0.113.99", recorded.ForwardedFor);
+
+        foreach (var header in UntrustedClientHeaders)
+        {
+            Assert.False(
+                recorded.Headers.ContainsKey(header),
+                $"'{header}' reached the backend from a trusted peer.");
+        }
+    }
+
+    /// <summary>
+    /// Configuring a trusted proxy trusts that peer and no other. A gateway listing some other
+    /// address must behave exactly as one listing none.
+    /// </summary>
+    [Fact]
+    public async Task UnlistedPeer_KeepsTheStripEverythingBehavior()
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(
+            trustedProxies: ["203.0.113.1"]);
+        using var request = harness.CreateRequest("site-one.test", HttpMethod.Get, "/");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-For", "203.0.113.99");
+        request.Headers.TryAddWithoutValidation("X-Forwarded-Proto", "https");
+
+        using var response = await harness.Client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var recorded = Assert.Single(harness.SiteOne.Requests);
+        Assert.NotEqual("203.0.113.99", recorded.ForwardedFor);
+        Assert.True(IPAddress.TryParse(recorded.ForwardedFor, out var forwarded));
+        Assert.True(IPAddress.IsLoopback(forwarded));
+        Assert.Equal("http", recorded.ForwardedProto);
+    }
+
     [Fact]
     public async Task SlowBackend_ReturnsPrivacySafe502AfterConfiguredTimeout()
     {
@@ -220,7 +326,9 @@ public sealed class SyntheticGatewayIntegrationTests
         public SyntheticBackend SiteOne { get; }
         public SyntheticBackend SiteTwo { get; }
 
-        public static async Task<SyntheticGatewayHarness> StartAsync(int activityTimeoutSeconds = 10)
+        public static async Task<SyntheticGatewayHarness> StartAsync(
+            int activityTimeoutSeconds = 10,
+            string[]? trustedProxies = null)
         {
             var siteOne = await SyntheticBackend.StartAsync("site-one");
             SyntheticBackend? siteTwo = null;
@@ -235,7 +343,7 @@ public sealed class SyntheticGatewayIntegrationTests
                 });
                 builder.WebHost.ConfigureKestrel(options => options.Listen(IPAddress.Loopback, 0));
                 builder.Configuration.Sources.Clear();
-                builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+                var settings = new Dictionary<string, string?>
                 {
                     ["Gateway:Urls:0"] = "http://127.0.0.1:0",
                     ["Gateway:AllowRemoteHealthChecks"] = "false",
@@ -252,7 +360,14 @@ public sealed class SyntheticGatewayIntegrationTests
                     ["Sites:1:Mode"] = "Monitor",
                     ["Sites:1:ObserveThreshold"] = "30",
                     ["Sites:1:BlockThreshold"] = "80"
-                });
+                };
+
+                for (var index = 0; index < (trustedProxies?.Length ?? 0); index++)
+                {
+                    settings[$"Gateway:TrustedProxies:{index}"] = trustedProxies![index];
+                }
+
+                builder.Configuration.AddInMemoryCollection(settings);
 
                 gateway = GatewayApplication.Build(builder);
                 await gateway.StartAsync();

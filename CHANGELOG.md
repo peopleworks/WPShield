@@ -14,6 +14,29 @@ must complete first.
 
 ### Security
 
+- **`Gateway:TrustedProxies` makes the "never trust forwarding headers" invariant conditional, and
+  narrowly.** ADR 0001 places WPShield behind IIS, where every request arrives from a local proxy;
+  stripping every forwarding header there attributes every visitor to `127.0.0.1` and — the part
+  that breaks a live site rather than degrading it — tells WordPress the request arrived over HTTP,
+  so it generates `http://` canonical URLs, redirects and login targets behind an HTTPS site.
+  Trust is now granted to a **peer address**, never to a header, and it unlocks exactly two headers:
+  `X-Forwarded-For` and `X-Forwarded-Proto`. `Forwarded`, every other `X-Forwarded-*` variant, the
+  whole client-address family, the `X-Original-URL` and `X-Rewrite-URL` path-override vectors and
+  `X-WPShield-Request-ID` stay stripped from every peer, trusted included — a path-override header
+  does not become legitimate because a proxy presented it, and the loop-prevention condition in the
+  IIS rewrite rule depends on a client being unable to set the correlation header. The list is empty
+  by default, which reproduces the previous behaviour exactly, so an operator who never configures it
+  is never less safe than before.
+- **The rightmost `X-Forwarded-For` entry wins, and trusted entries are deliberately not skipped.**
+  A proxy appends the address it actually saw, so the rightmost entry is the only one the trusted hop
+  wrote and everything to its left is client-supplied. The conventional right-to-left walk that skips
+  entries matching a trusted proxy is the classic spoof: a client sends
+  `X-Forwarded-For: 8.8.8.8, 127.0.0.1`, the skip steps over the trusted-looking entry, and the
+  attacker has pinned their own address. WPShield resolves that request to `127.0.0.1`. Configuration
+  accepts exact IP addresses only; a CIDR range is refused rather than unimplemented, because these
+  entries decide whose headers become authoritative and a range one bit too wide hands that to
+  strangers. A resolved scheme is a canonical `http` or `https` literal rather than the received
+  bytes, so nothing attacker-controlled reaches `$_SERVER` even after the comparison succeeds.
 - **The inspection engine now runs on gateway traffic.** Until this change it never had.
   `GatewayApplication` resolved the site, checked the request size and forwarded, and the
   `WPShield.Gateway` project did not even reference `WPShield.Rules.WordPress` — every rule this

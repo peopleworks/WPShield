@@ -66,6 +66,11 @@ public static class GatewayApplication
         LogResolvedSites(loggerFactory, sites);
         LogInspectionConfiguration(loggerFactory, gatewayOptions, multipartOptions);
 
+        // Parsed once at startup rather than per request. The validator has already refused to start
+        // on anything that is not an exact IP address, so every entry that reaches here parses.
+        var trustedProxies = ClientAddressResolver.CreateTrustedProxySet(gatewayOptions.TrustedProxies);
+        LogTrustedProxies(loggerFactory, trustedProxies);
+
         // Captured rather than injected as a route-handler parameter, for the same reason
         // gatewayOptions is: it is a process-lifetime singleton, and capturing it keeps the
         // signature of the fallback handler down to what actually varies per request.
@@ -81,6 +86,14 @@ public static class GatewayApplication
             context.TraceIdentifier = Guid.NewGuid().ToString("N");
             context.Response.Headers["X-WPShield-Request-ID"] = context.TraceIdentifier;
             context.Response.Headers["X-Content-Type-Options"] = "nosniff";
+
+            // Resolved here, at the very top, so that every later stage - the request log, the
+            // refusal log, the forwarded headers - reads one answer instead of each deriving its
+            // own. Two components that resolve the client independently will eventually disagree,
+            // and a security tool whose evidence contradicts what it forwarded is worse than one
+            // that resolves the client badly but consistently.
+            context.Features.Set(ClientAddressResolver.Resolve(context, trustedProxies));
+
             await next();
         });
 
@@ -128,11 +141,16 @@ public static class GatewayApplication
             var host = context.Request.Host.Host;
             var site = siteResolver.Resolve(host);
 
+            // The same resolved value the transformer forwards, so an operator comparing a WPShield
+            // log line with a WordPress access log entry sees one address, not two.
+            var client = context.Features.Get<ResolvedClient>()?.Address?.ToString() ?? "unknown";
+
             if (site is null)
             {
                 logger.LogWarning(
-                    "Unknown host rejected. RequestId={RequestId} Host={Host} Method={Method} Path={Path}",
+                    "Unknown host rejected. RequestId={RequestId} Client={Client} Host={Host} Method={Method} Path={Path}",
                     context.TraceIdentifier,
+                    client,
                     host,
                     context.Request.Method,
                     context.Request.Path.Value);
@@ -161,9 +179,10 @@ public static class GatewayApplication
             }
 
             logger.LogInformation(
-                "Request forwarding. RequestId={RequestId} SiteId={SiteId} Method={Method} Path={Path}",
+                "Request forwarding. RequestId={RequestId} SiteId={SiteId} Client={Client} Method={Method} Path={Path}",
                 context.TraceIdentifier,
                 site.Id,
+                client,
                 context.Request.Method,
                 context.Request.Path.Value);
 
@@ -461,6 +480,50 @@ public static class GatewayApplication
                 "Gateway:Multipart:SampleBytes ({SampleBytes}) exceeds Gateway:MaximumRequestBytes ({MaximumRequestBytes}), so the configured sample size can never be reached.",
                 multipartOptions.SampleBytes,
                 gatewayOptions.MaximumRequestBytes);
+        }
+    }
+
+    /// <summary>
+    /// Reports whose forwarding headers the gateway will honor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both states are printed, because both are wrong somewhere. An empty list is correct for the
+    /// loopback laboratory and wrong behind IIS, where it attributes every visitor to the proxy and
+    /// tells WordPress the request arrived over HTTP; a populated list is correct behind IIS and
+    /// over-trusting anywhere the named peer is not actually a proxy. An operator cannot tell which
+    /// state they are in from behavior alone until traffic is already flowing, so the gateway says so
+    /// at startup next to the resolved site table.
+    /// </para>
+    /// <para>
+    /// A non-loopback entry is reported at Warning rather than refused. It is provably dead
+    /// configuration - <c>ValidateListeners</c> permits loopback listeners only, so no other peer can
+    /// ever connect - and dead configuration is exactly the kind of thing that gets copied forward
+    /// into the deployment where it would matter. Refusing to start would follow the wrong precedent:
+    /// this is an over-specification with no effect, like a sample larger than the request limit, not
+    /// a safety ceiling being lifted.
+    /// </para>
+    /// </remarks>
+    private static void LogTrustedProxies(ILoggerFactory loggerFactory, IReadOnlySet<IPAddress> trustedProxies)
+    {
+        var logger = loggerFactory.CreateLogger("WPShield.Gateway.Configuration");
+
+        if (trustedProxies.Count == 0)
+        {
+            logger.LogInformation(
+                "No trusted proxies configured. Every inbound forwarding header is stripped and each request is attributed to the address that connected. Behind IIS this reports the proxy rather than the visitor; see Gateway:TrustedProxies.");
+            return;
+        }
+
+        logger.LogInformation(
+            "Trusted proxies configured. X-Forwarded-For and X-Forwarded-Proto are honored from these peers only. TrustedProxies={TrustedProxies}",
+            string.Join(", ", trustedProxies.Select(address => address.ToString())));
+
+        foreach (var address in trustedProxies.Where(address => !IPAddress.IsLoopback(address)))
+        {
+            logger.LogWarning(
+                "Gateway:TrustedProxies contains a non-loopback address that can never match, because the gateway accepts loopback connections only. TrustedProxy={TrustedProxy}",
+                address);
         }
     }
 

@@ -232,9 +232,85 @@ public sealed class GatewayConfigurationValidatorTests
         GatewayConfigurationValidator.Validate(CreateGatewayOptions(), sites);
     }
 
-    private static GatewayOptions CreateGatewayOptions()
+    [Theory]
+    [InlineData("127.0.0.0/8")]
+    [InlineData("10.0.0.0/24")]
+    public void Validate_RejectsTrustedProxyRange(string entry)
     {
-        return new GatewayOptions { Urls = ["http://127.0.0.1:10000"] };
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(
+                CreateGatewayOptions(trustedProxies: [entry]),
+                [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("CIDR range", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("localhost")]
+    [InlineData("proxy.example")]
+    public void Validate_RejectsTrustedProxyHostname(string entry)
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(
+                CreateGatewayOptions(trustedProxies: [entry]),
+                [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("is not an IP address", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void Validate_RejectsEmptyTrustedProxyEntry(string entry)
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(
+                CreateGatewayOptions(trustedProxies: [entry]),
+                [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("is empty", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_NamesTheOffendingTrustedProxyIndex()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(
+                CreateGatewayOptions(trustedProxies: ["127.0.0.1", "::1", "not-an-address"]),
+                [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("Gateway:TrustedProxies:2", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_AcceptsExactTrustedProxyAddresses()
+    {
+        GatewayConfigurationValidator.Validate(
+            CreateGatewayOptions(trustedProxies: ["127.0.0.1", "::1", " 203.0.113.5 "]),
+            [CreateSite("one", "example.test", 51001)]);
+    }
+
+    /// <summary>
+    /// The empty default must stay valid, because it is the posture a fresh clone runs with and the
+    /// one that trusts nothing.
+    /// </summary>
+    [Fact]
+    public void Validate_AcceptsNoTrustedProxies()
+    {
+        GatewayConfigurationValidator.Validate(
+            CreateGatewayOptions(),
+            [CreateSite("one", "example.test", 51001)]);
+
+        Assert.Empty(new GatewayOptions().TrustedProxies);
+    }
+
+    private static GatewayOptions CreateGatewayOptions(string[]? trustedProxies = null)
+    {
+        return new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:10000"],
+            TrustedProxies = trustedProxies ?? []
+        };
     }
 
     private static SiteOptions CreateSiteWithHosts(string id, string[] hosts, int destinationPort)
