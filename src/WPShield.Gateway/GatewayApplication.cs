@@ -16,7 +16,12 @@ public static class GatewayApplication
         builder.Configuration.Sources.Clear();
         builder.Configuration
             .SetBasePath(AppContext.BaseDirectory)
-            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+            // Reload is intentionally disabled. Gateway and site options are validated once and
+            // captured for the lifetime of the process, so a watched file would silently promise
+            // hot reload that never happens. Restart the gateway to apply configuration changes.
+            .AddJsonFile("appsettings.json", optional: false, reloadOnChange: false)
+            // Operator overlay with real hostnames and destinations. Absent from the repository.
+            .AddJsonFile("appsettings.Local.json", optional: true, reloadOnChange: false)
             .AddEnvironmentVariables(prefix: "WPSHIELD_")
             .AddCommandLine(args);
 
@@ -47,6 +52,7 @@ public static class GatewayApplication
         builder.WebHost.UseUrls(gatewayOptions.Urls);
 
         var app = builder.Build();
+        LogResolvedSites(app.Services.GetRequiredService<ILoggerFactory>(), sites);
         var requestConfig = new ForwarderRequestConfig
         {
             ActivityTimeout = TimeSpan.FromSeconds(Math.Clamp(gatewayOptions.ActivityTimeoutSeconds, 1, 300))
@@ -228,6 +234,29 @@ public static class GatewayApplication
                 error = "request_too_large",
                 requestId = context.TraceIdentifier
             }, context.RequestAborted);
+        }
+    }
+
+    /// <summary>
+    /// Reports the site table the gateway actually resolved. JSON configuration providers merge
+    /// arrays element by element, so an operator overlay that declares fewer sites than the shipped
+    /// example leaves the surplus example entries active. Printing the resolved table at startup
+    /// makes that mistake visible immediately instead of at the first misrouted request.
+    /// Destinations are loopback-validated before this runs, so they carry no sensitive topology.
+    /// </summary>
+    private static void LogResolvedSites(ILoggerFactory loggerFactory, IReadOnlyList<SiteOptions> sites)
+    {
+        var logger = loggerFactory.CreateLogger("WPShield.Gateway.Configuration");
+        logger.LogInformation("Gateway configuration resolved {SiteCount} site(s).", sites.Count);
+
+        foreach (var site in sites)
+        {
+            logger.LogInformation(
+                "Configured site. SiteId={SiteId} Hosts={Hosts} Destination={Destination} Mode={Mode}",
+                site.Id,
+                string.Join(", ", site.Hosts),
+                site.Destination,
+                site.Mode);
         }
     }
 
