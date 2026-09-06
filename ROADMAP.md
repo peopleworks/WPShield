@@ -113,7 +113,10 @@ not read as more than they claim:
 
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
 > traffic path chosen in [ADR 0001](docs/en/adr/0001-production-traffic-path.md) every request
-> arrives from a local proxy, so `Gateway:TrustedProxies` must exist before this milestone starts.
+> arrives from a local proxy, so `Gateway:TrustedProxies` had to exist before this milestone could
+> start. **It now does**, pulled forward from M7 because it is a prerequisite for both milestones and
+> because leaving it undone makes WordPress generate `http://` URLs behind an HTTPS site. See
+> [operator configuration](docs/en/operator-configuration.md#trusted-proxies).
 >
 > M2 also left a resource control unfinished. Nothing bounds how many multipart bodies may be
 > buffered at once, and `KestrelServerLimits.MaxConcurrentConnections` is unlimited by default, so
@@ -156,7 +159,7 @@ must remain a single rule toggle. Installing ARR is a prerequisite, and the trus
 ADR requires must land before M3 rate limiting can identify clients correctly.
 
 - [ ] Install and configure ARR with the validated loop-safe rewrite rule.
-- [ ] Implement `Gateway:TrustedProxies` with an empty, strip-everything default.
+- [x] Implement `Gateway:TrustedProxies` with an empty, strip-everything default.
 - [ ] Complete synthetic and loopback IIS validation.
 - [ ] Verify backups, alternate administrative access, monitoring, bypass, and rollback.
 - [ ] Run one test site, then one real site, then both sites in Monitor mode.

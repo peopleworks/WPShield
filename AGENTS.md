@@ -32,6 +32,29 @@ Before modifying code:
   (`X-Real-IP`, `X-Client-IP`, `X-Cluster-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`,
   `Fastly-Client-IP`, `X-Azure-*`) and the path-override headers `X-Original-URL` and
   `X-Rewrite-URL`, which are authentication-bypass vectors against IIS URL Rewrite.
+- **`Gateway:TrustedProxies` narrows that rule and must never widen it.** Trust is granted to a peer
+  address, never to a header, and it unlocks exactly two headers: `X-Forwarded-For` and
+  `X-Forwarded-Proto`. Everything else in the set above stays stripped from every peer, trusted
+  included — `X-Original-URL` does not become legitimate because a proxy presented it. The default
+  is an empty list, which reproduces the strip-everything behaviour exactly, so an operator who
+  never configures it is never less safe than before. Exact IP addresses only: a CIDR range is
+  refused rather than unimplemented, because these entries decide whose headers become authoritative
+  and a range written one bit too wide hands that authority to strangers.
+- **The rightmost `X-Forwarded-For` entry wins, and entries that are themselves trusted proxies are
+  never skipped.** A proxy appends the address it actually saw, so the rightmost entry is the only
+  one the trusted hop wrote and everything left of it is client-supplied. The conventional
+  right-to-left walk that skips trusted entries is precisely the spoof: a client appends a
+  trusted-looking address to its own chain, the skip steps over it, and the attacker pins the
+  resolved client to any value it likes. WPShield's supported topology has exactly one proxy hop, so
+  there is never a legitimate trusted entry to skip.
+- **Resolve the client once, at the top of the pipeline, and read that answer everywhere.** Log
+  lines, refusal evidence and the forwarded headers must come from the same `ResolvedClient`. Two
+  components that each resolve the client will eventually disagree, and a security tool whose
+  evidence contradicts what it forwarded is worse than one that resolves badly but consistently.
+- **A resolved scheme is a canonical literal, never the received bytes.** `X-Forwarded-Proto`
+  resolves to exactly `http` or `https` or to nothing at all; echoing the client's text back into the
+  header WordPress reads would forward attacker-controlled bytes into `$_SERVER` even after the
+  comparison succeeded.
 - Never commit real hostnames, internal ports, or deployment topology. Use RFC 2606 `.example`
   placeholders; operator values belong in the gitignored `appsettings.Local.json`.
 - Configuration must never appear to reload when it does not.

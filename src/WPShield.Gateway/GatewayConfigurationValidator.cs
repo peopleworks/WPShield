@@ -50,6 +50,7 @@ public static class GatewayConfigurationValidator
 
         var listeners = ValidateListeners(gatewayOptions.Urls);
         ValidateRequestLimits(gatewayOptions);
+        ValidateTrustedProxies(gatewayOptions.TrustedProxies);
         ValidateMultipartInspection(multipartOptions);
 
         if (sites.Count == 0)
@@ -142,6 +143,65 @@ public static class GatewayConfigurationValidator
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Rejects a <c>Gateway:TrustedProxies</c> entry that is not an exact IP address.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Throw rather than skip.</b> Every other setting in this file bounds a resource; this one
+    /// decides whose forwarding headers become authoritative, so an entry that does not parse is the
+    /// one case where continuing is worse than not starting. Skipping it silently would leave a
+    /// gateway that appears configured for the production traffic path, attributes every visitor to
+    /// the proxy, and says nothing — and the operator's evidence about who attacked them would be
+    /// wrong for as long as it took to notice.
+    /// </para>
+    /// <para>
+    /// The three rejected shapes each get their own message because they are three different
+    /// mistakes. A CIDR range is a deliberate refusal rather than a missing feature; a hostname
+    /// cannot be trusted because the peer address is what the connection reports and no lookup
+    /// happens on the request path; an empty entry is almost always a stray comma in JSON.
+    /// </para>
+    /// </remarks>
+    private static void ValidateTrustedProxies(string[]? trustedProxies)
+    {
+        if (trustedProxies is null)
+        {
+            return;
+        }
+
+        for (var index = 0; index < trustedProxies.Length; index++)
+        {
+            var entry = trustedProxies[index];
+            var setting = $"Gateway:TrustedProxies:{index}";
+
+            if (string.IsNullOrWhiteSpace(entry))
+            {
+                throw new InvalidOperationException(
+                    $"{setting} is empty. Remove the entry rather than leaving a blank one, which " +
+                    "reads as a configured trusted proxy that can never match.");
+            }
+
+            var value = entry.Trim();
+
+            if (value.Contains('/', StringComparison.Ordinal))
+            {
+                throw new InvalidOperationException(
+                    $"{setting} ('{value}') is a CIDR range. Gateway:TrustedProxies accepts exact IP " +
+                    "addresses only. These entries decide whose X-Forwarded-For and X-Forwarded-Proto " +
+                    "headers WPShield honors, and a range written one bit too wide grants that to " +
+                    "hosts the operator never intended. List each proxy address explicitly.");
+            }
+
+            if (!IPAddress.TryParse(value, out _))
+            {
+                throw new InvalidOperationException(
+                    $"{setting} ('{value}') is not an IP address. Gateway:TrustedProxies is matched " +
+                    "against the peer address of the connection, which is a number and never a name, " +
+                    "so a hostname can never match and no lookup is performed on the request path.");
+            }
+        }
     }
 
     private static void ValidateRequestLimits(GatewayOptions options)

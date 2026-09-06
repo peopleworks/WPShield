@@ -94,6 +94,106 @@ $env:WPSHIELD_Sites__0__Mode = "Monitor"
 
 The same index-merge caveat applies.
 
+## Trusted proxies
+
+`Gateway:TrustedProxies` lists the peer addresses whose `X-Forwarded-For` and `X-Forwarded-Proto`
+headers WPShield will believe. It is **empty by default**, and an empty list means every inbound
+forwarding header is stripped and every request is attributed to whatever address connected.
+
+```json
+{
+  "Gateway": {
+    "TrustedProxies": ["127.0.0.1", "::1"]
+  }
+}
+```
+
+### When you need it
+
+Only when something else terminates the client connection. In the loopback laboratory the gateway is
+the only hop and the empty default is correct. Under the traffic path chosen in
+[ADR 0001](adr/0001-production-traffic-path.md) — IIS keeps ports 80 and 443 and rewrites to the
+gateway over loopback — every request arrives from a local proxy, and leaving this empty has two
+consequences, one of which is not subtle:
+
+- **Every visitor is recorded as `127.0.0.1`.** Evidence names the proxy instead of the attacker.
+- **WordPress decides it was reached over HTTP.** IIS terminates TLS and speaks plain HTTP to the
+  gateway, so without an honored `X-Forwarded-Proto` WordPress generates `http://` canonical URLs,
+  redirects and login targets behind an HTTPS site. That is a redirect loop, not a degradation.
+
+### What trust does and does not grant
+
+Trust is granted to a **peer address**, never to a header, and it unlocks exactly two headers.
+
+| Header | Untrusted peer | Trusted peer |
+| --- | --- | --- |
+| `X-Forwarded-For` | Stripped, replaced with the peer address | Honored, replaced with the resolved client |
+| `X-Forwarded-Proto` | Stripped, replaced with the connection scheme | Honored if it is exactly `http` or `https` |
+| `X-Forwarded-Host` | Replaced with the resolved site host | Replaced with the resolved site host |
+| `Forwarded`, every other `X-Forwarded-*` | Stripped | **Stripped** |
+| `X-Real-IP`, `CF-Connecting-IP`, `True-Client-IP`, the rest of the client-address family | Stripped | **Stripped** |
+| `X-Original-URL`, `X-Rewrite-URL` | Stripped | **Stripped** |
+| `X-WPShield-Request-ID` | Stripped | **Stripped** |
+
+The last four rows are the point. A path-override header does not become legitimate because a proxy
+presented it, and `X-WPShield-Request-ID` must stay unforgeable from every peer — the loop-prevention
+condition in the IIS rewrite rule depends on a client being unable to set it.
+
+### Exact addresses only
+
+A CIDR range is **refused, not unimplemented**:
+
+```text
+Unhandled exception. System.InvalidOperationException: Gateway:TrustedProxies:0 ('127.0.0.0/8') is a
+CIDR range. Gateway:TrustedProxies accepts exact IP addresses only.
+```
+
+These entries decide whose headers become authoritative. A range written one bit too wide grants that
+authority to hosts you never intended, and under this traffic path the only trusted peer is a local
+proxy, so a range buys nothing. Hostnames are refused for a different reason: the match is against
+the peer address of a live connection, which is a number, and no name lookup happens on the request
+path.
+
+### The rightmost entry wins
+
+WPShield reads the **rightmost** entry of the `X-Forwarded-For` chain and does not skip entries that
+happen to be trusted proxy addresses.
+
+A proxy appends the address it actually saw, so the rightmost entry is the only one the trusted hop
+wrote — everything to its left is whatever the client chose to send. The conventional alternative,
+walking right to left while skipping trusted entries, is the classic spoof: a client sends
+`X-Forwarded-For: 8.8.8.8, 127.0.0.1`, the skip logic steps over the trusted-looking entry, and the
+attacker has pinned their own address. WPShield resolves that request to `127.0.0.1`.
+
+This assumes exactly one proxy hop, which is what ADR 0001 specifies. If a header is missing,
+malformed or over-long, WPShield falls back to the peer address rather than guessing — wrong in a
+visible way, because an operator watching every request arrive from the proxy investigates, while an
+operator watching a plausible but attacker-chosen address does not.
+
+> [!IMPORTANT]
+> Make the rewrite rule **set** the header rather than hope the proxy appends it. An explicit
+> `<set name="HTTP_X_FORWARDED_FOR" value="{REMOTE_ADDR}" />` replaces whatever the client sent, so
+> the header carries exactly one entry and it is the one IIS measured. This is validated in the M1.3
+> laboratory before any production use.
+
+### Confirm it at startup
+
+The gateway reports which posture it is in, next to the resolved site table:
+
+```text
+info: WPShield.Gateway.Configuration
+      Trusted proxies configured. X-Forwarded-For and X-Forwarded-Proto are honored from these peers only. TrustedProxies=127.0.0.1, ::1
+```
+
+```text
+info: WPShield.Gateway.Configuration
+      No trusted proxies configured. Every inbound forwarding header is stripped and each request is attributed to the address that connected.
+```
+
+Both states are printed because both are wrong somewhere, and behavior alone will not tell you which
+one you are in until traffic is already flowing. A non-loopback entry is reported at Warning: the
+gateway accepts loopback connections only, so such an entry can never match.
+
 ## Inspection bounds
 
 `Gateway:Multipart` holds the bounds for the upload inspection pass. Unlike `Sites`, it is a JSON
