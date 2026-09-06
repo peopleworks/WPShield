@@ -1,0 +1,233 @@
+# Cut a research-preview release from a v* tag.
+#
+# WPShield has not been released yet. This file exists so that when a release does happen it
+# happens the same way every time, and so that what is deliberately NOT done is written down as a
+# decision rather than left as an absence a future contributor closes by accident.
+#
+# What this workflow will not do, and why:
+#
+#   - It does not push to NuGet. A `dotnet tool install -g` or a PackageReference is a
+#     frictionless route to running a loopback-only research preview in front of real traffic,
+#     and a package ID on nuget.org is effectively permanent because published versions cannot be
+#     deleted. Directory.Build.props sets IsPackable=false for the whole repository; this is the
+#     matching omission on the publishing side. Both are decisions, not oversights.
+#
+#   - It does not build a linux-x64 artifact, the way the sibling PeopleWorks tools do. WPShield's
+#     rules encode an IIS attack surface: web.config uploaded as remote code execution, the
+#     IIS-executable extension set, and the Windows file name collapse that makes shell.php. and
+#     shell.php::$DATA reach disk as shell.php. A Linux binary would start, find none of that, and
+#     imply a deployment target this project does not have.
+#
+#   - It does not mark any release "latest". Every release is a prerelease until M7.
+#
+#   - It does not sign anything. Code signing is the honest unautomated gap here; ROADMAP M6 owns
+#     it, and the release body says so rather than letting a downloader assume otherwise.
+#
+# Actions are pinned to a commit SHA with a version comment, matching build.yml and codeql.yml. A
+# floating tag is a mutable dependency, and this is the one workflow that holds a token able to
+# write to the repository.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# Read-only by default. Only the publish job below widens this, and only to contents: write.
+permissions:
+  contents: read
+
+jobs:
+  # The suite runs in its own job, holding a read-only token. The publish job never executes test
+  # code, so nothing a test project can reach is ever running while a token that can create
+  # releases and upload assets is in scope. A failing suite stops the release because publish
+  # `needs` this job.
+  test:
+    name: Test before release
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+      - run: dotnet restore WPShield.slnx
+      - run: dotnet build WPShield.slnx --configuration Release --no-restore
+      - run: dotnet test WPShield.slnx --configuration Release --no-build
+
+  publish:
+    name: Publish research preview
+    needs: test
+    # A workflow_dispatch run on a branch still runs the tests above, which is useful for
+    # exercising this file without shipping anything - but only a v* tag reaches the publish job.
+    # Nothing is released from main.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      # Needed to create the release and upload its assets. Nothing wider: no packages: write, no
+      # id-token: write, because nothing here publishes a package or authenticates to a registry.
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: '10.0.x'
+
+      # Guards the classic footgun: tagging v0.3.0 while Directory.Build.props still says 0.2.0.
+      # Nothing downstream would notice - the zip is named after the tag and would contain a
+      # binary that self-reports the older version. A binary whose metadata contradicts the
+      # release it came from is the same class of defect as a binary that claims to be 1.0 of a
+      # research preview, and this project has already fixed that one once.
+      #
+      # The tag arrives through env rather than being interpolated into the script body: a ref
+      # name is external input, and ${{ }} substitution happens before the shell sees the line.
+      - name: Check the tag matches the version being built
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          $tag = $env:TAG_NAME -replace '^v', ''
+          $version = ([xml](Get-Content Directory.Build.props -Raw)).SelectSingleNode('//Version').InnerText.Trim()
+          if ($tag -ne $version) {
+            Write-Host "::error::Tag $env:TAG_NAME does not match <Version>$version</Version> in Directory.Build.props."
+            Write-Host "Bump <Version> to $tag, or retag the release as v$version."
+            exit 1
+          }
+          Write-Host "Tag $env:TAG_NAME matches <Version>$version</Version>."
+
+      # Self-contained so there is no "install the .NET 10 runtime first" step between downloading
+      # the archive and reading the resolved site table the gateway prints at startup - the
+      # evaluation this preview exists for. Single file and compressed for the same reason.
+      #
+      # Two things travel beside the executable on purpose. appsettings.json is Content with
+      # CopyToPublishDirectory=PreserveNewest, so it stays an editable file the operator can read
+      # rather than something hidden inside the bundle; it ships carrying only RFC 2606
+      # placeholder hosts. appsettings.Local.json is CopyToPublishDirectory=Never, so an operator
+      # overlay holding real hostnames and destinations cannot be picked up by this step and
+      # published to the world.
+      - name: Publish the gateway for Windows
+        run: >
+          dotnet publish src/WPShield.Gateway/WPShield.Gateway.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          -p:PublishSingleFile=true
+          -p:EnableCompressionInSingleFile=true
+          -o ./publish/win-x64
+
+      # A published artifact that has never been started is an artifact whose first run happens on
+      # someone else's server. It is run from an empty directory, with nothing beside it but the
+      # two files the archive will contain, because that is exactly what a downloader has.
+      - name: Verify the published gateway starts and reports ready
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path ./smoke | Out-Null
+          Copy-Item ./publish/win-x64/WPShield.Gateway.exe ./smoke/
+          Copy-Item ./publish/win-x64/appsettings.json ./smoke/
+
+          $gateway = Start-Process -FilePath ./smoke/WPShield.Gateway.exe -WorkingDirectory ./smoke `
+                                   -PassThru -RedirectStandardOutput ./smoke/stdout.log `
+                                   -RedirectStandardError ./smoke/stderr.log
+          try {
+            # The shipped configuration binds 127.0.0.1:10000 and declares two placeholder sites.
+            $ready = $false
+            foreach ($attempt in 1..30) {
+              Start-Sleep -Seconds 1
+              if ($gateway.HasExited) { break }
+              try {
+                $response = Invoke-RestMethod -Uri 'http://127.0.0.1:10000/_wpshield/health/ready' -TimeoutSec 5
+                if ($response.status -eq 'ready') { $ready = $true; break }
+              } catch { }
+            }
+            if (-not $ready) {
+              Write-Host '::error::The published gateway never reported ready on loopback.'
+              Get-Content ./smoke/stdout.log, ./smoke/stderr.log -ErrorAction SilentlyContinue
+              exit 1
+            }
+            Write-Host "Ready, with $($response.sites) configured sites."
+          }
+          finally {
+            if (-not $gateway.HasExited) { Stop-Process -Id $gateway.Id -Force }
+          }
+
+          # The site table is printed on every start so an operator can see what the gateway will
+          # actually route before any traffic reaches it. If that line ever stops appearing, this
+          # release should not ship.
+          $stdout = Get-Content ./smoke/stdout.log -Raw
+          if ($stdout -notmatch 'wordpress-one') {
+            Write-Host '::error::The gateway did not print its resolved site table at startup.'
+            Write-Host $stdout
+            exit 1
+          }
+
+      # The status goes in the file name, not only in the release notes. A zip gets renamed,
+      # forwarded in a chat, and unpacked on a server months later by someone who never opened
+      # this page; the file name is the one string that travels with it the whole way.
+      #
+      # The PDB is included deliberately. It is a portable, Source Link annotated PDB, which is
+      # what lets an operator debug or verify this binary against the commit it was built from.
+      - name: Package the artifact and record its checksum
+        shell: pwsh
+        env:
+          TAG_NAME: ${{ github.ref_name }}
+        run: |
+          New-Item -ItemType Directory -Force -Path ./artifacts | Out-Null
+          $name = "wpshield-gateway-$env:TAG_NAME-win-x64-RESEARCH-PREVIEW-NOT-FOR-PRODUCTION"
+          Compress-Archive -Path ./publish/win-x64/* -DestinationPath "./artifacts/$name.zip"
+
+          # Unsigned builds - see ROADMAP M6 - so a checksum is the only integrity check a
+          # downloader has. Publishing it beside the archive is the minimum that makes the
+          # "verify what you downloaded" instruction in the release body actionable.
+          $hash = (Get-FileHash "./artifacts/$name.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name.zip" | Set-Content ./artifacts/SHA256SUMS.txt -Encoding ascii
+          Get-Content ./artifacts/SHA256SUMS.txt
+
+      - name: Create the GitHub release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          files: |
+            ./artifacts/*.zip
+            ./artifacts/SHA256SUMS.txt
+          # Prerelease is not a formality here. GitHub keeps prereleases out of the "Latest
+          # release" link, out of the releases badge, and out of what the API returns for
+          # /releases/latest - so the default path a stranger takes through this repository does
+          # not end at a runnable gateway. Every WPShield release stays a prerelease until M7.
+          prerelease: true
+          # Generated notes are appended below the body, so the warning is read first.
+          generate_release_notes: true
+          body: |
+            > **WPShield is a research preview. This build is not approved for production traffic.**
+
+            `${{ github.ref_name }}` is published so the M1-M2 gateway can be evaluated in a
+            laboratory. That is the only reason it exists.
+
+            - The gateway binds to loopback only. It does not replace the public IIS bindings on
+              ports 80 and 443, and it must not be placed in front of a site you care about.
+            - Every site starts in **Monitor** mode. Block is per-site and explicit.
+            - Upload inspection runs on `multipart/form-data` requests only (M2). Urlencoded
+              forms, JSON, XML-RPC, `application/octet-stream` PUTs and archive contents are
+              not inspected, and nothing bounds how many bodies may be buffered at once (M3).
+            - There is no rate limiting (M3), no observability pipeline (M4), no dashboard (M5),
+              no Windows Service packaging and no code signing (M6), and no controlled activation
+              procedure (M7).
+
+            Production activation requires M1 through M7. Read
+            [ROADMAP.md](https://github.com/peopleworks/WPShield/blob/${{ github.ref_name }}/ROADMAP.md)
+            and [THREAT_MODEL.md](https://github.com/peopleworks/WPShield/blob/${{ github.ref_name }}/THREAT_MODEL.md)
+            before evaluating this on any server.
+
+            ### Before you run it
+
+            1. Verify what you downloaded against `SHA256SUMS.txt`:
+               `Get-FileHash .\<archive>.zip -Algorithm SHA256`. These builds are **not** code
+               signed; that is ROADMAP M6.
+            2. Read
+               [docs/en/operator-configuration.md](https://github.com/peopleworks/WPShield/blob/${{ github.ref_name }}/docs/en/operator-configuration.md)
+               and put real hostnames in `appsettings.Local.json`. The shipped `appsettings.json`
+               carries RFC 2606 placeholders only, and the gateway refuses to start if real
+               hostnames are left sitting beside them.
+            3. Read the resolved site table the gateway prints at startup and confirm it matches
+               what you intended before sending it anything.
+
+            Not published, on purpose: NuGet packages, a .NET tool, a container image, and a Linux
+            binary. Each omission is a decision, and each one is explained in
+            [.github/workflows/release.yml](https://github.com/peopleworks/WPShield/blob/${{ github.ref_name }}/.github/workflows/release.yml).

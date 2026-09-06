@@ -18,13 +18,39 @@ public static class GatewayConfigurationValidator
         "example.org"
     ];
 
+    /// <summary>
+    /// Validates the gateway and site configuration, taking the multipart bounds from
+    /// <see cref="GatewayOptions.Multipart"/>.
+    /// </summary>
     public static void Validate(GatewayOptions gatewayOptions, IReadOnlyList<SiteOptions> sites)
     {
         ArgumentNullException.ThrowIfNull(gatewayOptions);
+
+        Validate(gatewayOptions, gatewayOptions.Multipart, sites);
+    }
+
+    /// <summary>
+    /// Validates the gateway configuration against an explicitly supplied set of multipart bounds.
+    /// </summary>
+    /// <remarks>
+    /// The overload exists because <c>GatewayApplication.Build</c> binds <c>Gateway:Multipart</c>
+    /// separately from <c>Gateway</c> and should validate exactly the instance it goes on to use,
+    /// rather than a second binding that could differ. The two-argument overload above delegates
+    /// here with <see cref="GatewayOptions.Multipart"/>, so a caller that never heard of multipart
+    /// inspection still gets the full check.
+    /// </remarks>
+    public static void Validate(
+        GatewayOptions gatewayOptions,
+        MultipartInspectionOptions multipartOptions,
+        IReadOnlyList<SiteOptions> sites)
+    {
+        ArgumentNullException.ThrowIfNull(gatewayOptions);
+        ArgumentNullException.ThrowIfNull(multipartOptions);
         ArgumentNullException.ThrowIfNull(sites);
 
         var listeners = ValidateListeners(gatewayOptions.Urls);
         ValidateRequestLimits(gatewayOptions);
+        ValidateMultipartInspection(multipartOptions);
 
         if (sites.Count == 0)
         {
@@ -125,6 +151,89 @@ public static class GatewayConfigurationValidator
         {
             throw new InvalidOperationException(
                 $"Gateway:MaximumRequestBytes must be between 1 and {GatewayOptions.AbsoluteMaximumRequestBytes} bytes.");
+        }
+    }
+
+    /// <summary>
+    /// Rejects <c>Gateway:Multipart</c> values outside the bounds the gateway will actually honor.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Throw, do not clamp.</b> This repository has both precedents — <c>MaximumRequestBytes</c>
+    /// throws, <c>ActivityTimeoutSeconds</c> is silently <c>Math.Clamp</c>ed — and throwing is the
+    /// right one here because every value below is a safety ceiling. An operator who writes
+    /// <c>MaximumFileCount: 100000</c> and silently receives 100 has been told nothing, and
+    /// configuration that appears to do something it does not is the failure this project refuses
+    /// to ship. <see cref="MultipartInspectionReader"/> clamps again at the point of use, so an
+    /// options instance built directly in code cannot lift a ceiling by skipping this method; that
+    /// second clamp is a backstop, not the operator-facing contract.
+    /// </para>
+    /// <para>
+    /// The <see cref="MultipartInspectionOptions.MinimumSampleBytes"/> floor is the one bound that
+    /// is not a resource control. It is a cross-agent contract recorded in
+    /// <c>docs/en/m2-content-rules-design.md</c>: below 512 bytes the text-versus-binary
+    /// classification degrades and the <c>%PDF-</c> tolerance disappears, so a number that reads
+    /// like a performance knob would quietly disable <c>FILE-TYPE-001</c> and <c>PHP-CONTENT-002</c>
+    /// while the configuration still said <c>Enabled: true</c>.
+    /// </para>
+    /// <para>
+    /// <see cref="MultipartInspectionOptions.Enabled"/> is deliberately not validated. Turning
+    /// inspection off is a supported operator decision — the escape hatch if inspection is ever
+    /// implicated in an incident — and the startup log, not a validation failure, is where it
+    /// belongs.
+    /// </para>
+    /// <para>
+    /// <b>A sample larger than <see cref="GatewayOptions.MaximumRequestBytes"/> is not rejected
+    /// here, and that was a decision rather than an omission.</b> It looks like nonsense and it is
+    /// certainly over-specified, but it is harmless: the reader fills whatever the body actually
+    /// contains and stops, so the only effect is that the configured sample size can never be
+    /// reached. Meanwhile a deliberately tiny <c>MaximumRequestBytes</c> is a legitimate
+    /// configuration — this repository's own request-limit tests run the gateway with a 16-byte
+    /// limit — and failing startup would turn a no-op over-specification into an outage. The
+    /// combination is reported instead: <c>GatewayApplication</c> logs it at Warning during
+    /// startup, which tells the operator without refusing to run.
+    /// </para>
+    /// </remarks>
+    private static void ValidateMultipartInspection(MultipartInspectionOptions options)
+    {
+        if (options.MaximumFileCount <= 0 ||
+            options.MaximumFileCount > MultipartInspectionOptions.AbsoluteMaximumFileCount)
+        {
+            throw new InvalidOperationException(
+                "Gateway:Multipart:MaximumFileCount must be between 1 and " +
+                $"{MultipartInspectionOptions.AbsoluteMaximumFileCount}.");
+        }
+
+        if (options.MaximumFieldCount <= 0 ||
+            options.MaximumFieldCount > MultipartInspectionOptions.AbsoluteMaximumFieldCount)
+        {
+            throw new InvalidOperationException(
+                "Gateway:Multipart:MaximumFieldCount must be between 1 and " +
+                $"{MultipartInspectionOptions.AbsoluteMaximumFieldCount}.");
+        }
+
+        if (options.MaximumPartHeaderBytes <= 0 ||
+            options.MaximumPartHeaderBytes > MultipartInspectionOptions.AbsoluteMaximumPartHeaderBytes)
+        {
+            throw new InvalidOperationException(
+                "Gateway:Multipart:MaximumPartHeaderBytes must be between 1 and " +
+                $"{MultipartInspectionOptions.AbsoluteMaximumPartHeaderBytes}.");
+        }
+
+        if (options.SampleBytes < MultipartInspectionOptions.MinimumSampleBytes ||
+            options.SampleBytes > MultipartInspectionOptions.AbsoluteMaximumSampleBytes)
+        {
+            throw new InvalidOperationException(
+                $"Gateway:Multipart:SampleBytes must be between {MultipartInspectionOptions.MinimumSampleBytes} " +
+                $"and {MultipartInspectionOptions.AbsoluteMaximumSampleBytes}.");
+        }
+
+        if (options.ReadTimeoutSeconds <= 0 ||
+            options.ReadTimeoutSeconds > MultipartInspectionOptions.AbsoluteMaximumReadTimeoutSeconds)
+        {
+            throw new InvalidOperationException(
+                "Gateway:Multipart:ReadTimeoutSeconds must be between 1 and " +
+                $"{MultipartInspectionOptions.AbsoluteMaximumReadTimeoutSeconds}.");
         }
     }
 

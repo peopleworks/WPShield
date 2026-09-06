@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="420" viewBox="0 0 900 420"
+     role="img" aria-labelledby="wps-host-resolution-title wps-host-resolution-desc"
+     font-family="Segoe UI, system-ui, -apple-system, Helvetica Neue, Arial, sans-serif">
+  <title id="wps-host-resolution-title">How WPShield routes a Host header, and what happens when it matches nothing</title>
+  <desc id="wps-host-resolution-desc">Three requests arrive at WPShield's SiteResolver, which holds an explicit table of host to destination. A request with Host wordpress-one.example resolves to the loopback destination 127.0.0.1:8081 and is forwarded to IIS site one. A request with Host wordpress-two.example resolves to 127.0.0.1:8082 and reaches IIS site two. A request with Host unknown.example matches no entry and receives HTTP 421 Misdirected Request with a JSON body of error unknown_host and the request identifier. The lookup is ordinal and case-insensitive, and the port and any trailing dot are stripped before it. No default entry exists and no arrow leads anywhere but to a configured destination or to the 421.</desc>
+
+  <defs>
+    <marker id="wps-host-arrow-neutral" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#C3CBD6"/>
+    </marker>
+    <marker id="wps-host-arrow-iis" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#0078D4"/>
+    </marker>
+    <marker id="wps-host-arrow-block" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 Z" fill="#B42318"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="420" fill="#FFFFFF"/>
+
+  <text x="450" y="28" text-anchor="middle" font-size="10.5" font-weight="700" letter-spacing="1.3" fill="#6B7684">ONE HOST HEADER, ONE DESTINATION, NO FALLBACK</text>
+
+  <!-- ========================= inbound ========================= -->
+  <rect x="20" y="60" width="250" height="44" rx="10" fill="#FFFFFF" stroke="#D8DEE6" stroke-width="1.5"/>
+  <text x="34" y="79" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11.5" fill="#12171D">Host: wordpress-one.example</text>
+  <text x="34" y="95" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#6B7684">GET /wp-admin/</text>
+
+  <rect x="20" y="134" width="250" height="44" rx="10" fill="#FFFFFF" stroke="#D8DEE6" stroke-width="1.5"/>
+  <text x="34" y="153" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11.5" fill="#12171D">Host: wordpress-two.example</text>
+  <text x="34" y="169" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#6B7684">POST /wp-json/&#8230;</text>
+
+  <rect x="20" y="208" width="250" height="44" rx="10" fill="#F8E9E8" stroke="#B42318" stroke-width="1.5"/>
+  <text x="34" y="227" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11.5" fill="#B42318">Host: unknown.example</text>
+  <text x="34" y="243" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#5B6673">any method, any path</text>
+
+  <line x1="274" y1="82" x2="304" y2="82" stroke="#C3CBD6" stroke-width="2" marker-end="url(#wps-host-arrow-neutral)"/>
+  <line x1="274" y1="156" x2="304" y2="156" stroke="#C3CBD6" stroke-width="2" marker-end="url(#wps-host-arrow-neutral)"/>
+  <line x1="274" y1="230" x2="304" y2="230" stroke="#C3CBD6" stroke-width="2" marker-end="url(#wps-host-arrow-neutral)"/>
+
+  <!-- ==================== WPShield's own code ==================== -->
+  <rect x="310" y="52" width="250" height="232" rx="14" fill="#EEEAFB" stroke="#512BD4" stroke-width="2"/>
+  <text x="435" y="78" text-anchor="middle" font-size="14" font-weight="600" fill="#12171D">SiteResolver</text>
+  <text x="435" y="96" text-anchor="middle" font-size="11.5" fill="#5B6673">explicit host table</text>
+  <line x1="326" y1="114" x2="544" y2="114" stroke="#D8DEE6" stroke-width="1"/>
+
+  <text x="330" y="138" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11.5" fill="#12171D">wordpress-one.example</text>
+  <text x="344" y="154" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#0A5C9E">&#8594; 127.0.0.1:8081</text>
+  <text x="330" y="180" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11.5" fill="#12171D">wordpress-two.example</text>
+  <text x="344" y="196" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#0A5C9E">&#8594; 127.0.0.1:8082</text>
+
+  <line x1="326" y1="216" x2="544" y2="216" stroke="#D8DEE6" stroke-width="1"/>
+  <g font-size="11" fill="#5B6673">
+    <text x="330" y="238">lookup is ordinal, case-insensitive;</text>
+    <text x="330" y="256">port and trailing dot stripped first</text>
+  </g>
+  <text x="435" y="306" text-anchor="middle" font-size="11" font-weight="700" fill="#512BD4">no default entry exists</text>
+
+  <line x1="566" y1="82" x2="614" y2="82" stroke="#0078D4" stroke-width="2" marker-end="url(#wps-host-arrow-iis)"/>
+  <line x1="566" y1="156" x2="614" y2="156" stroke="#0078D4" stroke-width="2" marker-end="url(#wps-host-arrow-iis)"/>
+  <line x1="566" y1="230" x2="614" y2="230" stroke="#B42318" stroke-width="2" marker-end="url(#wps-host-arrow-block)"/>
+
+  <!-- ========================= outcomes ========================= -->
+  <rect x="620" y="60" width="260" height="44" rx="10" fill="#E6F2FB" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="636" y="79" font-size="12.5" font-weight="600" fill="#0A5C9E">IIS site one</text>
+  <text x="636" y="95" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#5B6673">127.0.0.1:8081</text>
+
+  <rect x="620" y="134" width="260" height="44" rx="10" fill="#E6F2FB" stroke="#0078D4" stroke-width="1.5"/>
+  <text x="636" y="153" font-size="12.5" font-weight="600" fill="#0A5C9E">IIS site two</text>
+  <text x="636" y="169" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#5B6673">127.0.0.1:8082</text>
+
+  <rect x="620" y="200" width="260" height="96" rx="10" fill="#F8E9E8" stroke="#B42318" stroke-width="2"/>
+  <text x="636" y="224" font-size="15" font-weight="800" fill="#B42318">HTTP 421</text>
+  <text x="636" y="242" font-size="11" fill="#5B6673">Misdirected Request</text>
+  <rect x="638" y="252" width="224" height="34" rx="6" fill="#111820" stroke="#111820" stroke-width="1"/>
+  <g font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="10.5" fill="#E8EDF3">
+    <text x="650" y="266">{"error":"unknown_host",</text>
+    <text x="658" y="280">"requestId":"&#8230;"}</text>
+  </g>
+
+  <!-- ========================== closing ========================= -->
+  <text x="450" y="356" text-anchor="middle" font-size="13.5" font-weight="600" fill="#12171D">A host that is not in the table has nowhere to go.</text>
+  <g text-anchor="middle" font-size="11.5" fill="#5B6673">
+    <text x="450" y="378">WPShield has no fallback destination. Adding a site is an explicit configuration change,</text>
+    <text x="450" y="396">and a host claimed twice is a startup failure, not a silent last-one-wins.</text>
+  </g>
+</svg>

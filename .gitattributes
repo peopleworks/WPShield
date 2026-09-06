@@ -1,0 +1,18 @@
+# Normalize every text file to LF in the repository and in every working tree.
+#
+# .editorconfig declares `end_of_line = lf`. Without this file, a Windows clone with
+# core.autocrlf=true checks files out as CRLF, and `dotnet format --verify-no-changes`
+# then reports every file as needing changes on a Windows CI runner while passing on
+# Linux. Pinning the checkout encoding keeps the format gate consistent across
+# Windows, Linux and macOS contributors.
+* text=auto eol=lf
+
+# Binary assets must never be line-ending converted.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.snk binary

@@ -96,6 +96,42 @@ $env:WPSHIELD_Sites__0__Mode = "Monitor"
 
 Aplica la misma advertencia sobre la combinación por índice.
 
+## Límites de inspección
+
+`Gateway:Multipart` contiene los límites de la pasada de inspección de cargas. A diferencia de
+`Sites`, es un **objeto** JSON, así que la fusión de arreglos elemento a elemento descrita arriba no
+le aplica: una superposición que fija un valor deja el resto en sus valores de fábrica, que es lo que
+espera un operador que edita una sola línea.
+
+```json
+{
+  "Gateway": {
+    "Multipart": {
+      "ReadTimeoutSeconds": 120
+    }
+  }
+}
+```
+
+Cada ajuste, su valor predeterminado y su tope están documentados en
+[inspección multipart acotada](m2-inspeccion-multipart.md). Conviene saber dos cosas antes de
+tocarlos:
+
+- **Un valor fuera de rango impide el arranque**, no se acota en silencio. A un operador que pide
+  `"MaximumFileCount": 100000` y recibe 100 sin aviso no se le ha dicho nada, y la configuración
+  nunca debe aparentar que hace algo que no hace.
+- **`Gateway:Multipart:Enabled: false` devuelve el gateway a ser un proxy inverso con un límite de
+  tamaño.** No se almacena ningún cuerpo, no se toma ninguna muestra y ninguna regla de carga corre
+  sobre tráfico real. Es una vía de escape para incidentes, no una perilla de ajuste, y el gateway
+  registra una advertencia en cada arranque mientras está apagada.
+
+El gateway imprime los límites que realmente aplicará junto a la tabla de sitios resuelta:
+
+```text
+info: WPShield.Gateway.Configuration
+      Multipart upload inspection enabled. MaximumRequestBytes=6291456 MaximumFileCount=20 MaximumFieldCount=200 MaximumPartHeaderBytes=16384 SampleBytes=4096 ReadTimeoutSeconds=30
+```
+
 ## La configuración no se recarga en caliente
 
 Las opciones del gateway y de los sitios se validan una sola vez al arrancar y se capturan durante

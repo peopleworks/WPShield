@@ -1,0 +1,90 @@
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # The site is one hand-written file plus the figures it embeds. Anything else pushed to main
+      # cannot change what is published, so it does not deploy.
+      - 'site/**'
+      - 'assets/**'
+      - 'docs/assets/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+# One deployment at a time, and never cancel one mid-flight. A half-published site is worse than a
+# slightly stale one, and the landing page carries the research-preview warning: a partial deploy
+# that drops it is a defect, not a delay.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+# contents: read to check out. pages: write and id-token: write are what actions/deploy-pages needs
+# to mint its OIDC token and publish; nothing here writes to the repository.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  deploy:
+    name: Build and deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      # Third-party actions are pinned to a commit SHA rather than a tag, matching build.yml and
+      # codeql.yml. A tag can be moved onto different code by whoever owns the action; a SHA cannot.
+      # The trailing comment records which release each SHA was, because the SHA alone is unreadable.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      # There is no build step. site/index.html is authored by hand, has no dependencies, and needs
+      # nothing installed to publish, so there is no toolchain here that can drift away from what
+      # was reviewed.
+      #
+      # The figures are copied in rather than linked from raw.githubusercontent.com. Served from the
+      # same origin they arrive with the page instead of after it, and the published site stops
+      # depending on a host that is not the one it is published on. Both directories flatten into
+      # one, which the asset path contract in AGENTS.md already assumes: no basename appears twice.
+      #
+      # .nojekyll is not required by this deployment path — it serves the uploaded artifact as-is
+      # and never runs Jekyll. It is written so the site still publishes correctly if the repository
+      # is ever switched back to branch-based Pages publishing, where Jekyll drops every file whose
+      # name begins with an underscore. It only survives because of include-hidden-files below.
+      - name: Assemble the site
+        run: |
+          touch site/.nojekyll
+          mkdir -p site/assets
+          cp assets/* site/assets/
+          cp docs/assets/* site/assets/
+
+      # The page references each figure twice, once per theme, and a missing file shows up as a
+      # broken image only in whichever theme the reader happens to be in. Failing here instead means
+      # a renamed or deleted asset is caught before it is published.
+      - name: Verify every referenced asset exists
+        run: |
+          missing=0
+          for asset in $(grep -oE 'src="assets/[^"]+"' site/index.html | cut -d'"' -f2 | sort -u); do
+            if [ ! -f "site/$asset" ]; then
+              echo "::error file=site/index.html::site/index.html references $asset, which is not in site/assets after the copy step."
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+          # The action excludes every dotfile by default, which would quietly drop the .nojekyll
+          # written above and leave a step that looks like it works and does not.
+          include-hidden-files: true
+
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0

@@ -1,0 +1,86 @@
+name: Feature or rule proposal
+description: Propose a capability or a new detection rule
+title: "[proposal] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        WPShield is a **defensive** project. Proposals for offensive capability, evasion
+        tooling or anything that would weaken the safety defaults will be closed.
+
+        Rule proposals usually start from something that really happened. Describe the attack
+        surface, never a working technique: **no webshell source, no weaponized payload, no
+        exploit chain.** A harmless synthetic marker demonstrates a detection just as well, and
+        is what the tests use.
+
+        Redact before you post. No credentials, cookies, authorization headers, nonces, tokens,
+        full query strings or request bodies, and no real hostnames — `wordpress-one.example`
+        carries everything a maintainer needs.
+
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What are you proposing
+      options:
+        - A new detection rule
+        - A gateway or platform capability
+        - Documentation or translation
+        - Operational tooling
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: >-
+        What can happen to a WordPress site today that this would prevent or reveal? If an
+        incident prompted this, describe its shape — the file name form, the endpoint class,
+        the header involved — not the captured request or the log that recorded it.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: The proposal
+      description: >-
+        For a rule, say which signals it combines and why that combination rather than one
+        indicator, and what score you would give it against the default thresholds of 30 to
+        observe and 80 to block.
+    validations:
+      required: true
+
+  - type: textarea
+    id: false-positives
+    attributes:
+      label: False positive analysis
+      description: >-
+        Required for rule proposals; a proposal without one will be asked for it before it is
+        considered. What legitimate WordPress, Elementor, Google Site Kit or plugin traffic
+        could this flag by mistake? Which signals does it combine so that it does not act on
+        one weak indicator?
+    validations:
+      required: false
+
+  - type: textarea
+    id: milestone
+    attributes:
+      label: Which milestone does this belong to
+      description: >-
+        See ROADMAP.md. Say if it needs to come earlier than currently planned, and why.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Before submitting
+      options:
+        - label: This is defensive functionality only.
+          required: true
+        - label: It preserves Monitor as the default protection mode.
+          required: true
+        - label: I included no working payload, exploit code, credentials or real hostnames.
+          required: true

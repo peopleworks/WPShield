@@ -1,0 +1,1776 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WPShield — a security gateway for WordPress on Windows Server and IIS</title>
+<meta name="description" content="Open-source research preview of a defensive gateway for WordPress hosted on Windows Server and IIS. Understands web.config, IIS handler extensions and Windows file name normalization. Loopback-only, not approved for production traffic.">
+<meta name="color-scheme" content="dark light">
+<link rel="canonical" href="https://peopleworks.github.io/WPShield/">
+
+<!-- A drawn shield rather than an emoji: the glyph a platform substitutes for an emoji favicon is
+     not one this project chose, and the mark has to survive being 16 pixels wide. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Cpath d='M16 2.5 4.5 6.8v8.6c0 7 4.8 11.6 11.5 14.1 6.7-2.5 11.5-7.1 11.5-14.1V6.8z' fill='%2338bdf8'/%3E%3Cpath d='M10.6 16.2l3.9 3.9 7.1-7.6' fill='none' stroke='%23070a0e' stroke-width='2.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="WPShield">
+<meta property="og:url" content="https://peopleworks.github.io/WPShield/">
+<meta property="og:title" content="WPShield — WordPress protection that knows it is running on IIS">
+<meta property="og:description" content="web.config is remote code execution on IIS with no script uploaded. A research preview: loopback-only, not for production traffic.">
+<meta property="og:image" content="https://peopleworks.github.io/WPShield/assets/social-preview.svg">
+<meta property="og:image:alt" content="WPShield — a defensive security gateway for WordPress on Windows Server and IIS.">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="es_ES">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="WPShield — WordPress protection that knows it is running on IIS">
+<meta name="twitter:description" content="web.config is remote code execution on IIS with no script uploaded. A research preview: loopback-only, not for production traffic.">
+<meta name="twitter:image" content="https://peopleworks.github.io/WPShield/assets/social-preview.svg">
+<meta name="twitter:image:alt" content="WPShield — a defensive security gateway for WordPress on Windows Server and IIS.">
+
+<style>
+/* ------------------------------------------------------------------ tokens */
+:root {
+  /* Dark is the base rather than an override. The theme is resolved by the script at the end of
+     <head>, before the first paint, so with JavaScript disabled the page stays on this palette
+     instead of flashing or half-applying a second one. */
+  --bg: #070a0e;
+  --bg-soft: #0c1117;
+  --ink: #eef3f8;
+  --ink-muted: #9aa7b6;
+  /* Every faint role clears 4.5:1 against its own surface. #6b7885 read better at a glance and
+     measured 4.39 against --bg, which is a fail for the note and figcaption text that uses it. */
+  --ink-faint: #7a8695;
+  --line: #1a2029;
+  --line-strong: #29323d;
+
+  /* Four roles, and each one means something specific everywhere it appears:
+     accent   — WPShield itself, and anything it covers.
+     accent-2 — the .NET platform it is built on.
+     warn     — the research-preview limit. Never used decoratively, so that seeing this colour
+                always means "this part is not finished yet".
+     danger   — the Windows attack surface a Linux-shaped WAF leaves uncovered. */
+  --accent: #38bdf8;
+  --accent-2: #a78bfa;
+  --warn: #fbbf24;
+  --danger: #f87171;
+  --ok: #4ade80;
+
+  --mono: ui-monospace, "SF Mono", "Cascadia Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+  --sans: system-ui, -apple-system, "Segoe UI", Inter, Roboto, "Helvetica Neue", sans-serif;
+
+  --measure: 36rem;
+  --gap-section: clamp(5rem, 12vw, 9rem);
+}
+
+:root[data-theme="light"] {
+  --bg: #fbfcfd;
+  --bg-soft: #ffffff;
+  --ink: #0c1116;
+  --ink-muted: #45505e;
+  --ink-faint: #626d7b;
+  --line: #e3e7ec;
+  --line-strong: #cdd4dd;
+
+  /* Only the roles are reassigned, never re-invented. Every one of them darkens, because the light
+     theme puts the same ink on paper rather than on glass and the dark values fail contrast there. */
+  --accent: #0369a1;
+  --accent-2: #6d28d9;
+  --warn: #9a5b06;
+  --danger: #b91c1c;
+  --ok: #15803d;
+}
+
+/* --------------------------------------------------------------- bilingual */
+/* One mechanism for the whole page: every translated block exists twice in the markup, each copy
+   carrying its own lang attribute, and CSS hides the one that is not selected. Assistive technology
+   therefore announces each block in the language it is actually written in, and with JavaScript
+   disabled the English copy is what remains — there is no empty page and no half-translated one.
+   The Spanish documentation set is linked from the page either way. */
+:root:not([data-lang="es"]) [lang="es"] { display: none; }
+:root[data-lang="es"] [lang="en"] { display: none; }
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 17px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+/* Fixed, so it sits behind the page rather than scrolling with it. Kept faint on purpose: this is
+   a security project, and a landing page that glows is making a promise the code has not earned. */
+body::before {
+  content: "";
+  position: fixed;
+  z-index: -1;
+  top: -16rem; right: -14rem;
+  width: 44rem; height: 44rem;
+  border-radius: 50%;
+  filter: blur(130px);
+  opacity: .38;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(56,189,248,.28), transparent 68%);
+}
+:root[data-theme="light"] body::before { opacity: .26; }
+
+.skip {
+  position: absolute; left: -9999px; top: 0; z-index: 100;
+  padding: .7rem 1.1rem;
+  background: var(--bg-soft); color: var(--ink);
+  border: 1px solid var(--accent); border-radius: 0 0 8px 0;
+}
+.skip:focus { left: 0; }
+
+/* --------------------------------------------------------------------- nav */
+.nav {
+  position: fixed;
+  top: 1rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: .3rem;
+  padding: .4rem .5rem .4rem .9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-soft) 80%, transparent);
+  backdrop-filter: blur(16px) saturate(150%);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  box-shadow: 0 8px 30px rgba(0,0,0,.30);
+  max-width: calc(100vw - 2rem);
+}
+.nav__brand {
+  display: flex; align-items: center; gap: .45rem;
+  font-weight: 650; font-size: .9rem;
+  padding-right: .7rem;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
+}
+.nav__mark { width: .82rem; height: .82rem; flex: none; display: block; }
+.nav a {
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: .86rem;
+  padding: .38rem .64rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: color .18s, background .18s;
+}
+.nav a:hover { color: var(--ink); background: color-mix(in srgb, var(--ink) 8%, transparent); }
+.nav a.is-cta {
+  color: var(--accent);
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.nav a.is-cta:hover { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+
+/* The two controls travel together: both change what the reader sees rather than where they are.
+   Hidden until the head script has stamped data-theme, because neither button does anything without
+   JavaScript and two dead controls are worse than none. */
+.controls {
+  position: fixed; top: 1.28rem; right: 1.3rem; z-index: 50;
+  display: none; gap: .4rem;
+}
+:root[data-theme] .controls { display: flex; }
+.controls button {
+  min-width: 2.3rem; height: 2.3rem;
+  display: grid; place-items: center;
+  padding: 0 .55rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bg-soft) 80%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: var(--ink-muted);
+  font-family: var(--mono);
+  font-size: .76rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color .18s, border-color .18s;
+}
+.controls button:hover { color: var(--ink); border-color: var(--ink-faint); }
+/* The button offers the theme you would move to, so the sun belongs to the dark theme. */
+.controls .icon-sun { display: none; }
+:root[data-theme="dark"] .controls .icon-sun { display: block; }
+:root[data-theme="dark"] .controls .icon-moon { display: none; }
+
+@media (max-width: 900px) {
+  .nav__hideable { display: none; }
+  .controls { top: auto; bottom: 1rem; right: 1rem; }
+}
+
+/* ------------------------------------------------------------------ layout */
+.wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.6rem; }
+
+section { padding-block: var(--gap-section); }
+section:first-of-type { padding-top: clamp(6.5rem, 16vh, 10rem); padding-bottom: 0; }
+
+/* The navigation floats over the page, so an anchor jump would otherwise land a heading
+   underneath it. */
+section[id] { scroll-margin-top: 6rem; }
+
+.eyebrow {
+  display: flex; align-items: center; gap: .6rem;
+  font-family: var(--mono);
+  font-size: .73rem;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  margin: 0 0 1.3rem;
+}
+.eyebrow::before {
+  content: "";
+  width: .42rem; height: .42rem;
+  border-radius: 1px;
+  transform: rotate(45deg);
+  background: var(--accent);
+  flex: none;
+  /* Pinned to the first line rather than centred: the label wraps on a phone, and a marker floating
+     between two lines reads as a bullet for the second one. */
+  align-self: flex-start;
+  margin-top: .55em;
+}
+
+h1, h2 {
+  margin: 0;
+  font-weight: 660;
+  letter-spacing: -.03em;
+  line-height: 1.06;
+  text-wrap: balance;
+}
+h1 { font-size: clamp(2.2rem, 5.6vw, 4rem); }
+h2 { font-size: clamp(1.8rem, 4.2vw, 2.7rem); }
+h3 { margin: 0 0 .5rem; font-size: 1.02rem; font-weight: 640; letter-spacing: -.01em; }
+
+.lede {
+  margin: .9rem 0 0;
+  font-size: clamp(1.12rem, 2.3vw, 1.5rem);
+  font-weight: 380;
+  color: var(--ink-faint);
+  letter-spacing: -.02em;
+  max-width: 42rem;
+}
+
+.rule {
+  width: 5.5rem; height: 2px; margin: 1.9rem 0;
+  background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  border-radius: 2px;
+}
+
+p { max-width: var(--measure); color: var(--ink-muted); }
+p.wide { max-width: 46rem; }
+strong { color: var(--ink); font-weight: 620; }
+
+code {
+  font-family: var(--mono);
+  font-size: .875em;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 13%, transparent);
+  padding: .12em .38em;
+  border-radius: 4px;
+  overflow-wrap: anywhere;
+}
+
+.buttons { display: flex; flex-wrap: wrap; gap: .7rem; margin-top: 2.2rem; }
+.btn {
+  display: inline-flex; align-items: center; gap: .5rem;
+  padding: .66rem 1.3rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  color: var(--ink-muted);
+  text-decoration: none;
+  font-size: .92rem;
+  transition: color .18s, border-color .18s, background .18s, transform .18s;
+}
+.btn:hover { transform: translateY(-1px); color: var(--ink); border-color: var(--ink-faint); }
+@media (prefers-reduced-motion: reduce) { .btn:hover { transform: none; } }
+.btn--primary {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+.btn--primary:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
+
+/* ------------------------------------------------------- the preview notice */
+/* The one thing on this page that has to be read before anything is decided. It sits directly under
+   the headline, inside the first screen, and it is the only element allowed to use the warning
+   colour — so the colour itself carries the meaning wherever it turns up again. */
+.preview {
+  margin-top: 2.3rem;
+  border: 1px solid color-mix(in srgb, var(--warn) 48%, transparent);
+  border-left-width: 3px;
+  border-radius: 4px 12px 12px 4px;
+  background: color-mix(in srgb, var(--warn) 9%, var(--bg-soft));
+  padding: 1.3rem 1.5rem;
+  max-width: 47rem;
+}
+.preview h2 {
+  font-size: clamp(1.02rem, 2.1vw, 1.22rem);
+  letter-spacing: -.01em;
+  line-height: 1.35;
+  color: var(--warn);
+  display: flex; align-items: center; gap: .6rem;
+}
+.preview h2::before {
+  content: "!";
+  font-family: var(--mono);
+  font-weight: 700;
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+  width: 1.3em; height: 1.3em;
+  display: inline-grid; place-items: center;
+  font-size: .82em;
+  flex: none;
+}
+.preview p { margin: .8rem 0 0; max-width: none; font-size: .94rem; color: var(--ink-muted); }
+:root[data-theme="light"] .preview { background: #fff8ea; }
+
+/* ------------------------------------------------------------------ pieces */
+.card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg-soft) 62%, transparent);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  padding: 1.4rem;
+}
+.card p { margin: 0; font-size: .93rem; max-width: none; }
+.card p + p { margin-top: .7rem; }
+.card__tag {
+  font-family: var(--mono); font-size: .69rem; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--ink-faint); margin-bottom: .75rem;
+}
+.card--risk {
+  border-color: color-mix(in srgb, var(--danger) 38%, transparent);
+  background:
+    linear-gradient(color-mix(in srgb, var(--danger) 7%, transparent), transparent),
+    color-mix(in srgb, var(--bg-soft) 62%, transparent);
+}
+.card--risk h3 { color: var(--danger); }
+
+.grid { display: grid; gap: 1rem; margin-top: 2.4rem; }
+/* min() so a track can still shrink below its floor on a phone; a bare minmax floor cannot, and it
+   pushes the whole page sideways instead. */
+.grid--3 { grid-template-columns: repeat(auto-fit, minmax(min(17rem, 100%), 1fr)); }
+.grid--2 { grid-template-columns: repeat(auto-fit, minmax(min(21rem, 100%), 1fr)); }
+
+/* Tables carry most of the argument here, so each one scrolls inside itself and the page body never
+   scrolls sideways. */
+.table-scroll { overflow-x: auto; margin-top: 2.3rem; }
+table { border-collapse: collapse; width: 100%; min-width: 33rem; font-size: .93rem; }
+caption { text-align: left; font-size: .85rem; color: var(--ink-faint); padding-bottom: .9rem; max-width: 46rem; }
+th, td { text-align: left; padding: .78rem .9rem; border-bottom: 1px solid var(--line); vertical-align: top; }
+th {
+  font-family: var(--mono); font-size: .69rem; letter-spacing: .1em; text-transform: uppercase;
+  color: var(--ink-faint); font-weight: 500; white-space: nowrap;
+}
+/* A row header names a thing; a column header labels a column. Only the second wants the small
+   uppercase treatment — set in it, a capability name reads as a category rather than as a name. */
+th[scope="row"] {
+  font-family: var(--sans); font-size: .93rem; font-weight: 620;
+  letter-spacing: normal; text-transform: none; white-space: normal;
+  color: var(--ink);
+}
+td { color: var(--ink-muted); }
+td code { white-space: nowrap; }
+tbody tr:last-child td { border-bottom: none; }
+
+.num { font-family: var(--mono); font-size: .84rem; color: var(--ink); white-space: nowrap; }
+.rid { font-family: var(--mono); font-size: .8rem; color: var(--ink); white-space: nowrap; }
+
+/* A row that documents a false positive. Marked rather than left out: the rule that fires on
+   readme.php.txt is the same rule that catches photo.php.jpg, and a page showing only the second
+   one is selling something. */
+tr.is-fp td { background: color-mix(in srgb, var(--warn) 9%, transparent); }
+.fp-tag { color: var(--warn); font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+/* A neutral annotation. The warning colour is reserved for things that are actually a warning, so
+   an ordinary note about the input does not borrow it. */
+.hint { color: var(--ink-faint); font-family: var(--mono); font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; }
+
+.pill {
+  display: inline-block;
+  font-family: var(--mono); font-size: .67rem; letter-spacing: .06em; text-transform: uppercase;
+  padding: .18rem .55rem; border-radius: 999px; white-space: nowrap;
+  border: 1px solid currentColor;
+}
+.pill--ok { color: var(--ok); }
+.pill--proto { color: var(--accent); }
+.pill--planned { color: var(--ink-faint); }
+.pill--no { color: var(--danger); }
+
+/* Evidence panel. Deliberately reads as a log line rather than as a product screenshot: what the
+   engine returns is a record, not a dashboard. */
+.evidence {
+  margin-top: 2.2rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: color-mix(in srgb, #000 36%, var(--bg-soft));
+  overflow: hidden;
+}
+:root[data-theme="light"] .evidence { background: #0d1117; border-color: #222831; }
+.evidence__bar {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .62rem 1rem;
+  border-bottom: 1px solid #1e242e;
+  font-family: var(--mono); font-size: .72rem; color: #7d8795;
+}
+.evidence__dot { width: .55rem; height: .55rem; border-radius: 50%; background: #2a323e; flex: none; }
+.evidence pre {
+  margin: 0; padding: 1.05rem 1.2rem;
+  overflow-x: auto;
+  font-family: var(--mono); font-size: .79rem; line-height: 1.95;
+  color: #cbd5e1;
+}
+.evidence .e-id { color: #fca5a5; }
+.evidence .e-score { color: #fbbf24; }
+.evidence .e-key { color: #7dd3fc; }
+.evidence .e-dim { color: #7b8797; } /* 5.2:1 on the panel; the obvious #6b7684 measures 4.1. */
+
+/* ----------------------------------------------------------------- figures */
+.figure { margin: 2.6rem 0 0; }
+.figure img { width: 100%; height: auto; }
+.figure figcaption {
+  margin-top: .9rem;
+  font-size: .85rem;
+  color: var(--ink-faint);
+  max-width: 46rem;
+}
+.fig-frame {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
+/* A <picture> keyed on prefers-color-scheme cannot follow the page's own theme button, so both
+   figures are in the markup and CSS chooses between them. The dark one is the default because dark
+   is what a reader without JavaScript gets. Both selectors carry the .figure ancestor so they
+   outrank the img rule above; without it the shared rule wins and both figures draw. */
+.figure .fig-dark { display: block; }
+.figure .fig-light { display: none; }
+:root[data-theme="light"] .figure .fig-light { display: block; }
+:root[data-theme="light"] .figure .fig-dark { display: none; }
+
+.note {
+  margin-top: 1.7rem;
+  padding-left: 1.1rem;
+  border-left: 2px solid var(--line-strong);
+  font-size: .9rem;
+  color: var(--ink-faint);
+  max-width: 45rem;
+}
+.note strong { color: var(--ink-muted); }
+
+.links { display: grid; gap: 1.6rem 2.4rem; margin-top: 2.3rem; grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr)); }
+.links h3 { color: var(--ink); }
+.links ul { margin: 0; padding: 0; list-style: none; }
+.links li { padding: .44rem 0; border-bottom: 1px solid var(--line); font-size: .93rem; display: flex; justify-content: space-between; gap: 1rem; }
+.links li:last-child { border-bottom: none; }
+.links a { color: var(--ink-muted); text-decoration: none; }
+.links a:hover { color: var(--accent); }
+.links .alt { font-family: var(--mono); font-size: .74rem; white-space: nowrap; }
+
+footer {
+  border-top: 1px solid var(--line);
+  padding-block: 3.2rem 4.5rem;
+  color: var(--ink-faint);
+  font-size: .88rem;
+}
+footer a { color: var(--ink-muted); text-decoration: none; border-bottom: 1px solid var(--line-strong); }
+footer a:hover { color: var(--ink); }
+footer p { max-width: 46rem; }
+.footer__note { font-size: .82rem; margin-top: 1.4rem; }
+
+/* Scroll reveal, switched off for anyone who asked for less motion. Nothing is hidden until the
+   script has confirmed both that motion is wanted and that it can observe the element, so a reader
+   without JavaScript never meets a blank section. */
+.reveal { opacity: 0; transform: translateY(16px); transition: opacity .7s ease, transform .7s ease; }
+.reveal.is-in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .reveal { opacity: 1; transform: none; transition: none; } }
+
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+/* Print. The reveal above starts sections at zero opacity and an IntersectionObserver brings them
+   back, but printing never scrolls, so every section a reader had not yet reached would come out of
+   the printer blank. Operators do print pages like this one to take into a change-approval meeting,
+   and the research-preview warning is the part that most needs to survive the trip. */
+@media print {
+  .nav, .controls, .skip { display: none; }
+  body::before { display: none; }
+  .reveal { opacity: 1; transform: none; }
+  section { padding-block: 1.5rem; break-inside: auto; }
+  .preview { break-inside: avoid; }
+  .figure, .card, tr { break-inside: avoid; }
+  .table-scroll { overflow-x: visible; }
+}
+</style>
+
+<script>
+// Resolved before the first paint, so the page is never painted in one theme and repainted in the
+// other. Both preferences are read here rather than expressed as media queries because the two
+// buttons have to be able to override the system, and a media query cannot be overridden by an
+// attribute. With JavaScript disabled none of this runs and the CSS defaults stand: dark, English.
+(function () {
+  var root = document.documentElement;
+  var theme = null;
+  var lang = null;
+
+  try {
+    theme = localStorage.getItem('wpshield-theme');
+    lang = localStorage.getItem('wpshield-lang');
+  } catch (e) { /* private mode, or site data blocked */ }
+
+  if (theme !== 'light' && theme !== 'dark') {
+    theme = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+  }
+  if (lang !== 'en' && lang !== 'es') {
+    lang = (navigator.language || 'en').toLowerCase().indexOf('es') === 0 ? 'es' : 'en';
+  }
+
+  root.setAttribute('data-theme', theme);
+  root.setAttribute('data-lang', lang);
+  root.setAttribute('lang', lang);
+})();
+</script>
+</head>
+<body>
+
+<a class="skip" href="#main"><span lang="en">Skip to content</span><span lang="es">Ir al contenido</span></a>
+
+<nav class="nav" aria-label="Main">
+  <span class="nav__brand">
+    <svg class="nav__mark" viewBox="0 0 32 32" aria-hidden="true">
+      <path d="M16 2.5 4.5 6.8v8.6c0 7 4.8 11.6 11.5 14.1 6.7-2.5 11.5-7.1 11.5-14.1V6.8z" fill="var(--accent)"/>
+      <path d="M10.6 16.2l3.9 3.9 7.1-7.6" fill="none" stroke="var(--bg)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+    WPShield
+  </span>
+  <a href="#gap" class="nav__hideable"><span lang="en">The IIS gap</span><span lang="es">La brecha de IIS</span></a>
+  <a href="#names" class="nav__hideable"><span lang="en">File names</span><span lang="es">Nombres</span></a>
+  <a href="#findings" class="nav__hideable"><span lang="en">Findings</span><span lang="es">Hallazgos</span></a>
+  <a href="#routing" class="nav__hideable"><span lang="en">Routing</span><span lang="es">Enrutado</span></a>
+  <a href="#status" class="nav__hideable"><span lang="en">Status</span><span lang="es">Estado</span></a>
+  <a href="#docs" class="nav__hideable"><span lang="en">Docs</span><span lang="es">Documentación</span></a>
+  <a href="https://github.com/peopleworks/WPShield" class="is-cta">GitHub&nbsp;&#8599;</a>
+</nav>
+
+<div class="controls">
+  <button id="lang" type="button"></button>
+  <!-- Both icons are drawn, not typed. A moon character has no glyph in several of the fonts this
+       page falls back to, and a button labelled with a replacement box tells the reader nothing.
+       CSS shows whichever one matches the theme currently applied. -->
+  <button id="theme" type="button">
+    <svg class="icon-sun" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+      <circle cx="12" cy="12" r="4.2"/>
+      <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/>
+    </svg>
+    <svg class="icon-moon" viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none"
+         stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M20.3 14.2A8.6 8.6 0 0 1 9.8 3.7a8.6 8.6 0 1 0 10.5 10.5z"/>
+    </svg>
+  </button>
+</div>
+
+<main class="wrap" id="main">
+
+  <!-- ------------------------------------------------------------- hero -->
+  <section>
+    <p class="eyebrow">
+      <span lang="en">Open source · MIT · .NET 10 · Research preview</span>
+      <span lang="es">Código abierto · MIT · .NET 10 · Vista previa de investigación</span>
+    </p>
+
+    <h1 lang="en">Your WordPress runs on IIS.<br>Your firewall does not know it.</h1>
+    <h1 lang="es">Tu WordPress corre sobre IIS.<br>Tu firewall no lo sabe.</h1>
+
+    <p class="lede" lang="en">WPShield is being built to close that gap.</p>
+    <p class="lede" lang="es">WPShield se está construyendo para cerrar esa brecha.</p>
+
+    <!-- The warning comes before the argument, not after it and not in the footer. Whatever a reader
+         concludes from the rest of this page, they have to have read this first — the section
+         ordering is the only guarantee of that, so nothing may be moved above it. -->
+    <div class="preview" role="note">
+      <h2 lang="en">Research preview. Not for production traffic.</h2>
+      <h2 lang="es">Vista previa de investigación. No apta para tráfico de producción.</h2>
+
+      <p lang="en">
+        M1 and M2 are loopback-only. The gateway validates at startup that every listener and every
+        destination is a loopback address, and refuses to start otherwise. The rules described on
+        this page now run on gateway traffic, but <strong>only for
+        <code>multipart/form-data</code></strong>: urlencoded forms, JSON, XML-RPC and
+        <code>application/octet-stream</code> uploads stream through uninspected, and archive
+        contents are never opened.
+      </p>
+      <p lang="en">
+        Do not place WPShield in front of a live WordPress site, and do not replace your IIS
+        bindings on ports 80 and 443. Production activation is gated behind M1 to M6 validation and
+        a controlled M7 rollout. The <a href="#status">status table</a> below says exactly what
+        works today.
+      </p>
+
+      <p lang="es">
+        M1 y M2 son exclusivamente de loopback. El gateway valida al iniciar que cada listener y cada
+        destino sean direcciones de loopback, y se niega a arrancar si no lo son. Las reglas
+        descritas en esta página ya se ejecutan sobre el tráfico del gateway, pero <strong>solo para
+        <code>multipart/form-data</code></strong>: los formularios urlencoded, JSON, XML-RPC y las
+        cargas <code>application/octet-stream</code> pasan sin inspeccionar, y el contenido de los
+        archivos comprimidos nunca se abre.
+      </p>
+      <p lang="es">
+        No coloques WPShield delante de un sitio WordPress en producción, ni reemplaces tus enlaces
+        de IIS en los puertos 80 y 443. La activación en producción está condicionada a completar de
+        M1 a M6 y a un despliegue controlado en M7. La <a href="#status">tabla de estado</a> de más
+        abajo dice exactamente qué funciona hoy.
+      </p>
+    </div>
+
+    <div class="rule"></div>
+
+    <p class="wide" lang="en">
+      A firewall written for Linux hosting looks for PHP. On Windows Server that is the wrong half of
+      the attack surface. <code>web.config</code> is remote code execution on IIS with no script
+      uploaded at all; <code>.aspx</code> and <code>.ashx</code> files run as the application pool
+      identity; and Windows strips the trailing dot from <code>shell.php.</code> on the way to disk,
+      so the name that was inspected is not the name that lands.
+    </p>
+    <p class="wide" lang="es">
+      Un firewall escrito para hosting Linux busca PHP. Sobre Windows Server esa es la mitad
+      equivocada de la superficie de ataque. <code>web.config</code> es ejecución remota de código en
+      IIS sin subir ningún script; los archivos <code>.aspx</code> y <code>.ashx</code> se ejecutan
+      con la identidad del grupo de aplicaciones; y Windows elimina el punto final de
+      <code>shell.php.</code> camino al disco, de modo que el nombre inspeccionado no es el nombre
+      que aterriza.
+    </p>
+
+    <div class="buttons">
+      <a class="btn btn--primary" href="#gap">
+        <span lang="en">Why IIS is different</span><span lang="es">Por qué IIS es distinto</span>
+      </a>
+      <a class="btn" href="#status">
+        <span lang="en">What works today</span><span lang="es">Qué funciona hoy</span>
+      </a>
+      <a class="btn" href="https://github.com/peopleworks/WPShield">
+        <span lang="en">View on GitHub</span><span lang="es">Ver en GitHub</span>&nbsp;&#8599;
+      </a>
+    </div>
+  </section>
+
+  <!-- -------------------------------------------------------------- gap -->
+  <section id="gap" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">What a Linux-shaped WAF misses</span>
+      <span lang="es">Lo que una WAF pensada para Linux no ve</span>
+    </p>
+
+    <h2 lang="en">IIS executes more than PHP.</h2>
+    <h2 lang="es">IIS ejecuta mucho más que PHP.</h2>
+
+    <p class="wide" lang="en">
+      The rules a WordPress firewall inherits from Linux hosting are about PHP, because on Linux the
+      web server executes almost nothing on its own. On Windows Server the web server is a general
+      application host. Three consequences follow, and all three are things WPShield exists to
+      cover.
+    </p>
+    <p class="wide" lang="es">
+      Las reglas que un firewall de WordPress hereda del hosting Linux tratan sobre PHP, porque en
+      Linux el servidor web casi no ejecuta nada por sí mismo. En Windows Server el servidor web es
+      un host de aplicaciones general. De ahí se siguen tres consecuencias, y las tres son
+      exactamente lo que WPShield existe para cubrir.
+    </p>
+
+    <figure class="figure">
+      <div class="fig-frame">
+        <img class="fig-dark" src="assets/iis-gap-dark.svg" loading="lazy"
+             alt="Two lists of file extensions side by side, separated by a labelled gap. On the left, in grey, the eleven PHP extensions a rule set written for Apache or nginx watches, from .php to .phar; on that platform the list is complete. On the right, in blue, the fourteen extensions IIS also maps to a handler and executes as the application pool identity, from .aspx to .master. Below both, a red call-out for web.config, which no extension list covers at all.">
+        <img class="fig-light" src="assets/iis-gap-light.svg" loading="lazy"
+             alt="Two lists of file extensions side by side, separated by a labelled gap. On the left, in grey, the eleven PHP extensions a rule set written for Apache or nginx watches, from .php to .phar; on that platform the list is complete. On the right, in blue, the fourteen extensions IIS also maps to a handler and executes as the application pool identity, from .aspx to .master. Below both, a red call-out for web.config, which no extension list covers at all.">
+      </div>
+      <figcaption lang="en">
+        The left-hand list is complete — on Linux. Every extension on the right is one that the same
+        rule set scores at zero, and <code>web.config</code> appears on neither list, because it is
+        not a script.
+      </figcaption>
+      <figcaption lang="es">
+        La lista de la izquierda está completa; en Linux. Cada extensión de la derecha es una que ese
+        mismo conjunto de reglas puntúa como cero, y <code>web.config</code> no aparece en ninguna de
+        las dos listas, porque no es un script.
+      </figcaption>
+    </figure>
+
+    <div class="grid grid--3">
+      <div class="card card--risk">
+        <div class="card__tag">IIS-CONFIG-001 · 100</div>
+        <h3 lang="en">A configuration file is a program</h3>
+        <h3 lang="es">Un archivo de configuración es un programa</h3>
+        <p lang="en">
+          IIS reads <code>web.config</code> from every directory it serves and applies it to that
+          directory and everything under it. Writing one into <code>wp-content/uploads</code>
+          registers a handler mapping that executes files of the attacker's choosing, re-enables
+          script execution the operator disabled, or relaxes authorization for the directory.
+        </p>
+        <p lang="en">
+          No script is uploaded. The file write <em>is</em> the execution. This carries the highest
+          score any single WPShield rule assigns, and the project expects no false positives from
+          it: no WordPress workflow uploads a <code>web.config</code> through a request body.
+        </p>
+        <p lang="es">
+          IIS lee <code>web.config</code> en cada directorio que sirve y lo aplica a ese directorio y
+          a todo lo que cuelga de él. Escribir uno en <code>wp-content/uploads</code> registra un
+          mapeo de handler que ejecuta los archivos que el atacante elija, reactiva la ejecución de
+          scripts que el operador deshabilitó, o relaja la autorización del directorio.
+        </p>
+        <p lang="es">
+          No se sube ningún script. La escritura del archivo <em>es</em> la ejecución. Esta es la
+          puntuación más alta que asigna una sola regla de WPShield, y el proyecto no espera falsos
+          positivos: ningún flujo de WordPress sube un <code>web.config</code> en el cuerpo de una
+          solicitud.
+        </p>
+      </div>
+
+      <div class="card card--risk">
+        <div class="card__tag">IIS-UPLOAD-001 · 90 / 50</div>
+        <h3 lang="en">Handlers that are not PHP</h3>
+        <h3 lang="es">Handlers que no son PHP</h3>
+        <p lang="en">
+          <code>.aspx</code>, <code>.ashx</code>, <code>.asmx</code> and <code>.ascx</code> run as
+          the application pool identity, which is a strictly larger capability than a PHP shell. The
+          rule also covers <code>.asp</code>, <code>.axd</code>, <code>.cshtml</code>,
+          <code>.vbhtml</code>, <code>.razor</code>, <code>.svc</code>, <code>.soap</code>,
+          <code>.rem</code>, <code>.asax</code> and <code>.master</code>.
+        </p>
+        <p lang="en">
+          A WordPress site has no legitimate reason to accept any of them through an upload
+          endpoint. This is the gap the project exists to close.
+        </p>
+        <p lang="es">
+          <code>.aspx</code>, <code>.ashx</code>, <code>.asmx</code> y <code>.ascx</code> se ejecutan
+          con la identidad del grupo de aplicaciones, que es una capacidad estrictamente mayor que
+          la de un shell en PHP. La regla también cubre <code>.asp</code>, <code>.axd</code>,
+          <code>.cshtml</code>, <code>.vbhtml</code>, <code>.razor</code>, <code>.svc</code>,
+          <code>.soap</code>, <code>.rem</code>, <code>.asax</code> y <code>.master</code>.
+        </p>
+        <p lang="es">
+          Un sitio WordPress no tiene ninguna razón legítima para aceptar ninguno de ellos por un
+          endpoint de carga. Esta es la brecha que el proyecto existe para cerrar.
+        </p>
+      </div>
+
+      <div class="card card--risk">
+        <div class="card__tag">FILE-NAME-001 · 60</div>
+        <h3 lang="en">The name that reaches disk</h3>
+        <h3 lang="es">El nombre que llega al disco</h3>
+        <p lang="en">
+          Windows collapses trailing dots and spaces, and NTFS drops the <code>::$DATA</code>
+          alternate data stream suffix. <code>shell.php.</code> arrives as <code>shell.php</code>.
+          A check that reads the client's string is checking a name that will not exist.
+        </p>
+        <p lang="en">
+          So no WPShield rule ever sees the raw value. Every rule matches a Windows-aware
+          normalization of it, and each anomaly that had to be removed to produce it becomes
+          evidence in its own right.
+        </p>
+        <p lang="es">
+          Windows elimina los puntos y espacios finales, y NTFS descarta el sufijo de flujo de datos
+          alternativo <code>::$DATA</code>. <code>shell.php.</code> llega como
+          <code>shell.php</code>. Una comprobación que lee la cadena del cliente está comprobando un
+          nombre que no va a existir.
+        </p>
+        <p lang="es">
+          Por eso ninguna regla de WPShield ve el valor original. Todas evalúan una normalización
+          consciente de Windows, y cada anomalía que hubo que eliminar para obtenerla se convierte
+          en evidencia por derecho propio.
+        </p>
+      </div>
+    </div>
+
+    <div class="note" lang="en">
+      <strong>It is not enough to rely on <code>sanitize_file_name()</code>.</strong> The vulnerable
+      plugin endpoints that cause upload incidents are precisely the ones that write files without
+      calling it — which is the reason WPShield inspects the request rather than trusting what
+      WordPress will do with it.
+    </div>
+    <div class="note" lang="es">
+      <strong>No basta con confiar en <code>sanitize_file_name()</code>.</strong> Los endpoints
+      vulnerables de plugins que provocan incidentes de carga son precisamente los que escriben
+      archivos sin llamarla, y esa es la razón por la que WPShield inspecciona la solicitud en lugar
+      de confiar en lo que WordPress hará con ella.
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------ names -->
+  <section id="names" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Normalization, worked</span>
+      <span lang="es">La normalización, con ejemplos</span>
+    </p>
+
+    <h2 lang="en">The name you inspect<br>is not the name that lands.</h2>
+    <h2 lang="es">El nombre que inspeccionas<br>no es el nombre que aterriza.</h2>
+
+    <p class="wide" lang="en">
+      Every row below is what the rules in this repository actually do with that input. Scores are
+      summed across findings and capped at 100. The default thresholds are 30 to observe and 80 to
+      block.
+    </p>
+    <p class="wide" lang="es">
+      Cada fila de abajo es lo que las reglas de este repositorio hacen realmente con esa entrada.
+      Las puntuaciones se suman entre hallazgos y se limitan a 100. Los umbrales por defecto son 30
+      para observar y 80 para bloquear.
+    </p>
+
+    <div class="table-scroll">
+      <table lang="en">
+        <caption>Windows-aware normalization, and the findings each result produces.</caption>
+        <thead>
+          <tr>
+            <th scope="col">What the client sends</th>
+            <th scope="col">What Windows writes</th>
+            <th scope="col">Rules that fire</th>
+            <th scope="col">Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>shell.php.</code></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>shell.php&nbsp;</code> <span class="hint">trailing space</span></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>shell.php::$DATA</code></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>..\..\shell.php</code></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>web.config</code></td>
+            <td><code>web.config</code></td>
+            <td><span class="rid">IIS-CONFIG-001</span> 100</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>backdoor.ashx</code></td>
+            <td><code>backdoor.ashx</code></td>
+            <td><span class="rid">IIS-UPLOAD-001</span> 90</td>
+            <td class="num">90</td>
+          </tr>
+          <tr>
+            <td><code>photo.php.jpg</code></td>
+            <td><code>photo.php.jpg</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 50 · <span class="rid">WP-UPLOAD-002</span> 30</td>
+            <td class="num">80</td>
+          </tr>
+          <tr class="is-fp">
+            <td><code>readme.php.txt</code> <span class="fp-tag">false positive</span></td>
+            <td><code>readme.php.txt</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 50 · <span class="rid">WP-UPLOAD-002</span> 30</td>
+            <td class="num">80</td>
+          </tr>
+          <tr>
+            <td><code>archive.tar.gz</code></td>
+            <td><code>archive.tar.gz</code></td>
+            <td>&mdash;</td>
+            <td class="num">0</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table lang="es">
+        <caption>Normalización consciente de Windows, y los hallazgos que produce cada resultado.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Lo que envía el cliente</th>
+            <th scope="col">Lo que escribe Windows</th>
+            <th scope="col">Reglas que se disparan</th>
+            <th scope="col">Puntuación</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>shell.php.</code></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>shell.php&nbsp;</code> <span class="hint">espacio final</span></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>shell.php::$DATA</code></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>..\..\shell.php</code></td>
+            <td><code>shell.php</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 90 · <span class="rid">FILE-NAME-001</span> 60</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>web.config</code></td>
+            <td><code>web.config</code></td>
+            <td><span class="rid">IIS-CONFIG-001</span> 100</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><code>backdoor.ashx</code></td>
+            <td><code>backdoor.ashx</code></td>
+            <td><span class="rid">IIS-UPLOAD-001</span> 90</td>
+            <td class="num">90</td>
+          </tr>
+          <tr>
+            <td><code>photo.php.jpg</code></td>
+            <td><code>photo.php.jpg</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 50 · <span class="rid">WP-UPLOAD-002</span> 30</td>
+            <td class="num">80</td>
+          </tr>
+          <tr class="is-fp">
+            <td><code>readme.php.txt</code> <span class="fp-tag">falso positivo</span></td>
+            <td><code>readme.php.txt</code></td>
+            <td><span class="rid">WP-UPLOAD-001</span> 50 · <span class="rid">WP-UPLOAD-002</span> 30</td>
+            <td class="num">80</td>
+          </tr>
+          <tr>
+            <td><code>archive.tar.gz</code></td>
+            <td><code>archive.tar.gz</code></td>
+            <td>&mdash;</td>
+            <td class="num">0</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note" lang="en">
+      <strong>The highlighted row is a false positive, and the project documents it as one.</strong>
+      A benign <code>readme.php.txt</code> is structurally identical to a disguised payload and
+      cannot be separated from it by name alone. It lands on the default block threshold exactly,
+      which is why Monitor is the default mode and Block has to be turned on per site. Ordinary
+      multi-extension names such as <code>archive.tar.gz</code>, <code>style.min.css</code> and
+      <code>report.2024.xlsx</code> never match: the rule requires an executable segment, not merely
+      more than one segment.
+    </div>
+    <div class="note" lang="es">
+      <strong>La fila resaltada es un falso positivo, y el proyecto lo documenta como tal.</strong>
+      Un <code>readme.php.txt</code> inofensivo es estructuralmente idéntico a una carga disfrazada y
+      no se puede distinguir de ella solo por el nombre. Cae exactamente en el umbral de bloqueo por
+      defecto, y por eso Monitor es el modo predeterminado y Block hay que activarlo sitio por sitio.
+      Los nombres corrientes con varias extensiones, como <code>archive.tar.gz</code>,
+      <code>style.min.css</code> o <code>report.2024.xlsx</code>, no coinciden nunca: la regla exige
+      un segmento ejecutable, no simplemente más de un segmento.
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- findings -->
+  <section id="findings" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Findings, not verdicts</span>
+      <span lang="es">Hallazgos, no veredictos</span>
+    </p>
+
+    <h2 lang="en">A stable rule ID, a score,<br>and the evidence that produced it.</h2>
+    <h2 lang="es">Un ID de regla estable, una puntuación<br>y la evidencia que la produjo.</h2>
+
+    <p class="wide" lang="en">
+      A rule returns a record, not a verdict: the rule ID, the score it contributed, a message key,
+      and bounded evidence. Rule IDs are never translated, so an operator reading Spanish and a
+      maintainer reading English are looking at the same identifier. Only the message key is
+      localized.
+    </p>
+    <p class="wide" lang="es">
+      Una regla devuelve un registro, no un veredicto: el ID de la regla, la puntuación que aportó,
+      una clave de mensaje y evidencia acotada. Los IDs de regla no se traducen nunca, así que un
+      operador que lee en español y un mantenedor que lee en inglés están mirando el mismo
+      identificador. Solo se localiza la clave de mensaje.
+    </p>
+
+    <div class="evidence">
+      <div class="evidence__bar">
+        <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+        <span style="margin-left:.4rem">InspectionResult</span>
+      </div>
+<pre><span class="e-dim">site  </span> wordpress-one     <span class="e-dim">score</span> <span class="e-score">100</span>   <span class="e-dim">action</span> Observe
+
+<span class="e-id">WP-UPLOAD-001</span>   <span class="e-score">90</span>   <span class="e-key">Findings.ExecutableUploadExtension</span>
+                     <span class="e-dim">extension      =</span> .php
+                     <span class="e-dim">position       =</span> final
+                     <span class="e-dim">normalizedName =</span> shell.php
+
+<span class="e-id">FILE-NAME-001</span>   <span class="e-score">60</span>   <span class="e-key">Findings.UnsafeUploadFileName</span>
+                     <span class="e-dim">anomalies      =</span> trailingDotsOrSpaces
+                     <span class="e-dim">normalizedName =</span> shell.php</pre>
+    </div>
+
+    <div class="note" lang="en">
+      The evidence records the <em>kinds</em> of anomaly and the normalized result, never the raw
+      attacker-supplied name — that string can carry control characters into whatever reads the log.
+      The site above is in Monitor, so the action is <code>Observe</code> even at 100.
+    </div>
+    <div class="note" lang="es">
+      La evidencia registra los <em>tipos</em> de anomalía y el resultado normalizado, nunca el
+      nombre original suministrado por el atacante: esa cadena puede llevar caracteres de control
+      hasta lo que sea que lea el registro. El sitio de arriba está en Monitor, así que la acción es
+      <code>Observe</code> incluso con 100.
+    </div>
+
+    <h3 style="margin-top:3rem" lang="en">The rules that ship today</h3>
+    <h3 style="margin-top:3rem" lang="es">Las reglas que existen hoy</h3>
+
+    <div class="table-scroll">
+      <table lang="en">
+        <thead>
+          <tr>
+            <th scope="col">Rule</th>
+            <th scope="col">Signal</th>
+            <th scope="col">Score</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="rid">IIS-CONFIG-001</span></td>
+            <td>Upload named <code>web.config</code>, which is remote code execution on IIS</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><span class="rid">WP-UPLOAD-001</span></td>
+            <td>PHP-executable extension in any position, not only the last one</td>
+            <td class="num">90 final · 50 embedded</td>
+          </tr>
+          <tr>
+            <td><span class="rid">IIS-UPLOAD-001</span></td>
+            <td>IIS-executable extension in any position</td>
+            <td class="num">90 final · 50 embedded</td>
+          </tr>
+          <tr>
+            <td><span class="rid">PHP-CONTENT-002</span></td>
+            <td>Valid image signature with PHP source proven to sit past the image&rsquo;s own data —
+                the <code>GIF89a;</code> polyglot that defeats <code>getimagesize()</code></td>
+            <td class="num">85</td>
+          </tr>
+          <tr>
+            <td><span class="rid">PHP-CONTENT-001</span></td>
+            <td><code>&lt;?php</code> or <code>&lt;?=</code> in a bounded sample of the upload</td>
+            <td class="num">75</td>
+          </tr>
+          <tr>
+            <td><span class="rid">FILE-TYPE-001</span></td>
+            <td>Final extension claims one format and the leading bytes carry another. The declared
+                <code>Content-Type</code> never triggers it</td>
+            <td class="num">70 script · 70 <code>MZ</code>/ELF · 40 text</td>
+          </tr>
+          <tr>
+            <td><span class="rid">FILE-NAME-001</span></td>
+            <td>Path separator, alternate data stream, trailing dots or spaces, control character,
+                reserved device name, excessive length</td>
+            <td class="num">60</td>
+          </tr>
+          <tr>
+            <td><span class="rid">WP-UPLOAD-002</span></td>
+            <td>Executable extension disguised behind a benign final one, such as
+                <code>photo.php.jpg</code></td>
+            <td class="num">30</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table lang="es">
+        <thead>
+          <tr>
+            <th scope="col">Regla</th>
+            <th scope="col">Señal</th>
+            <th scope="col">Puntuación</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="rid">IIS-CONFIG-001</span></td>
+            <td>Carga con nombre <code>web.config</code>, que en IIS es ejecución remota de código</td>
+            <td class="num">100</td>
+          </tr>
+          <tr>
+            <td><span class="rid">WP-UPLOAD-001</span></td>
+            <td>Extensión ejecutable por PHP en cualquier posición, no solo en la última</td>
+            <td class="num">90 final · 50 intermedia</td>
+          </tr>
+          <tr>
+            <td><span class="rid">IIS-UPLOAD-001</span></td>
+            <td>Extensión ejecutable por IIS en cualquier posición</td>
+            <td class="num">90 final · 50 intermedia</td>
+          </tr>
+          <tr>
+            <td><span class="rid">PHP-CONTENT-002</span></td>
+            <td>Firma de imagen válida con código PHP demostrado más allá de los datos de la propia
+                imagen: el políglota <code>GIF89a;</code> que derrota a <code>getimagesize()</code></td>
+            <td class="num">85</td>
+          </tr>
+          <tr>
+            <td><span class="rid">PHP-CONTENT-001</span></td>
+            <td><code>&lt;?php</code> o <code>&lt;?=</code> en una muestra acotada de la carga</td>
+            <td class="num">75</td>
+          </tr>
+          <tr>
+            <td><span class="rid">FILE-TYPE-001</span></td>
+            <td>La extensión final declara un formato y los bytes iniciales llevan otro. El
+                <code>Content-Type</code> declarado nunca la dispara</td>
+            <td class="num">70 script · 70 <code>MZ</code>/ELF · 40 texto</td>
+          </tr>
+          <tr>
+            <td><span class="rid">FILE-NAME-001</span></td>
+            <td>Separador de ruta, flujo de datos alternativo, puntos o espacios finales, carácter de
+                control, nombre de dispositivo reservado, longitud excesiva</td>
+            <td class="num">60</td>
+          </tr>
+          <tr>
+            <td><span class="rid">WP-UPLOAD-002</span></td>
+            <td>Extensión ejecutable disfrazada tras una final inofensiva, como
+                <code>photo.php.jpg</code></td>
+            <td class="num">30</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 style="margin-top:3rem" lang="en">How a score becomes an action</h3>
+    <h3 style="margin-top:3rem" lang="es">Cómo una puntuación se convierte en acción</h3>
+
+    <div class="table-scroll">
+      <table lang="en">
+        <caption>
+          Thresholds are per site. 30 and 80 are the shipped defaults; a site whose block threshold
+          sits below its observe threshold is rejected when the site table is built.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Site mode</th>
+            <th scope="col">Score below 30</th>
+            <th scope="col">30 to 79</th>
+            <th scope="col">80 and above</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Monitor <span class="pill pill--ok">default</span></th>
+            <td>Allow</td>
+            <td>Observe</td>
+            <td>Observe</td>
+          </tr>
+          <tr>
+            <th scope="row">Block <span class="pill pill--planned">explicit, per site</span></th>
+            <td>Allow</td>
+            <td>Observe</td>
+            <td style="color:var(--danger)">Block</td>
+          </tr>
+          <tr>
+            <th scope="row">Disabled</th>
+            <td colspan="3">Allow — no rule runs at all, and the result carries a score of zero and
+              no findings.</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table lang="es">
+        <caption>
+          Los umbrales son por sitio. 30 y 80 son los valores por defecto; un sitio cuyo umbral de
+          bloqueo esté por debajo de su umbral de observación se rechaza al construir la tabla de
+          sitios.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col">Modo del sitio</th>
+            <th scope="col">Puntuación menor que 30</th>
+            <th scope="col">De 30 a 79</th>
+            <th scope="col">80 o más</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Monitor <span class="pill pill--ok">por defecto</span></th>
+            <td>Allow</td>
+            <td>Observe</td>
+            <td>Observe</td>
+          </tr>
+          <tr>
+            <th scope="row">Block <span class="pill pill--planned">explícito, por sitio</span></th>
+            <td>Allow</td>
+            <td>Observe</td>
+            <td style="color:var(--danger)">Block</td>
+          </tr>
+          <tr>
+            <th scope="row">Disabled</th>
+            <td colspan="3">Allow — no se ejecuta ninguna regla, y el resultado lleva puntuación cero
+              y ningún hallazgo.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note" lang="en">
+      <strong>In Monitor the action is <code>Observe</code> at any score. It is never
+      <code>Block</code>.</strong> That is the point of a default mode: an operator can run WPShield
+      against real traffic, read what it would have done, and only then decide. Turning on Block is
+      a per-site decision made deliberately, never a consequence of installing anything.
+    </div>
+    <div class="note" lang="es">
+      <strong>En Monitor la acción es <code>Observe</code> con cualquier puntuación. Nunca es
+      <code>Block</code>.</strong> Ese es el sentido de un modo por defecto: un operador puede
+      ejecutar WPShield contra tráfico real, leer lo que habría hecho y solo entonces decidir.
+      Activar Block es una decisión deliberada y por sitio, nunca una consecuencia de instalar nada.
+    </div>
+  </section>
+
+  <!-- ---------------------------------------------------------- routing -->
+  <section id="routing" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Multi-site, fail closed</span>
+      <span lang="es">Multisitio, cierre por defecto</span>
+    </p>
+
+    <h2 lang="en">Every hostname is assigned.<br>There is no default backend.</h2>
+    <h2 lang="es">Cada nombre de host está asignado.<br>No hay backend por defecto.</h2>
+
+    <p class="wide" lang="en">
+      Several WordPress sites usually share one Windows Server. A gateway with a fallback
+      destination turns a host-header trick into a route to somebody else's site, so WPShield has
+      none: a host that is not in the table is rejected, and the request never reaches a backend.
+    </p>
+    <p class="wide" lang="es">
+      Varios sitios WordPress suelen compartir un mismo Windows Server. Un gateway con un destino de
+      reserva convierte un truco de cabecera Host en una ruta hacia el sitio de otro, así que
+      WPShield no tiene ninguno: un host que no esté en la tabla se rechaza, y la solicitud nunca
+      llega a un backend.
+    </p>
+
+    <figure class="figure">
+      <div class="fig-frame">
+        <img class="fig-dark" src="assets/host-resolution-dark.svg" loading="lazy"
+             alt="Three requests arriving at WPShield's site resolver, which holds an explicit table of host to destination. Host wordpress-one.example resolves to the loopback destination 127.0.0.1:8081 and reaches IIS site one; Host wordpress-two.example resolves to 127.0.0.1:8082 and reaches IIS site two; Host unknown.example matches no entry and receives HTTP 421 Misdirected Request with a JSON body carrying the error unknown_host and the request identifier. No default entry exists, and no arrow leads anywhere but to a configured destination or to the 421.">
+        <img class="fig-light" src="assets/host-resolution-light.svg" loading="lazy"
+             alt="Three requests arriving at WPShield's site resolver, which holds an explicit table of host to destination. Host wordpress-one.example resolves to the loopback destination 127.0.0.1:8081 and reaches IIS site one; Host wordpress-two.example resolves to 127.0.0.1:8082 and reaches IIS site two; Host unknown.example matches no entry and receives HTTP 421 Misdirected Request with a JSON body carrying the error unknown_host and the request identifier. No default entry exists, and no arrow leads anywhere but to a configured destination or to the 421.">
+      </div>
+      <figcaption lang="en">
+        Placeholder hostnames. The repository ships <code>wordpress-one.example</code> and
+        <code>wordpress-two.example</code> and nothing else: real deployment topology is kept out of
+        the public repository on purpose.
+      </figcaption>
+      <figcaption lang="es">
+        Nombres de host de ejemplo. El repositorio incluye <code>wordpress-one.example</code> y
+        <code>wordpress-two.example</code> y nada más: la topología real de despliegue se mantiene
+        deliberadamente fuera del repositorio público.
+      </figcaption>
+    </figure>
+
+    <div class="grid grid--2">
+      <div class="card">
+        <div class="card__tag">HTTP 421</div>
+        <h3 lang="en">Unknown host, no backend</h3>
+        <h3 lang="es">Host desconocido, sin backend</h3>
+        <p lang="en">
+          A request whose <code>Host</code> matches no configured site is answered with
+          <code>421 Misdirected Request</code> and a request identifier. Nothing is forwarded, and
+          the log line records the host, method and path — never the query string.
+        </p>
+        <p lang="es">
+          Una solicitud cuyo <code>Host</code> no coincide con ningún sitio configurado recibe
+          <code>421 Misdirected Request</code> y un identificador de solicitud. No se reenvía nada, y
+          la línea de registro anota el host, el método y la ruta, nunca la cadena de consulta.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card__tag">
+          <span lang="en">Startup validation</span><span lang="es">Validación al arrancar</span>
+        </div>
+        <h3 lang="en">Mistakes fail at start, not at runtime</h3>
+        <h3 lang="es">Los errores fallan al arrancar, no en ejecución</h3>
+        <p lang="en">
+          A hostname assigned to two sites, a listener that is not loopback, a destination that is
+          not loopback, or a destination that points back at the gateway: each of these stops the
+          process from starting. The gateway then prints the site table it actually resolved,
+          because JSON configuration providers merge arrays element by element and an operator
+          overlay with fewer sites leaves the shipped examples active.
+        </p>
+        <p lang="es">
+          Un nombre de host asignado a dos sitios, un listener que no es loopback, un destino que no
+          es loopback, o un destino que apunta de vuelta al gateway: cada uno de ellos impide que el
+          proceso arranque. Después el gateway imprime la tabla de sitios que realmente resolvió,
+          porque los proveedores de configuración JSON fusionan los arreglos elemento a elemento y
+          una superposición del operador con menos sitios deja activos los ejemplos incluidos.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card__tag">
+          <span lang="en">Forwarding headers</span><span lang="es">Cabeceras de reenvío</span>
+        </div>
+        <h3 lang="en">Replaced, not trimmed</h3>
+        <h3 lang="es">Reemplazadas, no recortadas</h3>
+        <p lang="en">
+          Every <code>X-Forwarded-*</code> variant is removed by prefix, along with
+          <code>Forwarded</code>, <code>X-Real-IP</code>, <code>X-Client-IP</code>,
+          <code>True-Client-IP</code>, <code>CF-Connecting-IP</code> and the Azure client-address
+          headers. <code>X-Original-URL</code> and <code>X-Rewrite-URL</code> go too: IIS URL Rewrite
+          treats them as the effective request path, which is an established authentication-bypass
+          vector. WPShield then writes its own values from the actual connection.
+        </p>
+        <p lang="es">
+          Cada variante <code>X-Forwarded-*</code> se elimina por prefijo, junto con
+          <code>Forwarded</code>, <code>X-Real-IP</code>, <code>X-Client-IP</code>,
+          <code>True-Client-IP</code>, <code>CF-Connecting-IP</code> y las cabeceras de dirección de
+          cliente de Azure. <code>X-Original-URL</code> y <code>X-Rewrite-URL</code> también: IIS URL
+          Rewrite las trata como la ruta efectiva de la solicitud, que es un vector conocido de
+          elusión de autenticación. Después WPShield escribe sus propios valores a partir de la
+          conexión real.
+        </p>
+      </div>
+
+      <div class="card">
+        <div class="card__tag">HTTP 413</div>
+        <h3 lang="en">Bounded bodies</h3>
+        <h3 lang="es">Cuerpos acotados</h3>
+        <p lang="en">
+          6 MiB by default, with a hard configuration ceiling of 64 MiB. A declared
+          <code>Content-Length</code> over the limit is rejected before anything is forwarded; a body
+          of unknown length is counted while it streams and cut off at the same limit. Both answer
+          <code>413</code>.
+        </p>
+        <p lang="es">
+          6 MiB por defecto, con un techo fijo de configuración de 64 MiB. Un
+          <code>Content-Length</code> declarado por encima del límite se rechaza antes de reenviar
+          nada; un cuerpo de longitud desconocida se cuenta mientras se transmite y se corta en el
+          mismo límite. Ambos responden <code>413</code>.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ----------------------------------------------------------- status -->
+  <section id="status" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Honest status</span>
+      <span lang="es">Estado honesto</span>
+    </p>
+
+    <h2 lang="en">What works, what is a prototype,<br>and what does not exist yet.</h2>
+    <h2 lang="es">Qué funciona, qué es un prototipo<br>y qué todavía no existe.</h2>
+
+    <p class="wide" lang="en">
+      This is the table from the README, and it is kept honest on purpose. <strong>Planned means it
+      does not work yet</strong>, and an issue reporting that a planned capability does not work is
+      closed as expected behaviour.
+    </p>
+    <p class="wide" lang="es">
+      Esta es la tabla del README, y se mantiene honesta a propósito. <strong>Planned significa que
+      todavía no funciona</strong>, y un issue que reporte que una capacidad planificada no funciona
+      se cierra como comportamiento esperado.
+    </p>
+
+    <div class="table-scroll">
+      <table lang="en">
+        <thead>
+          <tr>
+            <th scope="col">Capability</th>
+            <th scope="col">Status</th>
+            <th scope="col">Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">.NET 10 foundation and CI</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Nullable reference types, warnings as errors, central package management, CodeQL,
+                formatting gate, Linux verification of the portable core</td>
+          </tr>
+          <tr>
+            <th scope="row">Multi-site host resolution</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Unknown hosts fail closed; no default backend</td>
+          </tr>
+          <tr>
+            <th scope="row">Explainable inspection engine</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Stable rule IDs, scoring, Monitor/Block action calculation</td>
+          </tr>
+          <tr>
+            <th scope="row">WordPress and IIS upload rules</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Windows-aware file name normalization, PHP and IIS executable extensions,
+                <code>web.config</code> detection, disguised extensions, structural anomalies</td>
+          </tr>
+          <tr>
+            <th scope="row">Loopback HTTP gateway</th>
+            <td><span class="pill pill--proto">Prototype</span></td>
+            <td>Kestrel and YARP on <code>127.0.0.1:10000</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Gateway hardening</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Strict startup validation, safe 502 failures, and real synthetic multi-site
+                integration coverage</td>
+          </tr>
+          <tr>
+            <th scope="row">Bounded request controls</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>6 MiB default, 64 MiB ceiling, early and streamed HTTP 413 enforcement</td>
+          </tr>
+          <tr>
+            <th scope="row">Bounded multipart inspection</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2; <code>multipart/form-data</code> bodies are buffered in memory within the request
+                limit — never to disk — inspected, then forwarded or refused</td>
+          </tr>
+          <tr>
+            <th scope="row">Inspection of non-multipart bodies</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>Urlencoded forms, JSON, XML-RPC, <code>application/octet-stream</code> PUTs and
+                archive contents are not inspected. No milestone assigned</td>
+          </tr>
+          <tr>
+            <th scope="row">Bound on concurrent buffered uploads</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M3; nothing limits how many bodies may be buffered at once, and loopback-only is
+                currently what bounds that memory</td>
+          </tr>
+          <tr>
+            <th scope="row">Rate limiting and observability</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M3 and M4</td>
+          </tr>
+          <tr>
+            <th scope="row">Dashboard and Windows Service</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M5 and M6</td>
+          </tr>
+          <tr>
+            <th scope="row">Production activation</th>
+            <td><span class="pill pill--no">Not approved</span></td>
+            <td>Requires M1-M6 validation and controlled M7 rollout</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table lang="es">
+        <thead>
+          <tr>
+            <th scope="col">Capacidad</th>
+            <th scope="col">Estado</th>
+            <th scope="col">Notas</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">Base de .NET 10 e integración continua</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Tipos de referencia anulables, advertencias como errores, gestión central de
+                paquetes, CodeQL, verificación de formato y validación del núcleo portable en Linux</td>
+          </tr>
+          <tr>
+            <th scope="row">Resolución multisitio por host</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Los hosts desconocidos fallan cerrado; no hay backend por defecto</td>
+          </tr>
+          <tr>
+            <th scope="row">Motor de inspección explicable</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>IDs de regla estables, puntuación y cálculo de acción Monitor/Block</td>
+          </tr>
+          <tr>
+            <th scope="row">Reglas de carga para WordPress e IIS</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Normalización de nombres consciente de Windows, extensiones ejecutables de PHP e
+                IIS, detección de <code>web.config</code>, extensiones disfrazadas y anomalías
+                estructurales</td>
+          </tr>
+          <tr>
+            <th scope="row">Gateway HTTP en loopback</th>
+            <td><span class="pill pill--proto">Prototype</span></td>
+            <td>Kestrel y YARP en <code>127.0.0.1:10000</code></td>
+          </tr>
+          <tr>
+            <th scope="row">Endurecimiento del gateway</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>Validación estricta al arrancar, fallos 502 seguros y cobertura de integración
+                multisitio con backends sintéticos reales</td>
+          </tr>
+          <tr>
+            <th scope="row">Controles acotados de solicitud</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>6 MiB por defecto, techo de 64 MiB, aplicación de HTTP 413 temprana y en streaming</td>
+          </tr>
+          <tr>
+            <th scope="row">Inspección multipart acotada</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2; los cuerpos <code>multipart/form-data</code> se almacenan en memoria dentro del
+                límite de solicitud —nunca en disco—, se inspeccionan y luego se reenvían o se
+                rechazan</td>
+          </tr>
+          <tr>
+            <th scope="row">Inspección de cuerpos que no son multipart</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>Los formularios urlencoded, JSON, XML-RPC, los PUT
+                <code>application/octet-stream</code> y el contenido de los archivos comprimidos no
+                se inspeccionan. Sin milestone asignado</td>
+          </tr>
+          <tr>
+            <th scope="row">Límite de cargas concurrentes con búfer</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M3; nada limita cuántos cuerpos pueden almacenarse a la vez, y hoy es la restricción
+                de solo loopback lo que acota esa memoria</td>
+          </tr>
+          <tr>
+            <th scope="row">Limitación de tasa y observabilidad</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M3 y M4</td>
+          </tr>
+          <tr>
+            <th scope="row">Panel y servicio de Windows</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M5 y M6</td>
+          </tr>
+          <tr>
+            <th scope="row">Activación en producción</th>
+            <td><span class="pill pill--no">Not approved</span></td>
+            <td>Requiere validar de M1 a M6 y un despliegue controlado en M7</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note" lang="en">
+      WPShield is <strong>not</strong> an antivirus, an EDR, a stored-file malware scanner, a
+      replacement for Microsoft Defender, a WordPress patching solution, or volumetric DDoS
+      mitigation. It complements Microsoft Defender and ordinary WordPress hardening; it does not
+      replace either.
+    </div>
+    <div class="note" lang="es">
+      WPShield <strong>no</strong> es un antivirus, un EDR, un escáner de malware sobre archivos
+      almacenados, un sustituto de Microsoft Defender, una solución de parcheo de WordPress ni una
+      mitigación de DDoS volumétrico. Complementa a Microsoft Defender y al endurecimiento habitual
+      de WordPress; no sustituye a ninguno de los dos.
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- docs -->
+  <section id="docs" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Read before evaluating</span>
+      <span lang="es">Léelo antes de evaluar</span>
+    </p>
+
+    <h2 lang="en">Everything here is checkable<br>against the code.</h2>
+    <h2 lang="es">Todo lo de aquí es verificable<br>contra el código.</h2>
+
+    <p class="wide" lang="en">
+      Every user-facing document exists in English and Spanish, and a change to user-visible
+      behaviour is expected in both. Issues, discussions and pull requests are welcome in either
+      language.
+    </p>
+    <p class="wide" lang="es">
+      Todos los documentos dirigidos a usuarios existen en inglés y español, y se espera que un
+      cambio de comportamiento visible para el usuario se documente en ambos. Los issues, las
+      discusiones y los pull requests son bienvenidos en cualquiera de los dos idiomas.
+    </p>
+
+    <div class="links">
+      <div>
+        <h3 lang="en">Documentation</h3>
+        <h3 lang="es">Documentación</h3>
+        <ul>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/architecture.md"><span lang="en">Architecture</span><span lang="es">Arquitectura</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/arquitectura.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/operator-configuration.md"><span lang="en">Operator configuration</span><span lang="es">Configuración del operador</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/configuracion-operador.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/m1-lab-gateway.md"><span lang="en">M1 laboratory gateway</span><span lang="es">Gateway M1 de laboratorio</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/m1-gateway-laboratorio.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/m2-request-limits.md"><span lang="en">Bounded request controls</span><span lang="es">Controles limitados de solicitud</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/m2-limites-solicitud.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/m2-upload-rules.md"><span lang="en">Upload rules, with false positives</span><span lang="es">Reglas de carga, con falsos positivos</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/m2-reglas-carga.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/adr/0001-production-traffic-path.md"><span lang="en">ADR 0001 — production traffic path</span><span lang="es">ADR 0001 — ruta de tráfico en producción</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/adr/0001-ruta-de-trafico-en-produccion.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 lang="en">Project</h3>
+        <h3 lang="es">Proyecto</h3>
+        <ul>
+          <li><a href="https://github.com/peopleworks/WPShield"><span lang="en">Source on GitHub</span><span lang="es">Código en GitHub</span></a></li>
+          <li><a href="https://github.com/peopleworks/WPShield/blob/main/ROADMAP.md"><span lang="en">Roadmap — milestones and acceptance criteria</span><span lang="es">Roadmap — hitos y criterios de aceptación</span></a></li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/THREAT_MODEL.md"><span lang="en">Threat model</span><span lang="es">Modelo de amenazas</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/modelo-de-amenazas.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li><a href="https://github.com/peopleworks/WPShield/blob/main/SECURITY.md"><span lang="en">Security policy — never report through a public issue</span><span lang="es">Política de seguridad — nunca reportes por un issue público</span></a></li>
+          <li><a href="https://github.com/peopleworks/WPShield/discussions"><span lang="en">Discussions</span><span lang="es">Discusiones</span></a></li>
+          <li><a href="https://github.com/peopleworks/WPShield/blob/main/CONTRIBUTING.md"><span lang="en">Contributing guide</span><span lang="es">Guía de contribución</span></a></li>
+          <li><a href="https://github.com/peopleworks/WPShield/blob/main/SUPPORT.md"><span lang="en">Support — and what we will not help with</span><span lang="es">Soporte — y con qué no vamos a ayudar</span></a></li>
+          <li><a href="https://github.com/peopleworks/WPShield/blob/main/CHANGELOG.md"><span lang="en">Changelog</span><span lang="es">Registro de cambios</span></a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note" lang="en">
+      Contributions are most useful right now in bounded multipart parsing, false-positive research
+      against real WordPress and plugin traffic, Elementor and Google Site Kit compatibility
+      testing, and Spanish documentation. Read
+      <a href="https://github.com/peopleworks/WPShield/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>,
+      <a href="https://github.com/peopleworks/WPShield/blob/main/SECURITY.md">SECURITY.md</a> and
+      <a href="https://github.com/peopleworks/WPShield/blob/main/AGENTS.md">AGENTS.md</a> first.
+    </div>
+    <div class="note" lang="es">
+      Ahora mismo las contribuciones más útiles están en el análisis acotado de multipart, la
+      investigación de falsos positivos contra tráfico real de WordPress y de plugins, las pruebas de
+      compatibilidad con Elementor y Google Site Kit, y la documentación en español. Lee primero
+      <a href="https://github.com/peopleworks/WPShield/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>,
+      <a href="https://github.com/peopleworks/WPShield/blob/main/SECURITY.md">SECURITY.md</a> y
+      <a href="https://github.com/peopleworks/WPShield/blob/main/AGENTS.md">AGENTS.md</a>.
+    </div>
+  </section>
+
+</main>
+
+<footer class="wrap">
+  <p lang="en">
+    Built by <a href="https://github.com/peopleworks">Pedro Hernández</a> at PeopleWorks Services,
+    for people running WordPress on Windows Server. Available under the
+    <a href="https://github.com/peopleworks/WPShield/blob/main/LICENSE">MIT License</a>.
+  </p>
+  <p lang="es">
+    Construido por <a href="https://github.com/peopleworks">Pedro Hernández</a> en PeopleWorks
+    Services, para quienes ejecutan WordPress sobre Windows Server. Disponible bajo la
+    <a href="https://github.com/peopleworks/WPShield/blob/main/LICENSE">licencia MIT</a>.
+  </p>
+
+  <p class="footer__note" lang="en">
+    WPShield is an early research preview and is <strong>not approved for production traffic</strong>.
+    M1 and M2 are loopback-only. Nothing on this page describes a product you should place in front
+    of a live site today. An independent community project: not affiliated with, endorsed by, or
+    supported by Microsoft Corporation, Automattic, or the WordPress Foundation.
+    <em>Windows Server</em> and <em>IIS</em> are trademarks of Microsoft Corporation;
+    <em>WordPress</em> is a trademark of the WordPress Foundation.
+  </p>
+  <p class="footer__note" lang="es">
+    WPShield es una vista previa de investigación temprana y <strong>no está aprobado para tráfico de
+    producción</strong>. M1 y M2 son exclusivamente de loopback. Nada en esta página describe un
+    producto que debas poner hoy delante de un sitio en vivo. Es un proyecto comunitario
+    independiente: no está afiliado, respaldado ni soportado por Microsoft Corporation, Automattic ni
+    la WordPress Foundation. <em>Windows Server</em> e <em>IIS</em> son marcas de Microsoft
+    Corporation; <em>WordPress</em> es una marca de la WordPress Foundation.
+  </p>
+</footer>
+
+<script>
+// The two controls. Each remembers the choice, and each falls back silently when storage is not
+// available -- a page that throws in a private window is worse than one that forgets a preference.
+(function () {
+  var root = document.documentElement;
+
+  function remember(key, value) {
+    try { localStorage.setItem(key, value); } catch (e) { /* ignore */ }
+  }
+
+  // Only the label is written here. Which icon shows is a CSS decision keyed on data-theme, so the
+  // two never disagree and the drawn glyphs are not rebuilt on every click.
+  var themeButton = document.getElementById('theme');
+  function paintTheme() {
+    var dark = root.getAttribute('data-theme') === 'dark';
+    themeButton.setAttribute(
+      'aria-label',
+      root.getAttribute('data-lang') === 'es'
+        ? (dark ? 'Cambiar al tema claro' : 'Cambiar al tema oscuro')
+        : (dark ? 'Switch to the light theme' : 'Switch to the dark theme'));
+  }
+  themeButton.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    remember('wpshield-theme', next);
+    paintTheme();
+  });
+
+  // The button shows the language you would switch TO, which is the only label that stays legible
+  // to someone who cannot read the language currently on screen. It deliberately carries no lang
+  // attribute: the page hides [lang="en"] while Spanish is selected, and a labelled button would
+  // hide itself in the one state where it is hardest to find another way back.
+  var langButton = document.getElementById('lang');
+  function paintLang() {
+    var spanish = root.getAttribute('data-lang') === 'es';
+    langButton.textContent = spanish ? 'EN' : 'ES';
+    langButton.setAttribute(
+      'aria-label',
+      spanish ? 'Read this page in English' : 'Leer esta página en español');
+  }
+  langButton.addEventListener('click', function () {
+    var next = root.getAttribute('data-lang') === 'es' ? 'en' : 'es';
+    root.setAttribute('data-lang', next);
+    root.setAttribute('lang', next);
+    remember('wpshield-lang', next);
+    paintLang();
+    paintTheme();
+  });
+
+  paintTheme();
+  paintLang();
+})();
+
+// Reveal on scroll. Nothing is hidden until this has confirmed both that motion is wanted and that
+// it can observe the elements, so a reader without JavaScript, or with reduced motion, gets the
+// whole page immediately rather than a column of blank sections.
+(function () {
+  var sections = document.querySelectorAll('.reveal');
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  if (reduced || !('IntersectionObserver' in window)) {
+    sections.forEach(function (el) { el.classList.add('is-in'); });
+    return;
+  }
+
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('is-in');
+      observer.unobserve(entry.target);
+    });
+  }, { rootMargin: '0px 0px -10% 0px' });
+
+  sections.forEach(function (el) { observer.observe(el); });
+})();
+</script>
+
+</body>
+</html>

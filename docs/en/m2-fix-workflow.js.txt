@@ -1,0 +1,486 @@
+export const meta = {
+  name: 'wpshield-m2-parser-differentials',
+  description: 'Close the parser-differential bypasses the M2 adversarial review found',
+  phases: [
+    { title: 'Fix', detail: 'reader/service differentials and WordPress normalization' },
+    { title: 'Tests', detail: 'red-then-green coverage for every closed hole' },
+    { title: 'Re-attack', detail: 'independent adversarial re-verification' },
+    { title: 'Close', detail: 'build, docs, honesty' },
+  ],
+}
+
+const SHARED = String.raw`
+## Context
+
+**WPShield** at C:\Proyecto\WPShield, branch chore/community-readiness. .NET 10.
+A defensive security gateway for WordPress on Windows Server + IIS. Research preview, loopback-only.
+
+M2 has just landed: bounded multipart inspection is now wired into gateway traffic
+(src/WPShield.Gateway/MultipartInspectionReader.cs, UploadInspectionService.cs,
+MultipartInspectionOptions.cs, InspectedUpload.cs, plus FileTypeMismatchRule and
+PhpPolyglotUploadRule in src/WPShield.Rules.WordPress/). Build is green with **0 warnings** and
+**475 tests pass**. Read docs/en/m2-inspection-pipeline-design.md and
+docs/en/m2-content-rules-design.md for the design that shipped.
+
+**An adversarial review then found working bypasses, measured against the built assemblies.
+None were fixed. You are fixing them.**
+
+Every one is a **parser differential**: WPShield's parser and PHP's main/rfc1867.c disagree about
+the same bytes, so WPShield inspects one thing and WordPress writes another. That is the central
+failure mode for this kind of gateway. Closing a differential means making WPShield **fail closed
+whenever it cannot be sure it sees what the backend will see** — never making it imitate PHP's bugs,
+which is an arms race WPShield loses.
+
+---
+
+### F1 — CRITICAL. A closing boundary anywhere but the end makes the body invisible.
+
+Body prefixed with one extra line:
+
+    --X--
+    --X
+    Content-Disposition: form-data; name="f"; filename="shell.php"
+
+    <?php echo 'synthetic marker'; ?>
+    --X--
+
+Measured: Status=Complete, Fields=0, Files=[] -> Allow -> **forwarded in Block mode**, no log line
+above Information. PHP has no concept of a terminating boundary: find_boundary() scans lines until
+one matches --X, and multipart_buffer_headers() drops lines without a colon, so PHP parses the
+smuggled part and writes $_FILES['f'].
+
+Cause: MultipartInspectionReader.ReadAsync initialises status = Complete and the loop breaks on
+"section is null", which MultipartReader returns the moment FinalBoundaryFound is set. Nothing
+verifies the parse consumed the buffer. _stream.Position is useless as a residual check —
+BufferedReadStream has already read to EOF (measured position 223 of 223).
+
+Suggested fix: Complete must mean *the parse reached the end of the buffer*. The gateway owns a
+seekable buffer, so do a bounded pre-scan for --{boundary} occurrences: if any occurrence exists
+after the first --{boundary}--, or anything other than CRLF/LWSP follows the last delimiter, the
+status is Malformed. Do NOT infer it from stream position. This deliberately narrows the existing
+test PreambleAndEpilogue_AreToleratedAndCountAsNothing (MultipartInspectionReaderTests.cs:782) —
+a prose epilogue stays fine, an epilogue containing the delimiter must not.
+
+### F2 — CRITICAL. obs-fold in a part header smuggles a filename.
+
+    --X
+    Content-Disposition: form-data; name="f"
+     ; filename="shell.php" : x
+
+    <?php echo 'synthetic marker'; ?>
+    --X--
+
+Measured: Complete, Fields=1, Files=[] — WPShield sees a *form field*, which is never sampled and
+never inspected. A variant keeping a benign filename="photo.jpg" on the first line measured
+Files=[photo.jpg]: WPShield inspects and passes photo.jpg, PHP writes shell.php.
+
+Cause: MultipartReader.ReadHeadersAsync splits every line on the first colon regardless of leading
+whitespace, so the folded line becomes a junk header named ' ; filename="shell.php" ' and
+Content-Disposition keeps its first-line value — so HasRepeatedFileNameParameter cannot see it,
+because the duplicate never enters disposition.Parameters. PHP does the opposite and says so in
+rfc1867.c: /* space in the beginning means same header */, then keeps the **last** filename. The
+trailing " : x" exists only so ASP.NET finds a colon; without it the reader already fails closed.
+A tab folds identically.
+
+Suggested fix: reject any part-header key whose first character is SP or HTAB, before
+GetContentDispositionHeader(). MultipartReader does not expose raw lines, so derive it from
+section.Headers.
+
+### F3 — HIGH. A comma in Content-Type means WPShield never notices the request is multipart.
+
+Measured against the shipped assembly:
+
+    multipart/form-data; boundary=aaa                       Declares=True  Boundary=True   INSPECTED
+    multipart/form-data; boundary=aaa,                      Declares=False Boundary=False  NOT INSPECTED
+    multipart/form-data; boundary=aaa,bbb                   Declares=False Boundary=False  NOT INSPECTED
+    multipart/form-data; boundary=aaa, application/json     Declares=False Boundary=False  NOT INSPECTED
+    multipart/form-data;boundary=----WebKitFormBoundaryABC, Declares=False Boundary=False  NOT INSPECTED
+
+Cause: DeclaresMultipartFormData answers "did this declare multipart?" with
+MediaTypeHeaderValue.TryParse — a strict whole-value parser that treats comma as a separator. So
+the fail-closed pairing in UploadInspectionService (!hasBoundary && !DeclaresMultipartFormData)
+yields NotInspected, and the request streams through with no rule running and no buffer. PHP:
+boundary_end = strpbrk(boundary, ",;") -> aaa.
+
+This is exactly the hole the [!IMPORTANT] box in docs/en/m2-multipart-inspection.md:32-35 says must
+not exist. Note MultipartInspectionReaderTests.cs:945 already carries the string
+"multipart/form-data; boundary=aaa, application/json" but only asserts the TryGetBoundary half —
+the pairing assertion that would have caught F3 exists only for the duplicate-header case.
+
+Suggested fix: match the media type **textually**, not via a full parse — trim leading whitespace,
+take everything up to the first ';', ',' or whitespace, compare ordinal-case-insensitively to
+multipart/form-data. Every row above then becomes Malformed -> 415 in Block.
+
+### F3b — HIGH, same class. Duplicate and prefix boundary parameters.
+
+TryGetBoundary rejects duplicate Content-Type *header lines*, and HasRepeatedFileNameParameter
+rejects a doubled filename, but the same differential in the boundary parameter is accepted:
+
+  - multipart/form-data; boundary=aaa; boundary=bbb   — WPShield takes the first.
+  - multipart/form-data; xboundary=bbb; boundary=aaa  — WPShield gets aaa; PHP's
+    strstr(ct, "boundary") matches inside xboundary and gets bbb.
+
+Confirmed with a probe that one body can be valid multipart under both aaa and bbb, yielding
+photo.jpg (Complete, no findings, forwarded) to WPShield and shell.php to the other reading.
+
+Suggested fix: mirror HasRepeatedFileNameParameter — reject more than one boundary parameter, and
+reject when the raw value contains the substring "boundary" more times than there are real boundary
+parameters.
+
+### F4 — HIGH. The rules model NTFS normalization, not WordPress normalization.
+
+NormalizedFileName approximates what **Windows** writes. On the plugin endpoints WPShield exists to
+defend, the function that decides the final name is WordPress's sanitize_file_name(), which
+**deletes** ? [ ] / \ = < > : ; , ' " & $ # * ( ) | ~ ! { } % + and chr(0) — plus the ASCII
+backtick, which is in the set too — collapses whitespace
+and hyphen runs, then trim($filename, '.-_'). A name inert under NTFS rules becomes executable
+under WordPress's.
+
+Measured through the real eight-rule engine with the real 4096-byte sample truncation:
+
+    sent='shell.php'    -> WP writes 'shell.php'  | score=90  Block  [WP-UPLOAD-001]
+    sent='shell.p{h}p'  -> WP writes 'shell.php'  | score=0   Allow  []
+    sent='shell.php-'   -> WP writes 'shell.php'  | score=0   Allow  []
+    sent='shell.p%hp'   -> WP writes 'shell.php'  | score=0   Allow  []
+    sent='web.con{f}ig' -> WP writes 'web.config' | score=0   Allow  []
+    sent='web.config-'  -> WP writes 'web.config' | score=0   Allow  []
+    sent='shell.as{p}x' -> WP writes 'shell.aspx' | score=0   Allow  []
+
+web.con{f}ig is the sharpest case: IIS-CONFIG-001 is the 100-point "no false positives expected"
+rule, and one brace turns it off. With the <?php marker padded beyond SampleBytes,
+PHP-CONTENT-001 is silent too, so the total is genuinely 0 / Allow / not even a Warning. The full
+kill chain is one request.
+
+THREAT_MODEL.md:244 says relying on WordPress to call sanitize_file_name() is not a control —
+correct, but it only covers the direction where WordPress does too little. The inverse, where
+WordPress **creates** the dangerous name, is undocumented and unmitigated.
+
+Suggested fix: add a second normalization view — WordPress's — and evaluate the extension rules
+against **both**, most severe wins. That is the same shape as the existing filename/filename*
+two-name handling, so aggregation already supports it. FILE-NAME-001 should report a new
+wordpressRewrite anomaly so the divergence is visible in Monitor before Block turns it into a
+refusal.
+
+### F6 — LOW. Evidence can carry bidi and zero-width characters into a log.
+NormalizedFileName.RemoveControlCharacters strips char.IsControl but not U+200B-200F, U+202A-202E,
+U+2066-2069. A log consumer or dashboard rendering normalizedName can be made to display something
+other than what was uploaded.
+
+---
+
+## Rules for you
+- **Never run git commit, git push, git checkout, git reset or any branch operation.**
+- **Write only the files assigned to you.**
+- WPShield.Abstractions, WPShield.Core and WPShield.Rules.WordPress must stay free of ASP.NET Core,
+  YARP, IIS and Windows-only dependencies — a Linux CI leg proves it.
+- Build must stay at **0 warnings**. All 475 existing tests must still pass; if one now fails
+  because it encoded the vulnerable behavior, say so explicitly and explain why the new behavior is
+  correct rather than quietly deleting the test.
+- House voice in comments: explain **why**, name the concrete attack, be honest about false
+  positives. Read an existing rule to calibrate.
+- Harmless synthetic markers only, .example hostnames only, never a working webshell.
+`
+
+phase('Fix')
+
+const fixes = await parallel([
+  () => agent(SHARED + String.raw`
+
+## Your assigned files (write ONLY these)
+- src/WPShield.Gateway/MultipartInspectionReader.cs
+- src/WPShield.Gateway/UploadInspectionService.cs
+
+## Your task — close F1, F2, F3 and F3b
+
+Read both files completely, and docs/en/m2-inspection-pipeline-design.md, before changing anything.
+
+Guiding principle: **fail closed whenever WPShield cannot be certain it sees what the backend will
+see.** Make a request WPShield cannot parse unambiguously into Malformed, which the gate already
+turns into a finding rather than a silent forward.
+
+**F1** — make Complete mean the parse consumed the buffer. You own the seekable buffer, so a
+bounded scan for --{boundary} is available. Any delimiter occurrence after the first closing
+delimiter, or non-CRLF/LWSP content after the last one, is Malformed. Bound the scan — it runs on
+every multipart request and must not become a new DoS surface; state its cost in a comment.
+
+**F2** — reject any part-header key whose first character is SP or HTAB, before
+GetContentDispositionHeader(). Verify against the real framework parser that this catches both
+measured variants, including the tab form.
+
+**F3** — replace the strict MediaTypeHeaderValue.TryParse in DeclaresMultipartFormData with a
+textual prefix match. Be careful: this method decides whether a request is inspected at all, so an
+over-broad match blocks ordinary traffic and an under-broad one is a bypass. Enumerate what must
+and must not match, and say why each.
+
+**F3b** — reject more than one boundary parameter, and reject a value where the substring
+"boundary" appears more times than there are real boundary parameters (the xboundary differential).
+
+Keep the NotInspected versus Malformed split intact — it exists so ordinary GET traffic is not
+buffered. After your change, verify by reading the control flow that a plain GET, a JSON POST and a
+form-urlencoded POST still take the untouched path.
+
+Re-run dotnet build WPShield.slnx -c Release (0 warnings) and dotnet test WPShield.slnx -c Release
+--no-build. Report each fix, the exact condition it now rejects, and any existing test whose
+expectation legitimately changed.`,
+    { label: 'fix:parser-differentials', phase: 'Fix' }),
+
+  () => agent(SHARED + String.raw`
+
+## Your assigned files (write ONLY these)
+- src/WPShield.Abstractions/NormalizedFileName.cs
+- src/WPShield.Rules.WordPress/ExecutableUploadExtensionRule.cs
+- src/WPShield.Rules.WordPress/IisExecutableUploadRule.cs
+- src/WPShield.Rules.WordPress/IisConfigurationUploadRule.cs
+- src/WPShield.Rules.WordPress/DisguisedExtensionRule.cs
+- src/WPShield.Rules.WordPress/UnsafeFileNameRule.cs
+
+## Your task — close F4 and F6
+
+**F4 is the deepest finding in the review**: WPShield models what *Windows* writes, but on the
+vulnerable plugin endpoints it exists to defend, the name that reaches disk is decided by
+WordPress's sanitize_file_name(). One brace disables the 100-point IIS-CONFIG-001 rule.
+
+1. **Add a WordPress normalization view to NormalizedFileName.** Reproduce sanitize_file_name()
+   faithfully enough to be a control, and say in comments where it deliberately stops. Work from
+   the real behavior: the $special_chars removal set, the whitespace-and-hyphen-run collapse, and
+   the final trim($filename, '.-_'). Note plugins vary — treat this as a second plausible view of
+   the same name, not as certainty.
+
+2. **The existing NTFS view must not change.** 59 NormalizedFileNameTests depend on it and it
+   models a real, different mechanism. Add alongside; do not replace. Both views are legitimate and
+   an attacker only needs one of them to be dangerous.
+
+3. **Evaluate the extension rules against both views, most severe wins.** Keep each rule's existing
+   scoring shape. IisConfigurationUploadRule must match web.config under either view.
+
+4. **Evidence must show the divergence.** When the two views disagree, that is itself information
+   an operator needs: report the WordPress-rewritten name alongside the NTFS one, and have
+   FILE-NAME-001 report a wordpressRewrite anomaly so it is visible in Monitor before Block turns it
+   into a refusal.
+
+5. **False positives — be careful and be honest.** Ordinary WordPress uploads routinely carry
+   spaces, parentheses, ampersands and accents (Captura de pantalla (3).png, Q&A final.pdf), and
+   every one now normalizes differently under the second view. A second view that makes benign names
+   look dangerous is worse than the hole it closes. Work through this explicitly, write the
+   "False positives." paragraph honestly, and state which names you cannot separate.
+
+6. **F6** — extend the control-character strip to the bidi and zero-width formatting characters
+   (U+200B-200F, U+202A-202E, U+2066-2069) so evidence cannot render as something other than what
+   was uploaded, and flag their presence as an anomaly rather than silently dropping them.
+
+Stay free of ASP.NET Core and Windows-only APIs. Re-run the build (0 warnings) and the full suite.
+Report which of the seven measured F4 payloads now produce a finding, with their scores.`,
+    { label: 'fix:wordpress-normalization', phase: 'Fix' }),
+])
+
+log('Fixes complete: ' + fixes.filter(Boolean).length + '/2.')
+
+phase('Tests')
+
+const tests = await parallel([
+  () => agent(SHARED + String.raw`
+
+## Your assigned files (write ONLY these)
+- tests/WPShield.Gateway.Tests/MultipartInspectionReaderTests.cs
+- tests/WPShield.Gateway.Tests/UploadInspectionIntegrationTests.cs
+
+## Your task — prove F1, F2, F3 and F3b are closed
+
+For **each** finding, write the exact attack from the review as a test, at both levels: the reader
+level (status is now Malformed) and the end-to-end level (Block mode returns 415 and the synthetic
+backend receives nothing; Monitor mode records the finding).
+
+Cover every measured variant, not one representative each:
+- F1: closing delimiter prefixed; payload in the epilogue; delimiter inside the epilogue.
+- F2: the smuggled-filename form, the benign-override form, and the tab-folded form.
+- F3: all five measured Content-Type values, and assert the **pairing** — Declares == true and
+  TryGetBoundary == false — for every entry in RejectedBoundaryDeclarations whose media type is
+  multipart/form-data. The review notes this pairing assertion is the one that was missing.
+- F3b: boundary=aaa; boundary=bbb, and xboundary=bbb; boundary=aaa.
+
+Equally important — **assert that ordinary traffic still works**, because these fixes tighten a
+gate every request passes through. A plain GET, a JSON POST, a form-urlencoded POST, a normal
+single-file upload, a normal multi-file upload, a body with a prose preamble and a prose epilogue,
+and a real-shaped WebKit boundary must all still take their correct path. A fix that closes a
+bypass by breaking WordPress is not a fix.
+
+The existing PreambleAndEpilogue_AreToleratedAndCountAsNothing legitimately narrows — update it and
+say why in a comment rather than deleting it.
+
+Run dotnet test tests/WPShield.Gateway.Tests -c Release. If a test fails, the fix is incomplete:
+report precisely which attack still gets through rather than weakening the test.`,
+    { label: 'test:parser-differentials', phase: 'Tests' }),
+
+  () => agent(SHARED + String.raw`
+
+## Your assigned files (write ONLY these)
+- tests/WPShield.Abstractions.Tests/NormalizedFileNameTests.cs
+- tests/WPShield.Rules.WordPress.Tests/UploadRuleTests.cs
+- tests/WPShield.Core.Tests/UploadScoringTests.cs
+
+## Your task — prove F4 and F6 are closed, without breaking benign uploads
+
+**Must now fire** — all seven measured payloads, each asserted with its expected score and rule:
+shell.p{h}p, shell.php-, shell.p%hp, web.con{f}ig, web.config-, shell.as{p}x, plus shell.php still
+at 90. Add the variants the removal set implies: shell.p(h)p, shell.p!hp, shell.p+hp, shell.p#hp,
+shell.p~hp, and a trim('.-_') form such as shell.php_.
+
+**Must stay silent — this half decides whether the fix is shippable.** Real WordPress upload names
+containing the very characters the new view removes: "Captura de pantalla (3).png", "Q&A final.pdf",
+"report [final].xlsx", "price=list.csv", "año-nuevo.jpg", "photo (1).jpeg", "50% off banner.png",
+"my file - copy.docx", "Résumé, 2026.pdf", and Elementor/Site Kit-shaped names. Each must produce
+**no finding**. If any of these fires, that is a false positive that takes a working site offline
+and it must be reported, not accepted.
+
+**F6**: names carrying U+200B, U+202E and U+2066 are stripped, flagged as an anomaly, and cannot
+render in evidence as something other than what was uploaded.
+
+**Scoring**: assert the combined engine score for a payload that fires under both views, and confirm
+twenty benign files still do not aggregate into a block.
+
+Also confirm the 59 existing NormalizedFileNameTests still pass unchanged — the NTFS view was not
+supposed to change. If one changed, that is a regression in a different mechanism; report it.
+
+Run the three suites. Report every payload that still evades, and every benign name that now fires,
+with no rounding in either direction.`,
+    { label: 'test:wordpress-normalization', phase: 'Tests' }),
+])
+
+log('Tests complete: ' + tests.filter(Boolean).length + '/2.')
+
+phase('Re-attack')
+
+const REATTACK = SHARED + String.raw`
+
+## Your task — independent adversarial re-verification
+
+The fixes above claim to close F1, F2, F3, F3b, F4 and F6. **Do not trust that claim.** A fix that
+does not fix is worse than a known hole, because it converts a tracked risk into a believed
+guarantee.
+
+Reproduce **every original attack** against the current built assemblies — compile a probe harness
+in the scratchpad outside the repository, as the original review did, and measure. Report each as
+CLOSED (with the measured evidence) or STILL OPEN (with the exact request).
+
+Then go further. The fixes narrow specific parses; look for what they did not narrow.
+`
+
+const reattacks = await parallel([
+  () => agent(REATTACK + String.raw`
+### Your lens — the transport and the parser
+Attack the multipart framing itself. Beyond the originals, try: a boundary that is a prefix of
+another boundary; --{boundary} appearing inside a file's *content* rather than the framing; CRLF
+versus LF versus bare CR in delimiters and headers; a Content-Disposition using RFC 2231
+continuations (filename*0=, filename*1=); overlong UTF-8 and percent-encoding in filename*;
+Content-Transfer-Encoding: base64 on a part; nested multipart/mixed; a declared Content-Length that
+disagrees with what is sent; and the new pre-scan itself as a DoS or correctness surface — a body
+engineered to make the scan expensive, or to make it disagree with what MultipartReader then does.
+
+Also verify the tightened gate did not break real traffic: construct a genuine browser-shaped WebKit
+multipart POST, a plupload chunked upload, and an Elementor-shaped request, and confirm each is
+inspected and forwarded correctly rather than refused.`,
+    { label: 'reattack:transport', phase: 'Re-attack' }),
+
+  () => agent(REATTACK + String.raw`
+### Your lens — the name and the content
+Attack what the rules conclude, not how the body was framed. Beyond the originals, try: names that
+diverge under the two normalization views in a third direction the fix did not consider; IIS short
+(8.3) forms such as SHELL~1.PHP; Unicode normalization forms (NFC vs NFD, full-width characters)
+that collapse to a dangerous extension under WordPress or Windows; sanitize_file_name()'s behavior
+on names that become **empty** or a bare extension after removal; and double-processing, where
+WordPress's own uniqueness suffixing (shell-1.php) reintroduces a form the rules did not see.
+
+Then attack the content rules: get a payload past FILE-TYPE-001 and PHP-CONTENT-002 by placing a
+valid signature at offset 0 and the PHP marker beyond SampleBytes; by using a format family the
+signature table excludes; and by exploiting the ZIP/PDF exclusions the rule design documents. For
+each, say whether the residual risk is acceptable and documented, or a real gap.
+
+Verify no benign case regressed: the XMP-metadata JPEG, .docx, chunked-JPEG middle samples, and the
+28 benign fixtures in the rule design must all stay silent.`,
+    { label: 'reattack:semantics', phase: 'Re-attack' }),
+])
+
+log('Re-attack complete: ' + reattacks.filter(Boolean).length + '/2.')
+
+const REPORTS = `
+## Re-attack findings — act on anything still open
+### Transport lens
+${typeof reattacks[0] === 'string' ? reattacks[0].slice(0, 14000) : 'no report'}
+### Semantics lens
+${typeof reattacks[1] === 'string' ? reattacks[1].slice(0, 14000) : 'no report'}
+`
+
+phase('Close')
+
+const closing = await parallel([
+  () => agent(SHARED + REPORTS + String.raw`
+
+## Your check — build, tests, formatting, portability
+
+Run and report exactly:
+    dotnet restore WPShield.slnx
+    dotnet build WPShield.slnx --configuration Release --no-restore
+    dotnet test WPShield.slnx --configuration Release --no-build
+    dotnet format WPShield.slnx --verify-no-changes --no-restore
+    git diff --check
+
+Baseline before this run: 0 warnings, 475 tests passing. A drop in test count without an explanation
+is a deleted test and is a defect — account for every difference.
+
+Then prove the Linux CI leg still holds: WPShield.Abstractions, WPShield.Core and
+WPShield.Rules.WordPress must contain no ASP.NET Core, YARP, IIS or Windows-only dependency. Grep
+the sources and read the three .csproj files, then run those three suites individually.
+
+Fix formatting and trivially broken code only. PASS/FAIL per item.`,
+    { label: 'close:build', phase: 'Close' }),
+
+  () => agent(SHARED + REPORTS + String.raw`
+
+## Your assigned files (write ONLY these)
+- docs/en/m2-multipart-inspection.md, docs/es/m2-inspeccion-multipart.md
+- docs/en/m2-upload-rules.md, docs/es/m2-reglas-carga.md
+- THREAT_MODEL.md, docs/es/modelo-de-amenazas.md
+- CHANGELOG.md
+- AGENTS.md
+
+## Your task — document the differentials and what is still open
+
+1. **A parser-differential section** in the multipart document, EN and ES. This is now the most
+   important concept in the design and is currently undocumented: WPShield and PHP can read the same
+   bytes differently, and the gateway's answer is to fail closed on any framing it cannot read
+   unambiguously. Describe each closed differential concretely enough that a contributor adding a
+   parser feature understands what they must not reopen.
+
+2. **The two normalization views**, in the upload-rules documents. An operator reading a finding
+   with a wordpressRewrite anomaly must be able to understand what it means. Include the
+   web.con{f}ig example — it is the clearest demonstration of why one view is not enough.
+
+3. **THREAT_MODEL.md and its Spanish translation.** Line 244 currently covers only the direction
+   where WordPress does too little. Add the inverse — WordPress's own sanitization *creating* a
+   dangerous name — as a named threat with its control and residual risk. Add parser differential as
+   a threat class in its own right. Keep both language versions in step.
+
+4. **AGENTS.md** — add the invariants this run establishes, and only invariants that would reopen a
+   real hole if reverted: Complete means the parse consumed the buffer; a part-header line beginning
+   with whitespace is Malformed; the multipart declaration check must not depend on a strict full
+   header parse; extension rules evaluate against both the NTFS and the WordPress normalization
+   views. Each with one line on the attack it answers.
+
+5. **CHANGELOG.md** — under [Unreleased], in the existing prose style. These are security fixes for
+   holes found before release, so describe the attack, not just the change.
+
+6. **Anything the re-attack agents left STILL OPEN must be written down**, in the threat model's
+   residual-risk section and in the changelog if relevant. Do not quietly omit an open finding — an
+   undocumented known hole is the failure this whole exercise exists to prevent. If both re-attack
+   reports say everything is closed, say that plainly instead.
+
+Every claim verifiable in code. Where behavior is incomplete, say so in the same sentence.`,
+    { label: 'close:docs', phase: 'Close' }),
+])
+
+return {
+  fixes: fixes.map((r, i) => ({ i, ok: Boolean(r), summary: typeof r === 'string' ? r.slice(0, 4000) : null })),
+  tests: tests.map((r, i) => ({ i, ok: Boolean(r), summary: typeof r === 'string' ? r.slice(0, 4000) : null })),
+  reattack: reattacks.map((r, i) => ({ i, ok: Boolean(r), report: typeof r === 'string' ? r.slice(0, 12000) : null })),
+  close: closing.map((r, i) => ({ i, ok: Boolean(r), report: typeof r === 'string' ? r.slice(0, 6000) : null })),
+}

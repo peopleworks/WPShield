@@ -6,7 +6,37 @@
     <PackageReference Include="Yarp.ReverseProxy" />
   </ItemGroup>
   <ItemGroup>
+    <!--
+      MultipartInspectionReader, UploadInspectionService and PooledRequestBuffer are internal by
+      design - they are gateway plumbing, not a surface community rule packages implement against.
+      The multipart reader is also the component whose failure modes are least visible from the
+      outside: a boundary the gateway refuses to parse, a limit that stops the read, a sample that
+      is one byte short of a magic-byte signature. Testing those through HTTP only would mean
+      inferring the status from a response code, so the test assembly is granted direct access
+      instead, following the precedent WPShield.Rules.WordPress.csproj already sets.
+    -->
+    <InternalsVisibleTo Include="WPShield.Gateway.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../WPShield.Core/WPShield.Core.csproj" />
+    <!--
+      The reference that makes WPShield a security gateway rather than a reverse proxy with a size
+      limit. Until M2 the Gateway could not see a single rule: the rule set executed only from the
+      WPShield.Service console demonstration, so none of the detection this project documents ran on
+      real traffic.
+
+      The direction is one-way and it is an architectural invariant, not a preference. The Gateway
+      may reference the Rules project; the Rules project may never reference the Gateway, because
+      Abstractions, Core and Rules.WordPress must stay free of ASP.NET Core, YARP, IIS and
+      Windows-only dependencies. A Linux CI leg builds and tests exactly those three projects, which
+      is what keeps the claim falsifiable rather than aspirational.
+
+      No PackageReference is needed for the multipart machinery. Microsoft.AspNetCore.WebUtilities
+      and Microsoft.Net.Http.Headers ship in the Microsoft.AspNetCore.App shared framework, so
+      MultipartReader, MediaTypeHeaderValue and HeaderUtilities are already available to this
+      Microsoft.NET.Sdk.Web project and Directory.Packages.props is untouched.
+    -->
+    <ProjectReference Include="../WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Update="appsettings.json">

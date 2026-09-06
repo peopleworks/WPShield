@@ -94,6 +94,42 @@ $env:WPSHIELD_Sites__0__Mode = "Monitor"
 
 The same index-merge caveat applies.
 
+## Inspection bounds
+
+`Gateway:Multipart` holds the bounds for the upload inspection pass. Unlike `Sites`, it is a JSON
+**object**, so the element-by-element array merge above does not apply to it: an overlay that sets
+one value leaves the rest at their shipped defaults, which is what an operator editing one line
+expects.
+
+```json
+{
+  "Gateway": {
+    "Multipart": {
+      "ReadTimeoutSeconds": 120
+    }
+  }
+}
+```
+
+Every setting, its default and its hard ceiling are documented in
+[bounded multipart inspection](m2-multipart-inspection.md). Two things are worth knowing
+before you touch them:
+
+- **An out-of-range value prevents startup**, it is not silently clamped. An operator who asks for
+  `"MaximumFileCount": 100000` and quietly gets 100 has been told nothing, and configuration must
+  never appear to do something it does not.
+- **`Gateway:Multipart:Enabled: false` turns the gateway back into a reverse proxy with a size
+  limit.** No body is buffered, no sample is taken, and no upload rule runs on live traffic. It is
+  an incident escape hatch, not a tuning knob, and the gateway logs a warning on every start while
+  it is off.
+
+The gateway prints the bounds it will actually enforce alongside the resolved site table:
+
+```text
+info: WPShield.Gateway.Configuration
+      Multipart upload inspection enabled. MaximumRequestBytes=6291456 MaximumFileCount=20 MaximumFieldCount=200 MaximumPartHeaderBytes=16384 SampleBytes=4096 ReadTimeoutSeconds=30
+```
+
 ## Configuration is not hot-reloaded
 
 Gateway and site options are validated once at startup and captured for the lifetime of the process.

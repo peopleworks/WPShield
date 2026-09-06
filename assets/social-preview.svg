@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="640" viewBox="0 0 1280 640"
+     role="img" aria-labelledby="wps-social-title wps-social-desc"
+     font-family="Segoe UI, system-ui, -apple-system, Helvetica Neue, Arial, sans-serif">
+  <title id="wps-social-title">WPShield &#8212; security gateway for WordPress on Windows Server and IIS</title>
+  <desc id="wps-social-desc">A dark 1280 by 640 card. An amber RESEARCH PREVIEW badge sits above the WPShield wordmark and the line Security gateway for WordPress on Windows Server and IIS. Below a divider, three red-outlined chips show the file names invoice.php.jpg scoring 80 under WP-UPLOAD-001 and 002, shell.php. scoring 100 under WP-UPLOAD-001 and FILE-NAME-001, and web.config scoring 100 under IIS-CONFIG-001. A caption reads that WPShield scores the name Windows will actually write, not the name that was sent. The footer carries github.com/peopleworks/WPShield and the line .NET 10, MIT, PeopleWorks.</desc>
+
+  <defs>
+    <!-- The only gradient in the figure set. This file is rasterized once, by a renderer
+         under our control, so it never has to survive GitHub's live SVG rendering. -->
+    <radialGradient id="wps-social-glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#512BD4" stop-opacity="0.34"/>
+      <stop offset="1" stop-color="#512BD4" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect x="0" y="0" width="1280" height="640" fill="#0D1117"/>
+  <circle cx="1220" cy="-30" r="390" fill="url(#wps-social-glow)"/>
+
+  <rect x="96" y="96" width="228" height="32" rx="16" fill="#2F2A23" stroke="#FBBF24" stroke-width="1.5"/>
+  <text x="210" y="117" text-anchor="middle" font-size="13" font-weight="700" letter-spacing="1.8" fill="#FBBF24">RESEARCH PREVIEW</text>
+
+  <text x="96" y="216" font-size="92" font-weight="800" letter-spacing="2" fill="#E8EDF3">WPShield</text>
+  <text x="96" y="266" font-size="30" fill="#97A3B2">Security gateway for WordPress on Windows Server + IIS</text>
+
+  <line x1="96" y1="306" x2="1184" y2="306" stroke="#2A313B" stroke-width="1.5"/>
+
+  <rect x="96" y="340" width="352" height="76" rx="12" fill="#2E1E22" stroke="#F97066" stroke-width="2"/>
+  <text x="120" y="374" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="22" fill="#F97066">invoice.php.jpg</text>
+  <text x="120" y="398" font-size="13" fill="#97A3B2">WP-UPLOAD-001 + 002 &#183; score 80</text>
+
+  <rect x="464" y="340" width="352" height="76" rx="12" fill="#2E1E22" stroke="#F97066" stroke-width="2"/>
+  <text x="488" y="374" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="22" fill="#F97066">shell.php.</text>
+  <text x="488" y="398" font-size="13" fill="#97A3B2">WP-UPLOAD-001 + FILE-NAME-001 &#183; score 100</text>
+
+  <rect x="832" y="340" width="352" height="76" rx="12" fill="#2E1E22" stroke="#F97066" stroke-width="2"/>
+  <text x="856" y="374" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="22" fill="#F97066">web.config</text>
+  <text x="856" y="398" font-size="13" fill="#97A3B2">IIS-CONFIG-001 &#183; score 100</text>
+
+  <text x="96" y="464" font-size="20" fill="#97A3B2">WPShield scores the name Windows will actually write, not the name that was sent.</text>
+
+  <text x="96" y="560" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="24" font-weight="700" fill="#E8EDF3">github.com/peopleworks/WPShield</text>
+  <text x="1184" y="560" text-anchor="end" font-size="15" font-weight="700" letter-spacing="2" fill="#7D8998">.NET 10 &#183; MIT &#183; PEOPLEWORKS</text>
+</svg>

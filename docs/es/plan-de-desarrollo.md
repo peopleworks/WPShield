@@ -1,10 +1,22 @@
 # WPShield — Plan Maestro de Desarrollo
 
+> **Documento interno de trabajo, en español.** Este es el plan con el que se dirige el desarrollo
+> de WPShield: diseño todavía no implementado, criterios de aceptación por milestone y el orden en
+> que se pretende abordarlos. Vivía en la raíz del repositorio, donde competía con `ROADMAP.md` por
+> ser la fuente de verdad y un recién llegado no podía saber cuál mandaba. Ahora vive aquí, y la
+> raíz queda para los documentos que un visitante abre a propósito.
+>
+> **`ROADMAP.md` es la lista pública y canónica de milestones.** Cuando este plan y
+> [`ROADMAP.md`](../../ROADMAP.md) discrepen —y discreparán, porque este documento se escribe por
+> delante del código y se actualiza por detrás— gana `ROADMAP.md`. Lo mismo vale para la tabla de
+> estado del [`README.md`](../../README.md): esa tabla describe lo que existe hoy; este plan
+> describe lo que se pretende construir.
+
 | Campo | Valor |
 | --- | --- |
 | Proyecto | WPShield |
 | Repositorio | https://github.com/peopleworks/WPShield |
-| Estado actual | M0 completado; M1 Gateway multisitio en desarrollo |
+| Estado autoritativo | [ROADMAP.md](../../ROADMAP.md) y la tabla de estado del [README](../../README.md) |
 | Plataforma objetivo inicial | Windows Server 2022 o superior, IIS 10, WordPress y PHP/FastCGI |
 | Gateway de laboratorio | `http://127.0.0.1:10000` |
 
@@ -182,115 +194,32 @@ HTTP-SIZE-001
 
 ---
 
-## 4. Configuración de GitHub Copilot CLI
+## 4. Configuración de los agentes
 
-### 4.1 Archivo raíz `AGENTS.md`
+Las instrucciones de los agentes tienen **una sola copia cada una**, y no está en este plan. Este
+documento reproducía antes el contenido íntegro de `AGENTS.md` bajo la instrucción de crear el
+archivo con ese texto. La copia envejeció y terminó contradiciendo a la vigente: decía «no confiar
+en los encabezados `X-Forwarded-*`» cuando el gateway ya elimina todo el conjunto no confiable
+—`Forwarded`, la familia de direcciones de cliente y los encabezados de sobrescritura de ruta— y le
+faltaban por completo la invariante del nombre normalizado y la de no publicar hosts, puertos ni
+topología. Un agente que hubiera seguido este plan al pie de la letra habría reabierto agujeros que
+se cerraron a propósito.
 
-Crear `AGENTS.md` en la raíz del repositorio con este contenido:
+Los archivos vivos son estos, y son los únicos:
 
-```markdown
-# WPShield Agent Instructions
+| Archivo | Qué contiene |
+| --- | --- |
+| [`AGENTS.md`](../../AGENTS.md) | Contrato compartido: flujo obligatorio, invariantes de seguridad, estándares de ingeniería, comandos de validación y convención de commits. |
+| [`.github/copilot-instructions.md`](../../.github/copilot-instructions.md) | Contexto de arquitectura y flujo de trabajo específico de Copilot CLI. |
+| [`.github/instructions/`](../../.github/instructions) | Instrucciones por ruta: `csharp`, `tests`, `docs` y `security-rules`. |
 
-WPShield is an open-source defensive security gateway for WordPress sites hosted on Windows Server and IIS.
+Cuando una invariante cambie, se edita `AGENTS.md`. Nada en este plan debe repetirla.
 
-## Required workflow
-
-Before modifying code:
-
-1. Read README.md, ROADMAP.md, THREAT_MODEL.md and relevant source files.
-2. Inspect git status.
-3. State the proposed implementation plan.
-4. Make the smallest cohesive change.
-5. Run restore, build and tests.
-6. Add tests for new behavior.
-7. Update English and Spanish documentation.
-8. Show changed files and validation results.
-9. Do not commit or push unless explicitly requested.
-
-## Safety requirements
-
-- Defensive functionality only.
-- Default to Monitor mode.
-- Never expose the gateway publicly during M1 or M2.
-- Never modify IIS, certificates, DNS, firewall or Windows services automatically.
-- Never log credentials, cookies, authorization headers, nonces, tokens, full query strings or complete request bodies.
-- Reject unknown hosts.
-- Do not trust inbound X-Forwarded-* headers.
-- Do not store suspicious uploads on disk.
-- Do not create weaponized webshell samples.
-- Use harmless synthetic markers in tests.
-
-## Engineering standards
-
-- Target .NET 10.
-- Enable nullable reference types.
-- Treat warnings as errors.
-- Use central package management.
-- Keep WPShield.Core independent from ASP.NET Core and YARP when possible.
-- Keep rule results explainable.
-- Use cancellation tokens for asynchronous I/O.
-- Bound all buffers and request sizes.
-- Avoid buffering complete uploads in memory.
-- Add unit tests and appropriate integration tests.
-- Use English for code identifiers.
-- Localize user-facing messages.
-- Preserve multi-site isolation.
-
-## Validation commands
-
-dotnet restore WPShield.slnx
-dotnet build WPShield.slnx --configuration Release --no-restore
-dotnet test WPShield.slnx --configuration Release --no-build
-git diff --check
-
-## Commit convention
-
-feat(scope): description
-fix(scope): description
-test(scope): description
-docs(language): description
-security(scope): description
-refactor(scope): description
-```
-
-### 4.2 Archivo `.github/copilot-instructions.md`
-
-Debe contener:
-
-- Visión y alcance del producto.
-- Arquitectura general.
-- Comandos de validación.
-- Restricciones de seguridad y privacidad.
-- Convención de commits.
-- Requisito de documentación bilingüe.
-- Política de no modificar producción.
-- Estado de los milestones.
-
-### 4.3 Instrucciones específicas por ruta
-
-Crear:
-
-```text
-.github/instructions/csharp.instructions.md
-.github/instructions/tests.instructions.md
-.github/instructions/docs.instructions.md
-.github/instructions/security-rules.instructions.md
-```
-
-Ejemplo de encabezado para instrucciones C#:
-
-```yaml
----
-applyTo: "**/*.cs"
----
-```
-
-### 4.4 Verificación en Copilot CLI
+### Verificación en Copilot CLI
 
 Desde la raíz del repositorio:
 
 ```powershell
-cd C:\Proyecto\WPShield
 copilot
 ```
 
@@ -1058,7 +987,7 @@ We are continuing development of WPShield, an open-source multilingual defensive
 
 Current environment:
 - .NET 10
-- Windows Server 2022 Standard target
+- Windows Server 2022 or later
 - IIS 10
 - Two WordPress sites
 - wordpress-one.example

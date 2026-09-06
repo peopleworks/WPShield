@@ -1,0 +1,39 @@
+blank_issues_enabled: false
+contact_links:
+  # This used to link straight to /security/advisories/new. That form 404s for anyone who is not a
+  # maintainer whenever private vulnerability reporting is switched off, which is a repository
+  # setting and therefore drifts. SECURITY.md carries both routes and always resolves.
+  - name: Report a security vulnerability
+    url: https://github.com/peopleworks/WPShield/blob/main/SECURITY.md#reporting-a-vulnerability
+    about: >-
+      Never report an exploitable vulnerability in a public issue. SECURITY.md gives
+      the private reporting form and an email fallback for when it does not open.
+  # Most configuration issues are the JSON array-merge caveat or a missing local overlay. Both are
+  # answered here, and neither needs an issue.
+  - name: Configuration, routing and startup questions
+    url: https://github.com/peopleworks/WPShield/blob/main/docs/en/operator-configuration.md
+    about: >-
+      The appsettings.Local.json overlay, the array-merge caveat that leaves example
+      hosts active, and what must never be committed. Read this first.
+  # The mistake this project's issues will attract is a pasted log. Route people at the rule before
+  # they open a form, not after.
+  - name: Before you paste a log, a request or a hostname
+    url: https://github.com/peopleworks/WPShield/blob/main/SUPPORT.md#privacy-when-asking-for-help
+    about: >-
+      Credentials, cookies, nonces, full query strings and real hostnames must not
+      appear in an issue. Redact first and use wordpress-one.example.
+  # Blank issues are disabled, so this is the escape hatch for anything the four forms do not cover.
+  # SUPPORT.md links Discussions, which is a repository setting and may be off; SUPPORT.md is not.
+  - name: Ask a question, or find out where something belongs
+    url: https://github.com/peopleworks/WPShield/blob/main/SUPPORT.md
+    about: >-
+      Where each kind of question goes, and what this volunteer project will not help
+      with. Blank issues are disabled deliberately — routing beats a blank box.
+  # SECURITY.md declares WordPress, plugin and IIS security out of scope. This is where that gets
+  # acted on, rather than leaving the reporter to find the sentence.
+  - name: A vulnerability in WordPress core or a plugin
+    url: https://hackerone.com/wordpress
+    about: >-
+      Report it to WordPress or to the plugin vendor, not here. WPShield encodes
+      publicly-known attack surface; it does not own it, and this project is not
+      affiliated with WordPress or any plugin author.
