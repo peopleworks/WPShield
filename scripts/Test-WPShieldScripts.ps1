@@ -1146,6 +1146,33 @@ else {
     Add-Pass 'PRE-018 reports stopProcessing rather than requiring it'
 }
 
+<#
+    The installer's closing notes must not instruct an operator to do what the installer just did.
+
+    Passing -ConfigurationPath installs appsettings.Local.json, and the notes then said "Put
+    appsettings.Local.json in place" underneath the step that had installed it. Small, but it is the
+    same failure this repository keeps finding in larger forms: a tool describing a state it did not
+    check.
+#>
+$checks++
+if ($installerText -notmatch '\$configurationExpected') {
+    Add-Failure ('the installer''s closing notes do not consider whether a configuration was ' +
+        'supplied, so they tell an operator who passed -ConfigurationPath to install the file again.')
+}
+else {
+    Add-Pass 'the closing notes adapt to whether a configuration was supplied'
+}
+
+# A hardcoded health-check port sends an operator who configured another one to test a port nothing
+# listens on, and that failure is indistinguishable from a gateway that did not start.
+$checks++
+if ($installerText -match "Invoke-WebRequest\s+http://127\.0\.0\.1:\d+/_wpshield") {
+    Add-Failure 'the installer prints a hardcoded health-check URL rather than one read from Gateway:Urls.'
+}
+else {
+    Add-Pass 'the printed health-check URL is read from the configuration'
+}
+
 # =====================================================================================
 #  Result.
 # =====================================================================================
