@@ -27,6 +27,27 @@ must complete first.
   and `GatewayConfigurationValidator` refuses duplicate listeners so the same mistake made by hand is
   a named error instead of a socket error naming a free port.
 
+- **The installer left the gateway running as `LocalSystem` with unrestricted directories — on
+  Windows PowerShell 5.1 only.** Setting the service identity passed
+  `@('config', $name, 'obj=', $account, 'password=', '')` to `sc.exe`. **Windows PowerShell 5.1 drops
+  an empty argument to a native command** rather than passing it as `""`, so `sc.exe` received a
+  trailing `password=` with no value, rejected the command line with 1639 and printed its usage.
+
+  The install threw there: step 4 of 6, *after* `New-Service` had created the service with its
+  `LocalSystem` default and *before* the step that removes inheritance from both directories. What
+  was left running was the gateway with the most privileged account on the machine, and an evidence
+  log still inheriting `C:\ProgramData` — readable by every account on a host serving sixty
+  applications, which is the exact condition `PRE-016` calls a blocker. The `password=` token is now
+  omitted entirely, because a virtual account has no password, and `Invoke-ServiceControl` refuses an
+  empty argument outright rather than letting 5.1 drop it silently.
+
+  It survived because every way it was exercised was a way it could not fail: `-WhatIf` skips the
+  call, PowerShell 7 passes the empty argument correctly, and CI parsed the file under 5.1 without
+  ever running it. **CI now runs the whole script suite under Windows PowerShell 5.1 as well as
+  PowerShell 7**, and the suite exercises the real `sc.exe` command line against a service name that
+  does not exist — 1639 means the grammar is wrong, 1060 means it is right — which touches nothing
+  and would have caught this.
+
 - **The installer told an operator to install a file it had just installed.** Passing
   `-ConfigurationPath` copies `appsettings.Local.json` into place, and the closing notes then said
   "Put appsettings.Local.json in place" underneath the step that had done it. They now read back as a

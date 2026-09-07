@@ -1174,6 +1174,75 @@ else {
 }
 
 # =====================================================================================
+#  11. sc.exe argument grammar, under the interpreter this actually runs on.
+#
+#  The installer passed @('config', $name, 'obj=', $account, 'password=', '') to sc.exe. Windows
+#  PowerShell 5.1 DROPS an empty argument to a native command rather than passing it as "", so
+#  sc.exe received a trailing 'password=' with no value, rejected the command line with 1639 and
+#  printed its usage. The install threw at step 4 of 6 - after New-Service had created the service
+#  with its LocalSystem default, and before the step that restricts the directories. What was left
+#  was the gateway running as the most privileged account on the machine, with an evidence log still
+#  readable by BUILTIN\Users.
+#
+#  Every way it was exercised was a way it could not fail: -WhatIf skips the call, PowerShell 7
+#  passes the empty argument correctly, and CI parses this file under 5.1 without running it.
+# =====================================================================================
+
+Write-Host ''
+Write-Host 'Service control arguments' -ForegroundColor Cyan
+
+$checks++
+$emptyArguments = @($parsed[$installerName].FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+    $node.Extent.Text -match 'Invoke-ServiceControl' -and
+    $node.Extent.Text -match "(,\s*''|,\s*`"`")"
+}, $true))
+
+if ($emptyArguments.Count -gt 0) {
+    Add-Failure ('the installer passes an empty string to sc.exe in ' + $emptyArguments.Count +
+        ' call(s). Windows PowerShell 5.1 drops those, so sc.exe gets a key with no value and ' +
+        'rejects the whole command line with 1639. Omit the key instead.')
+}
+else {
+    Add-Pass 'no sc.exe call passes an empty argument'
+}
+
+<#
+    The behavioural half, and the one that would have caught this.
+
+    The grammar is exercised against the real sc.exe, under whichever PowerShell is running this, on
+    a service name that does not exist. sc.exe validates the command line before it looks the service
+    up, so 1639 means "could not parse" and 1060 means "parsed fine, no such service" - which
+    separates the two without touching a single service on this machine.
+#>
+$checks++
+$absentService = 'WPShieldArgumentProbeDoesNotExist'
+$identityArguments = @('config', $absentService, 'obj=', 'NT SERVICE\WPShield')
+
+$null = & sc.exe @identityArguments 2>&1
+$identityExitCode = $LASTEXITCODE
+
+# Captured, then cleared. A native command's exit code outlives it, and GitHub Actions ends a pwsh
+# step with `exit $LASTEXITCODE` - so leaving sc.exe's 1060 here made this suite print "All checks
+# passed" and then fail the build with it. The harness reports through $failures and nothing else.
+$global:LASTEXITCODE = 0
+
+if ($identityExitCode -eq 1639) {
+    Add-Failure ('sc.exe rejected the service-identity command line as invalid (1639) under ' +
+        'PowerShell ' + $PSVersionTable.PSVersion + '. The install would fail at step 4 of 6, ' +
+        'leaving the service running as LocalSystem with unrestricted directories.')
+}
+elseif ($identityExitCode -eq 1060) {
+    Add-Pass ('sc.exe accepts the service-identity command line under PowerShell ' +
+        $PSVersionTable.PSVersion)
+}
+else {
+    Add-Pass ('sc.exe returned ' + $identityExitCode +
+        ' for the service-identity probe; not 1639, so the command line parsed')
+}
+
+# =====================================================================================
 #  Result.
 # =====================================================================================
 
@@ -1187,3 +1256,9 @@ if ($failures.Count -gt 0) {
 
 Write-Host (' All ' + $checks + ' checks passed.') -ForegroundColor Green
 Write-Host '================================================================================'
+
+# Explicit, rather than left to whatever the last command happened to set. A suite that announces
+# success and then exits non-zero is worse than one that fails honestly: the build goes red with a
+# green report in the log, and the next person spends their time looking for a defect that is not
+# there.
+exit 0

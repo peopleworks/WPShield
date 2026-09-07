@@ -324,6 +324,19 @@ function Invoke-ServiceControl {
         [string] $What
     )
 
+    # Refused rather than passed. Windows PowerShell 5.1 DROPS an empty argument to a native command
+    # instead of passing it as "", so a key like 'password=' followed by '' arrives at sc.exe with
+    # nothing after it and the whole command line is rejected with 1639. PowerShell 7 passes the same
+    # array correctly, which is exactly what makes the fault so hard to see: it appears only on the
+    # interpreter this script is written for, and only on a real install.
+    foreach ($argument in $Arguments) {
+        if ([string]::IsNullOrEmpty($argument)) {
+            throw ($What + ' was built with an empty sc.exe argument. Windows PowerShell 5.1 drops ' +
+                   'those, so sc.exe would receive a key with no value and reject the command line ' +
+                   'with 1639. Omit the key instead of passing an empty value for it.')
+        }
+    }
+
     $output = & sc.exe @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
         throw ($What + ' failed. sc.exe exited with ' + $LASTEXITCODE + ': ' + ($output -join ' '))
@@ -550,9 +563,26 @@ if ($PSCmdlet.ShouldProcess($script:ServiceName, 'Enable the per-service SID')) 
 }
 
 if ($PSCmdlet.ShouldProcess($script:ServiceName, ('Set the service identity to ' + $script:VirtualAccount))) {
-    # A virtual service account: Windows manages it, it has no password anywhere, and it cannot be
-    # used to log on. password= must be present and empty.
-    Invoke-ServiceControl @('config', $script:ServiceName, 'obj=', $script:VirtualAccount, 'password=', '') 'Setting the service identity' | Out-Null
+    <#
+        A virtual service account: Windows manages it, it has no password anywhere, and it cannot be
+        used to log on.
+
+        No password= token at all, and that omission is the whole fix. This used to pass
+        'password=', '' - a key followed by an empty string - and under Windows PowerShell 5.1 an
+        empty argument to a native command is DROPPED rather than passed as "". sc.exe therefore
+        received a trailing 'password=' with no value after it, rejected the whole command line with
+        1639, and printed its usage.
+
+        The install then threw here, at step 4 of 6. The service had already been created by
+        New-Service, which defaults to LocalSystem, so what was left running was the gateway with the
+        most privileged account on the machine - and steps 5 and 6 never ran, so both directories
+        kept their inherited permissions and the evidence log stayed readable by BUILTIN\Users.
+
+        It survived because this line only executes on a real install: -WhatIf skips it, PowerShell 7
+        passes the empty argument correctly, and CI parses this file under 5.1 without ever running
+        it. Every way it was exercised was a way it could not fail.
+    #>
+    Invoke-ServiceControl @('config', $script:ServiceName, 'obj=', $script:VirtualAccount) 'Setting the service identity' | Out-Null
     Write-Detail ('identity: ' + $script:VirtualAccount)
 }
 
