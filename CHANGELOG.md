@@ -12,6 +12,34 @@ must complete first.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`PRE-018` could not see the WordPress permalink rule — the one rule it exists to find.** It
+  required `stopProcessing="true"` together with a regex catch-all of `.*`, `^(.*)$` or `.`, and a
+  comment in the source asserted that the WordPress rule "has exactly this shape". It does not:
+  WordPress writes `patternSyntax="Wildcard"` with `match url="*"` and no `stopProcessing` attribute
+  at all. Run against a server with three WordPress sites, `PRE-018` reported nothing. The wildcard
+  is now a catch-all pattern, and `stopProcessing` is reported rather than required, because it
+  decides *which* failure happens rather than *whether* one does: with it, a WPShield rule placed
+  after is never evaluated; without it, the rule still runs but against the already-rewritten URL,
+  so every request reaches the gateway as `index.php` and the request-path rules see one path
+  forever. Catch-all `Redirect` rules are excluded deliberately — the follow-up request is inspected
+  normally, and flagging every `Force HTTPS` rule on a sixty-site server would bury the finding.
+
+- **`PRE-019` could not see an unpacked copy of the gateway.** It compared the install path, the log
+  path and a registered service's directory — and passed on the very server it was written for,
+  while a copy of the gateway sat in `C:\inetpub\wwwroot\WPShield` writing its log there. All three
+  inputs were correct; none described what was on disk, because the copy had been unzipped by hand
+  and run from a console, which registers nothing. It now looks for `WPShield.Gateway.exe` in every
+  served directory and its immediate children.
+
+- **The preflight printed a configuration nobody could paste.** The suggested
+  `appsettings.Local.json` carried `C:\\\\ProgramData\\\\WPShield\\\\logs`, because a .NET
+  replacement string treats backslash as an ordinary character — only `$` is special there — so
+  `'\\\\'` emitted four. Windows normalises the doubled separators away, so the configuration worked
+  and only the text was wrong, which is how it survived. `Test-WPShieldScripts.ps1` now checks every
+  backslash-doubling replacement in every script.
+
 ### Security
 
 - **The gateway now refuses to start when it cannot write its log, and the installer writes the log

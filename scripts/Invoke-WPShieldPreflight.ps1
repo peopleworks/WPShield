@@ -637,17 +637,49 @@ if ($iisAvailable) {
                 })
             }
 
-            # A catch-all that stops processing will swallow every request before a rule placed
-            # after it is ever evaluated. The WordPress permalink rule is exactly this shape.
+            <#
+                A catch-all Rewrite consumes the request before any rule placed after it, and the
+                WPShield rule has to sit above it.
+
+                This check used to require stopProcessing="true" AND a regex match of .*, ^(.*)$ or
+                . - and a comment here said the WordPress permalink rule was "exactly this shape".
+                It is not. The rule WordPress writes into web.config uses patternSyntax="Wildcard"
+                with match url="*", and carries no stopProcessing attribute at all. So on a server
+                with three WordPress sites this check reported nothing, and the one rule it was
+                written to find was the one it could not see.
+
+                Both halves are fixed. The wildcard "*" is now a catch-all pattern, and
+                stopProcessing is reported rather than required, because it decides which of two
+                failures happens rather than whether one does:
+
+                  stopProcessing="true"  - the WPShield rule after it is never evaluated. Nothing is
+                                           inspected, and the site works perfectly.
+                  no stopProcessing      - the WPShield rule after it still runs, but against the
+                                           REWRITTEN url. Every request arrives at the gateway as
+                                           /index.php, so the request-path rules see one path
+                                           forever and the original is lost before inspection.
+
+                The second is worse, because the log fills with plausible-looking entries.
+
+                Redirects are deliberately excluded. A catch-all Redirect sends the client away and
+                the follow-up request is inspected normally, so ordering the WPShield rule after one
+                costs nothing - and flagging every "Force HTTPS" rule on a 66-site server would bury
+                the finding that matters.
+            #>
             $matchUrl = ''
             $stops = $false
             try { $matchUrl = [string] $rule.match.url } catch { }
             try { $stops = [bool] $rule.stopProcessing } catch { }
 
-            if ($stops -and ($matchUrl -eq '.*' -or $matchUrl -eq '^(.*)$' -or $matchUrl -eq '.')) {
+            $catchAllPatterns = @('.*', '^(.*)$', '^.*$', '(.*)', '.', '*')
+
+            if ($actionType -eq 'Rewrite' -and $catchAllPatterns -contains $matchUrl) {
                 [void] $script:CatchAllRules.Add([pscustomobject] @{
-                    Site = $website.Name
-                    Rule = [string] $rule.name
+                    Site           = $website.Name
+                    Rule           = [string] $rule.name
+                    Match          = $matchUrl
+                    StopProcessing = $stops
+                    ActionUrl      = $actionUrl
                 })
             }
         }
@@ -698,11 +730,23 @@ if ($iisAvailable) {
     }
 
     if ($script:CatchAllRules.Count -gt 0) {
-        $descriptions = @($script:CatchAllRules | ForEach-Object { $_.Site + '/' + $_.Rule })
-        Add-Check 'PRE-018' 'Warn' 'A catch-all rewrite rule already stops processing on some sites' `
-            ('The WPShield rule has to be ordered BEFORE these, or it is never evaluated: ' + ($descriptions -join ', ') +
-             '. WordPress permalink rules have exactly this shape.') `
-            '' @{ catchAllRules = $descriptions }
+        $descriptions = @($script:CatchAllRules | ForEach-Object {
+            $_.Site + '/' + $_.Rule + ' (match "' + $_.Match + '" -> "' + $_.ActionUrl + '"' +
+            $(if ($_.StopProcessing) { ', stopProcessing' } else { '' }) + ')'
+        })
+
+        $anyStop = @($script:CatchAllRules | Where-Object { $_.StopProcessing }).Count -gt 0
+        $consequence = if ($anyStop) {
+            'Where stopProcessing is set, a WPShield rule placed after it is never evaluated at all. Where it is not set, the WPShield rule still runs but against the already-rewritten URL, so every request reaches the gateway as the rewrite target and the original path is lost before it can be inspected.'
+        }
+        else {
+            'None of these sets stopProcessing, so a WPShield rule placed after one still runs - but against the already-rewritten URL. Every request would reach the gateway as the rewrite target, the request-path rules would see one path forever, and the log would fill with plausible entries describing traffic that never happened that way.'
+        }
+
+        Add-Check 'PRE-018' 'Warn' 'Catch-all rewrite rules exist that the WPShield rule must be ordered before' `
+            ('The WPShield rule has to be ordered BEFORE these: ' + ($descriptions -join ', ') + '. ' + $consequence) `
+            'In IIS Manager, open URL Rewrite on the site, select the WPShield rule and use Move Up until it is first. Confirm with a request to a distinctive path and check that the path appears in the WPShield log rather than the rewrite target.' `
+            @{ catchAllRules = $descriptions }
     }
 }
 
@@ -869,6 +913,39 @@ if (-not [string]::IsNullOrWhiteSpace($installedDirectory)) {
     [void] $pathsToCheck.Add(@{ What = 'The WPShield service is already installed at'; Path = $installedDirectory })
 }
 
+<#
+    A copy of the gateway that no service points at.
+
+    The first version of this check compared the install path, the log path and the registered
+    service's directory - and on the server it was written for it passed, while an unpacked copy of
+    the gateway sat in C:\inetpub\wwwroot\WPShield writing its log there. Every one of those three
+    inputs was correct. None of them described what was actually on disk, because the copy had been
+    unzipped by hand and run from a console, which registers nothing.
+
+    So the executable is looked for directly. Each served directory and its immediate children only:
+    deep recursion over 66 web roots on a busy server is not something a read-only readiness check
+    should do, and one level is where an unpacked build lands.
+#>
+foreach ($root in $servedRoots) {
+    if (-not (Test-Path -LiteralPath $root -PathType Container)) { continue }
+
+    $candidateDirectories = New-Object System.Collections.Generic.List[string]
+    [void] $candidateDirectories.Add($root)
+    try {
+        foreach ($child in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction Stop)) {
+            [void] $candidateDirectories.Add($child.FullName)
+        }
+    }
+    catch { }
+
+    foreach ($directory in $candidateDirectories) {
+        $executable = Join-Path $directory 'WPShield.Gateway.exe'
+        if (Test-Path -LiteralPath $executable -PathType Leaf) {
+            [void] $pathsToCheck.Add(@{ What = 'An unpacked copy of the gateway'; Path = $directory })
+        }
+    }
+}
+
 $exposed = New-Object System.Collections.Generic.List[string]
 foreach ($entry in $pathsToCheck) {
     foreach ($root in $servedRoots) {
@@ -960,7 +1037,13 @@ if ($plannedSites.Count -gt 0) {
         '  "Sites": [' + "`n" +
         ($siteBlocks -join (',' + "`n")) + "`n" +
         '  ],' + "`n" +
-        '  "Logging": { "File": { "Enabled": true, "Directory": "' + ($LogPath -replace '\\', '\\\\') + '" } }' + "`n" +
+        # Two backslashes in the replacement, not four. A .NET replacement string treats backslash as
+        # an ordinary character - only $ is special there - so '\\\\' emitted four of them and this
+        # line printed C:\\\\ProgramData\\\\WPShield\\\\logs. That parses to a path with doubled
+        # separators, which Windows happens to normalise away, so the configuration worked and the
+        # printed text was wrong. A tool whose output exists to be pasted has to be right in the
+        # text, not merely right after somebody else cleans it up.
+        '  "Logging": { "File": { "Enabled": true, "Directory": "' + ($LogPath -replace '\\', '\\') + '" } }' + "`n" +
         '}')
 
     Write-Host ''

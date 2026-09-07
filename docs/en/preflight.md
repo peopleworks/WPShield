@@ -67,7 +67,7 @@ Every one of those is a five-minute fix and a very bad twenty minutes if you fin
 | `PRE-015` | The installation directory and its permissions. |
 | `PRE-016` | The log directory: **can unprivileged accounts read it?** |
 | `PRE-017` | **Which other applications ARR already proxies** — the blast radius of the `PRE-008` fix. |
-| `PRE-018` | Catch-all rewrite rules that stop processing, which the WPShield rule must be ordered before. |
+| `PRE-018` | Catch-all rewrite rules the WPShield rule must be ordered before. |
 | `PRE-019` | **Would any part of WPShield sit inside a directory IIS serves?** |
 
 `PRE-016` is a blocker rather than a warning. `C:\ProgramData` is the conventional place for a log
@@ -97,10 +97,31 @@ should know which applications to re-test.
 
 ## `PRE-018` — ordering against a catch-all
 
-A rewrite rule with `stopProcessing="true"` and a `.*` match swallows every request before any rule
-placed after it is evaluated. **The WordPress permalink rule has exactly this shape**, so on a
-WordPress site the WPShield rule must be ordered *first* or it never runs at all — and the failure
-mode is silent: everything keeps working, and nothing is ever inspected.
+A catch-all `Rewrite` consumes the request before any rule placed after it, so the WPShield rule has
+to sit above it. `PRE-018` reports every one it finds, with the match pattern, the rewrite target and
+whether `stopProcessing` is set.
+
+**`stopProcessing` decides which of two failures you get, not whether you get one:**
+
+| | What happens to a WPShield rule placed after it |
+|---|---|
+| `stopProcessing="true"` | It is **never evaluated**. Nothing is inspected, and the site works perfectly. |
+| No `stopProcessing` | It still runs — against the **already-rewritten** URL. Every request reaches the gateway as the rewrite target, so the request-path rules see one path forever. |
+
+The second is the worse one, because the log fills with plausible-looking entries describing traffic
+that never happened that way.
+
+> [!WARNING]
+> **This check used to require `stopProcessing` and a regex catch-all, and a comment in the source
+> claimed the WordPress permalink rule "has exactly this shape". It does not.** WordPress writes
+> `patternSyntax="Wildcard"` with `match url="*"` and no `stopProcessing` attribute at all. On a
+> server with three WordPress sites, `PRE-018` reported nothing — the one rule it exists to find was
+> the one it could not see. The wildcard is now a catch-all pattern and `stopProcessing` is reported
+> rather than required.
+
+Catch-all **Redirects** are deliberately excluded. A redirect sends the client away and the follow-up
+request is inspected normally, so ordering the WPShield rule after one costs nothing — and flagging
+every `Force HTTPS` rule on a sixty-site server would bury the finding that matters.
 
 ## `PRE-019` — WPShield is not an IIS application
 
@@ -109,6 +130,12 @@ under a web root, and `PRE-019` refuses to let that pass quietly. It compares th
 the log path and — if a WPShield service is already registered — the directory that service actually
 runs from, against `%SystemDrive%\inetpub` and the physical path of **every** IIS site, including the
 ones `-SiteName` filtered out. A site nobody asked about serves its directory just as effectively.
+
+It also **looks for the executable directly**, in every served directory and its immediate children.
+The first version of this check compared only those three configured paths, and on the server it was
+written for it passed while an unpacked copy of the gateway sat in `C:\inetpub\wwwroot\WPShield`
+writing its log there. All three inputs were correct; none of them described what was on disk,
+because the copy had been unzipped by hand and run from a console, which registers nothing.
 
 Installed under a served directory, three things go wrong at once:
 

@@ -70,7 +70,7 @@ producción.
 | `PRE-015` | El directorio de instalación y sus permisos. |
 | `PRE-016` | El directorio de registros: **¿pueden leerlo cuentas sin privilegios?** |
 | `PRE-017` | **Qué otras aplicaciones ya pasan por ARR** — el radio de impacto del arreglo de `PRE-008`. |
-| `PRE-018` | Reglas atrapa-todo que detienen el procesamiento, antes de las cuales debe ir la de WPShield. |
+| `PRE-018` | Reglas atrapa-todo antes de las cuales debe ir la de WPShield. |
 | `PRE-019` | **¿Alguna parte de WPShield quedaría dentro de un directorio que IIS sirve?** |
 
 `PRE-016` es bloqueante y no advertencia. `C:\ProgramData` es el sitio convencional para un directorio
@@ -101,10 +101,32 @@ que afecte solo a WPShield, y el operador debe saber qué aplicaciones volver a 
 
 ## `PRE-018` — el orden frente a una regla atrapa-todo
 
-Una regla con `stopProcessing="true"` y coincidencia `.*` se traga toda petición antes de que se
-evalúe cualquier regla posterior. **La regla de enlaces permanentes de WordPress tiene exactamente esa
-forma**, así que en un sitio WordPress la regla de WPShield tiene que ir *primero* o no se ejecuta
-nunca — y el modo de fallo es silencioso: todo sigue funcionando, y no se inspecciona nada.
+Un `Rewrite` atrapa-todo consume la petición antes que cualquier regla posterior, así que la regla de
+WPShield tiene que ir encima. `PRE-018` reporta todas las que encuentra, con el patrón, el destino de
+la reescritura y si tiene `stopProcessing`.
+
+**`stopProcessing` decide cuál de dos fallos le toca, no si le toca uno:**
+
+| | Qué le pasa a una regla de WPShield puesta después |
+|---|---|
+| `stopProcessing="true"` | **Nunca se evalúa.** No se inspecciona nada, y el sitio funciona perfecto. |
+| Sin `stopProcessing` | Sí corre — pero contra la URL **ya reescrita**. Toda petición llega al gateway como el destino de la reescritura, así que las reglas de ruta ven una sola ruta para siempre. |
+
+El segundo es el peor, porque el log se llena de entradas creíbles que describen tráfico que nunca
+ocurrió así.
+
+> [!WARNING]
+> **Esta comprobación exigía `stopProcessing` y un atrapa-todo en regex, y un comentario en el código
+> afirmaba que la regla de enlaces permanentes de WordPress "tiene exactamente esa forma". No la
+> tiene.** WordPress escribe `patternSyntax="Wildcard"` con `match url="*"` y sin ningún atributo
+> `stopProcessing`. En un servidor con tres sitios WordPress, `PRE-018` no reportó nada — la única
+> regla para la cual existe era la que no podía ver. Ahora el comodín es un patrón atrapa-todo y
+> `stopProcessing` se reporta en vez de exigirse.
+
+Los **Redirect** atrapa-todo se excluyen a propósito. Un redirect manda al cliente afuera y la
+petición siguiente se inspecciona normal, así que poner la regla de WPShield después de uno no cuesta
+nada — y marcar cada `Force HTTPS` en un servidor de sesenta sitios enterraría el hallazgo que
+importa.
 
 ## `PRE-019` — WPShield no es una aplicación de IIS
 
@@ -112,7 +134,10 @@ WPShield es un proceso aparte que escucha en un puerto de loopback al que IIS le
 va debajo de una raíz web, y `PRE-019` no deja que eso pase en silencio. Compara la ruta de
 instalación, la ruta de registros y —si ya hay un servicio WPShield registrado— el directorio desde
 el cual ese servicio realmente corre, contra `%SystemDrive%\inetpub` y la ruta física de **todos** los
-sitios de IIS, incluidos los que `-SiteName` filtró. Un sitio por el que nadie preguntó sirve su
+sitios de IIS, incluidos los que `-SiteName` filtró. También **busca el ejecutable directamente**, en
+cada directorio servido y sus hijos inmediatos: la primera versión comparaba sólo esas tres rutas
+configuradas, y en el servidor para el cual se escribió pasó mientras una copia descomprimida del
+gateway estaba en `C:\inetpub\wwwroot\WPShield` escribiendo su log ahí. Un sitio por el que nadie preguntó sirve su
 directorio con la misma eficacia.
 
 Instalado bajo un directorio servido, tres cosas salen mal a la vez:
