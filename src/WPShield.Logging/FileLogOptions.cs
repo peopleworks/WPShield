@@ -44,6 +44,24 @@ public sealed class FileLogOptions
     /// Where log files are written. A relative path resolves against the content root, which for a
     /// Windows service is the installation directory rather than <c>C:\Windows\System32</c>.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The shipped <c>appsettings.json</c> sets an absolute path, and the code default is relative
+    /// only because the test host needs somewhere local to write.</b> A relative default is a trap in
+    /// a deployment: it puts the evidence wherever the build happens to have been unpacked. Unpacked
+    /// under a web root, that is a security log inside the tree IIS serves; unpacked into the
+    /// installation directory, it is a directory the service account holds read-and-execute on, and
+    /// every write fails.
+    /// </para>
+    /// <para>
+    /// Both of those were real. WPShield was run from <c>C:\inetpub\wwwroot\WPShield</c> and wrote its
+    /// log there, next to the configuration file naming every host it protects; and the installer
+    /// created, hardened and reported <c>C:\ProgramData\WPShield\logs</c> while the gateway resolved
+    /// somewhere else entirely, because nothing ever wrote that path into a configuration the gateway
+    /// reads. <see cref="JsonLinesLogWriter.EnsureDirectoryIsWritable"/> is what makes the second one
+    /// impossible to miss now.
+    /// </para>
+    /// </remarks>
     public string Directory { get; init; } = "logs";
 
     /// <summary>

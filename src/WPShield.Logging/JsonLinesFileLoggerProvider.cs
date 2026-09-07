@@ -19,10 +19,11 @@ public sealed class JsonLinesFileLoggerProvider : ILoggerProvider, IAsyncDisposa
     public JsonLinesFileLoggerProvider(
         FileLogOptions options,
         string contentRootPath,
-        TimeProvider? timeProvider = null)
+        TimeProvider? timeProvider = null,
+        Action<string>? reportFailure = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
-        _writer = new JsonLinesLogWriter(options, contentRootPath, _timeProvider);
+        _writer = new JsonLinesLogWriter(options, contentRootPath, _timeProvider, reportFailure);
     }
 
     /// <summary>Where the files are being written, for the startup report.</summary>

@@ -83,8 +83,13 @@ Then, elevated:
 
 What it does:
 
+- **Refuses to run if `-InstallPath` or `-LogPath` is inside a directory IIS serves**, before it has
+  created, copied or registered anything. `-AllowWebRootPaths` overrides it and warns.
 - Creates `C:\Program Files\WPShield` and `C:\ProgramData\WPShield\logs`.
 - Copies the build, and the operator configuration if you pass one.
+- **Writes the log path into `Logging:File:Directory` in the installed `appsettings.json`.** Creating
+  and hardening a directory the gateway was never told about hardens nothing; it only reports that it
+  did.
 - Registers a service named `WPShield`, and only ever that one.
 - Gives it the **virtual account `NT SERVICE\WPShield`** — no password to store anywhere, no account
   to manage, and a per-service identity that can be named in an ACL.
@@ -107,6 +112,24 @@ resolves no host, and starting it before the configuration is in place proves no
 hits and client addresses, so on a server running other people's applications that default would
 make it readable by every account on the box. `PRE-016` reports that condition; the install must not
 be the thing that creates it.
+
+### Why the installer writes the path as well as hardening it
+
+For one release these two steps disagreed. The installer created `C:\ProgramData\WPShield\logs`,
+removed inheritance, granted the service account **modify**, and printed `Logs to:
+C:\ProgramData\WPShield\logs`. It never told the gateway. The gateway read `Logging:File:Directory`,
+which shipped as the relative `logs`, resolved it against its content root and tried to write beside
+its own binaries — the directory this same installer deliberately leaves **read and execute** for
+that account. Every write failed. The failure was announced on standard error, which a Windows
+service has no console for.
+
+A by-the-book installation produced no evidence at all and said nothing about it. The operator had
+been told, on screen, that the log was in a hardened directory.
+
+Two things changed. The installer writes the path it hardened into the configuration the gateway
+reads, and the gateway **refuses to start** when it cannot write there. `Test-WPShieldScripts.ps1`
+now asserts that the installer's `-LogPath` default and the shipped `Logging:File:Directory` name the
+same directory, and exercises the edit against a real copy of the shipped file.
 
 ## 5. Confirm it listens, before touching IIS
 

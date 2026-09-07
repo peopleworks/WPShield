@@ -104,6 +104,11 @@ $script:Writer = $null
 $script:ProxyingRules = [System.Collections.Generic.List[object]]::new()
 $script:CatchAllRules = [System.Collections.Generic.List[object]]::new()
 
+# Every directory IIS serves from, collected while walking the sites and used by PRE-019. WPShield
+# installed inside one of these puts its evidence log, and the configuration naming every host it
+# protects, inside the tree IIS hands out.
+$script:ServedDirectories = [System.Collections.Generic.List[string]]::new()
+
 # =====================================================================================
 #  Output.
 #
@@ -521,6 +526,15 @@ if ($iisAvailable) {
     }
 
     foreach ($website in $websites) {
+        # Collected before the -SiteName filter. PRE-019 asks whether WPShield would sit inside a
+        # directory IIS serves, and a site the operator did not ask about serves its directory just
+        # as effectively as one they did.
+        try {
+            $served = [Environment]::ExpandEnvironmentVariables([string] $website.physicalPath)
+            if (-not [string]::IsNullOrWhiteSpace($served)) { [void] $script:ServedDirectories.Add($served) }
+        }
+        catch { }
+
         if ($null -ne $SiteName -and $SiteName.Count -gt 0 -and $SiteName -notcontains $website.Name) {
             continue
         }
@@ -765,6 +779,119 @@ foreach ($pair in @(
             ($pair.Path + ' grants: ' + ($readable -join ', ')) $remedy `
             @{ path = $pair.Path; exists = $true; broadAccess = $readable }
     }
+}
+
+# =====================================================================================
+#  PRE-019 - nothing of WPShield may live inside a directory IIS serves.
+#
+#  WPShield is not an IIS application. It is a separate process on a loopback port that IIS
+#  forwards to, so none of it belongs under a web root - and put there, three things go wrong at
+#  once:
+#
+#    - appsettings.Local.json becomes fetchable over HTTP. The .json extension is in the default IIS
+#      MIME map, and that file names every host this gateway protects and the private port behind
+#      each one.
+#    - The evidence log sits in the tree IIS hands out. Today .jsonl is not in the MIME map, so it
+#      is not served; that is a table of extensions, not a security boundary.
+#    - A webshell on any neighbouring site reads all of it without an HTTP request at all, and
+#      learns exactly what the shield can and cannot see.
+#
+#  This check exists because it happened. WPShield was unpacked into C:\inetpub\wwwroot\WPShield on
+#  the server this project was built for, and wrote its log there for a day before anyone looked at
+#  the first line of it.
+# =====================================================================================
+
+function Get-ComparablePath {
+    param([string] $Path)
+
+    $full = $Path
+    try { $full = [System.IO.Path]::GetFullPath($Path) } catch { }
+    return ([string] $full).TrimEnd('\', '/')
+}
+
+function Test-PathIsInside {
+    param([string] $Path, [string] $Container)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($Container)) { return $false }
+
+    $candidate = Get-ComparablePath $Path
+    $root = Get-ComparablePath $Container
+    if ([string]::IsNullOrWhiteSpace($root)) { return $false }
+    if ($candidate -eq $root) { return $true }
+
+    return $candidate.StartsWith(($root + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+<#
+    Where a WPShield service, if one is already registered, is installed. Read from the service's
+    own binary path rather than assumed from -InstallPath, because the whole point of this check is
+    to notice an installation that went somewhere nobody intended.
+#>
+function Get-InstalledServiceDirectory {
+    $pathName = ''
+    try {
+        $service = Get-CimInstance -ClassName Win32_Service `
+            -Filter ("Name='" + $script:ServiceName + "'") -ErrorAction Stop
+        if ($null -ne $service) { $pathName = [string] $service.PathName }
+    }
+    catch { }
+
+    if ([string]::IsNullOrWhiteSpace($pathName)) { return '' }
+
+    $executable = $pathName.Trim()
+    if ($executable.StartsWith('"')) {
+        $end = $executable.IndexOf('"', 1)
+        if ($end -gt 1) { $executable = $executable.Substring(1, $end - 1) }
+    }
+    else {
+        $space = $executable.IndexOf(' ')
+        if ($space -gt 0) { $executable = $executable.Substring(0, $space) }
+    }
+
+    try { return [string] [System.IO.Path]::GetDirectoryName($executable) } catch { return '' }
+}
+
+$servedRoots = New-Object System.Collections.Generic.List[string]
+if (-not [string]::IsNullOrWhiteSpace($env:SystemDrive)) {
+    # Listed whether or not IIS was readable. An unelevated run cannot enumerate the sites, and the
+    # common version of this mistake lands in exactly this directory.
+    [void] $servedRoots.Add((Join-Path $env:SystemDrive 'inetpub'))
+}
+foreach ($served in $script:ServedDirectories) { [void] $servedRoots.Add($served) }
+$servedRoots = @($servedRoots | Sort-Object -Unique)
+
+$pathsToCheck = New-Object System.Collections.Generic.List[object]
+[void] $pathsToCheck.Add(@{ What = 'Installation directory'; Path = $InstallPath })
+[void] $pathsToCheck.Add(@{ What = 'Log directory'; Path = $LogPath })
+
+$installedDirectory = Get-InstalledServiceDirectory
+if (-not [string]::IsNullOrWhiteSpace($installedDirectory)) {
+    [void] $pathsToCheck.Add(@{ What = 'The WPShield service is already installed at'; Path = $installedDirectory })
+}
+
+$exposed = New-Object System.Collections.Generic.List[string]
+foreach ($entry in $pathsToCheck) {
+    foreach ($root in $servedRoots) {
+        if (Test-PathIsInside -Path ([string] $entry.Path) -Container $root) {
+            [void] $exposed.Add([string] $entry.What + ': ' + [string] $entry.Path + ' is inside ' + $root)
+            break
+        }
+    }
+}
+
+if ($exposed.Count -eq 0) {
+    Add-Check 'PRE-019' 'Pass' 'Nothing of WPShield sits inside a directory IIS serves' `
+        (([string] $servedRoots.Count) + ' served director(ies) checked against the install path, the log path' +
+         $(if ([string]::IsNullOrWhiteSpace($installedDirectory)) { '' } else { ' and the installed service' }) + '.') `
+        '' @{ servedDirectoryCount = $servedRoots.Count; installedAt = $installedDirectory }
+}
+else {
+    Add-Check 'PRE-019' 'Blocker' 'WPShield is inside a directory IIS serves' `
+        ($exposed -join '; ') `
+        ('Move it outside every web root. appsettings.Local.json is fetchable over HTTP from there - .json is in the ' +
+         'default IIS MIME map - and it names every host this gateway protects. Install-WPShield.ps1 defaults to ' +
+         'C:\Program Files\WPShield with the log in C:\ProgramData\WPShield\logs, which is outside both.') `
+        @{ exposed = @($exposed); servedDirectories = @($servedRoots) }
 }
 
 # =====================================================================================

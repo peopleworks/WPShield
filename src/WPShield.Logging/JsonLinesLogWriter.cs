@@ -20,11 +20,28 @@ namespace WPShield.Logging;
 /// written into the file as soon as the pressure clears.
 /// </para>
 /// <para>
-/// <b>Nothing here is allowed to throw into the gateway.</b> A security gateway that cannot write its
-/// log has a serious problem, but refusing to serve traffic is a worse one, so write failures are
-/// counted and retried on the next batch rather than propagated. The first failure of each streak is
-/// reported to the standard error stream, which under a Windows service is captured by the service
-/// host and is the one channel still available when the file destination is exactly what is broken.
+/// <b>Nothing on the write path is allowed to throw into the gateway.</b> A security gateway that
+/// cannot write its log has a serious problem, but refusing to serve traffic that is already flowing
+/// is a worse one, so write failures during a run are counted and retried on the next batch rather
+/// than propagated.
+/// </para>
+/// <para>
+/// <b>Startup is the exception, and <see cref="EnsureDirectoryIsWritable"/> is where it lives.</b>
+/// The two failures are not the same failure. A disk that fills at three in the morning is a
+/// condition that arrives while the gateway is the only thing standing in front of a site, and
+/// dropping log lines is the least bad response to it. A directory the service account was never
+/// granted write access to is a deployment mistake that is true before the first request arrives,
+/// deterministic, and invisible from the outside - the gateway would inspect traffic, report itself
+/// healthy, and produce no evidence at all. Refusing to start is the only way that mistake is ever
+/// noticed, so it is checked once, up front, and it throws.
+/// </para>
+/// <para>
+/// The first failure of each runtime streak is handed to the reporter supplied by the host, which
+/// routes it to the remaining log destinations - under a Windows service that means the Windows
+/// Event Log. It defaults to the standard error stream, which is right for a console run and is
+/// <b>not</b> right for a service: a service has no console attached, so a notice written there
+/// reaches nobody. An earlier version of this comment claimed the service host captured it. It does
+/// not, and that claim is why a gateway that could not write its log stayed silent about it.
 /// </para>
 /// </remarks>
 public sealed class JsonLinesLogWriter : IAsyncDisposable
@@ -47,6 +64,7 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
     private readonly Channel<byte[]> _queue;
     private readonly Task _drain;
     private readonly TimeProvider _timeProvider;
+    private readonly Action<string> _reportFailure;
 
     private FileStream? _file;
     private long _currentFileBytes;
@@ -54,13 +72,23 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
     private int _droppedSinceLastReport;
     private bool _failing;
 
-    public JsonLinesLogWriter(FileLogOptions options, string contentRootPath, TimeProvider? timeProvider = null)
+    /// <param name="reportFailure">
+    /// Where the first failure of each write streak is announced. Defaults to the standard error
+    /// stream, which is the right answer for a console run and reaches nobody under a Windows
+    /// service; a host that has other log destinations should supply one that uses them.
+    /// </param>
+    public JsonLinesLogWriter(
+        FileLogOptions options,
+        string contentRootPath,
+        TimeProvider? timeProvider = null,
+        Action<string>? reportFailure = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(contentRootPath);
 
         _options = options;
         _timeProvider = timeProvider ?? TimeProvider.System;
+        _reportFailure = reportFailure ?? Console.Error.WriteLine;
         _directory = ResolveDirectory(options, contentRootPath);
 
         _queue = Channel.CreateBounded<byte[]>(new BoundedChannelOptions(options.MaximumQueuedEntries)
@@ -97,6 +125,74 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
         return Path.IsPathRooted(options.Directory)
             ? options.Directory
             : Path.Combine(contentRootPath, options.Directory);
+    }
+
+    /// <summary>
+    /// Creates the log directory if it does not exist and proves a file can be written in it, or
+    /// throws. Called once at startup, before the host is built.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// The directory could not be created, or a file could not be written in it.
+    /// </exception>
+    /// <remarks>
+    /// <para>
+    /// This is the one place in this type that throws, and the asymmetry is deliberate - see the
+    /// remarks on the class. The failure it catches is the one that cannot announce itself: an
+    /// installation whose service account holds read-and-execute on the directory the log resolves
+    /// to. Nothing about that is visible from outside the process. The gateway starts, reports its
+    /// configuration, forwards traffic, applies every rule, and writes down none of it.
+    /// </para>
+    /// <para>
+    /// Creating the directory is part of the proof rather than a convenience. A permission that
+    /// allows writing a file inside an existing directory is not the same permission as the one that
+    /// allows creating the directory, and checking only the second would pass on a machine where the
+    /// first fails on the very first log line.
+    /// </para>
+    /// <para>
+    /// The probe file is opened with <see cref="FileOptions.DeleteOnClose"/> and named for this
+    /// process, so a run leaves nothing behind and two runs cannot collide over one name.
+    /// </para>
+    /// </remarks>
+    public static void EnsureDirectoryIsWritable(string directory)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+
+        try
+        {
+            System.IO.Directory.CreateDirectory(directory);
+
+            var probe = Path.Combine(
+                directory,
+                FormattableString.Invariant($".wpshield-write-probe-{Environment.ProcessId}.tmp"));
+
+            using var stream = new FileStream(
+                probe,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 1,
+                FileOptions.DeleteOnClose);
+
+            stream.WriteByte((byte)'\n');
+        }
+        catch (Exception exception) when (
+            exception is IOException
+                or UnauthorizedAccessException
+                or NotSupportedException
+                or ArgumentException
+                or System.Security.SecurityException)
+        {
+            throw new InvalidOperationException(
+                $"WPShield cannot write its log in '{directory}', so it would run with nowhere to " +
+                "record what it did. Startup is refused rather than leaving a gateway that inspects " +
+                "traffic and produces no evidence of having done so. Point Logging:File:Directory at " +
+                "a directory the account running this service can write to, and grant that account " +
+                "Modify on it. Install-WPShield.ps1 creates C:\\ProgramData\\WPShield\\logs for this " +
+                "and grants exactly that; the installation directory is deliberately read-only for " +
+                "the service account, so a relative path that resolves next to the binaries will " +
+                $"always fail here. Underlying failure: {exception.Message}",
+                exception);
+        }
     }
 
     /// <summary>
@@ -155,8 +251,12 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
 
             if (!_failing)
             {
+                // Set before reporting, not after. The reporter supplied by the host writes through
+                // ILogger, which fans out to every destination including this one, so the notice
+                // comes straight back down into Write and through this catch on the next batch. The
+                // flag is what makes that re-entry terminate instead of repeating forever.
                 _failing = true;
-                Console.Error.WriteLine(
+                _reportFailure(
                     $"WPShield could not write its log file in '{_directory}': {exception.Message}");
             }
         }

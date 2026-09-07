@@ -256,7 +256,7 @@ there is no console to fall back on.
   "Logging": {
     "File": {
       "Enabled": true,
-      "Directory": "logs",
+      "Directory": "C:\\ProgramData\\WPShield\\logs",
       "FileNamePrefix": "wpshield",
       "MaximumFileBytes": 33554432,
       "RetainedFileCount": 14,
@@ -277,10 +277,37 @@ tailing it during a rollout and parseable by whatever aggregates it later. The m
 itself is not written: it would double the size of every line and the rendered message already says
 the same thing.
 
-`Directory` is relative to the **content root**, which for a Windows service is the installation
-directory rather than `C:\Windows\System32`. An absolute path is used as given. Level filtering uses
-the standard provider mechanism, so `Logging:File:LogLevel:Default` works exactly as it does for the
-console.
+`Directory` is absolute in the shipped configuration, and should stay that way. A relative path is
+still accepted and resolves against the **content root**, which for a Windows service is the
+installation directory rather than `C:\Windows\System32`. Level filtering uses the standard provider
+mechanism, so `Logging:File:LogLevel:Default` works exactly as it does for the console.
+
+> [!WARNING]
+> **A relative log directory follows wherever the build was unpacked, and both destinations are
+> wrong.** Unpacked under a web root it puts the evidence log — and `appsettings.Local.json`, which
+> names every host you protect — inside the tree IIS hands out; `.json` is in the default IIS MIME
+> map, so that file is fetchable over HTTP. Unpacked into the installation directory it resolves to a
+> directory `Install-WPShield.ps1` deliberately leaves read-only for the service account, so every
+> write fails.
+>
+> Both of those happened on the same server in the same week. The gateway now refuses to start when
+> it cannot write to the resolved directory, and `Install-WPShield.ps1` writes the path it hardened
+> into this setting rather than assuming the gateway will guess it.
+
+### Startup refuses rather than running without evidence
+
+If the resolved directory cannot be created, or a file cannot be written in it, the gateway does not
+start. It reports the directory, the underlying failure, and what to do about it.
+
+That is a deliberate asymmetry with the runtime behaviour, which never refuses traffic: a disk that
+fills at three in the morning is a condition that arrives while WPShield is the only thing in front
+of a site, and dropping log lines is the least bad answer to it. A directory the service account was
+never granted write access to is different in kind. It is a deployment mistake, it is true before the
+first request arrives, and nothing about it is visible from outside the process — the gateway would
+start, report itself healthy, apply every rule and record none of it.
+
+An empty security log looks exactly like a quiet night. Refusing to start is the only way that
+mistake is ever noticed.
 
 ### Rotation and retention
 

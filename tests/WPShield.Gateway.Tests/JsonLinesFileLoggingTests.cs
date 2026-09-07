@@ -1,6 +1,9 @@
 using System.Text;
 using System.Text.Json;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using WPShield.Gateway.Logging;
 using WPShield.Logging;
 
 namespace WPShield.Gateway.Tests;
@@ -321,6 +324,142 @@ public sealed class JsonLinesFileLoggingTests : IDisposable
     public void Enabled_DefaultsToOffInCode()
     {
         Assert.False(new FileLogOptions().Enabled);
+    }
+
+    /// <summary>
+    /// The check that makes a by-the-book installation fail loudly instead of silently.
+    /// </summary>
+    [Fact]
+    public void EnsureDirectoryIsWritable_CreatesTheDirectoryAndLeavesNoProbeBehind()
+    {
+        var directory = Path.Combine(_root, "evidence");
+
+        JsonLinesLogWriter.EnsureDirectoryIsWritable(directory);
+
+        Assert.True(Directory.Exists(directory));
+        Assert.Empty(Directory.GetFileSystemEntries(directory));
+    }
+
+    [Fact]
+    public void EnsureDirectoryIsWritable_IsSatisfiedTwiceInARow()
+    {
+        var directory = Path.Combine(_root, "evidence");
+
+        JsonLinesLogWriter.EnsureDirectoryIsWritable(directory);
+        JsonLinesLogWriter.EnsureDirectoryIsWritable(directory);
+
+        Assert.True(Directory.Exists(directory));
+    }
+
+    /// <summary>
+    /// The message is the whole value of this check, so it is asserted rather than assumed. An
+    /// operator reading it at three in the morning needs the directory that failed and the directory
+    /// the installer prepares, without going to the documentation for either.
+    /// </summary>
+    [Fact]
+    public void EnsureDirectoryIsWritable_ThrowsNamingTheDirectoryAndTheInstallerDefault()
+    {
+        var directory = BlockedDirectory();
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => JsonLinesLogWriter.EnsureDirectoryIsWritable(directory));
+
+        Assert.Contains(directory, exception.Message, StringComparison.Ordinal);
+        Assert.Contains(@"C:\ProgramData\WPShield\logs", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("Logging:File:Directory", exception.Message, StringComparison.Ordinal);
+        Assert.NotNull(exception.InnerException);
+    }
+
+    /// <summary>
+    /// Startup refuses. Before this existed the gateway started, reported itself healthy, forwarded
+    /// traffic, applied every rule and recorded none of it — which is indistinguishable from a quiet
+    /// night.
+    /// </summary>
+    [Fact]
+    public void AddJsonLinesFileLogging_RefusesToStartWhenTheLogDirectoryCannotBeWrittenTo()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Logging:File:Enabled"] = "true",
+            ["Logging:File:Directory"] = BlockedDirectory()
+        });
+
+        var exception = Assert.Throws<InvalidOperationException>(() => builder.AddJsonLinesFileLogging());
+
+        Assert.Contains("cannot write its log", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// File logging off is not a reason to refuse: there is no directory to fail on.
+    /// </summary>
+    [Fact]
+    public void AddJsonLinesFileLogging_IsSilentWhenTheDestinationIsOff()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions { EnvironmentName = "Testing" });
+        builder.Configuration.Sources.Clear();
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Logging:File:Enabled"] = "false",
+            ["Logging:File:Directory"] = BlockedDirectory()
+        });
+
+        Assert.Null(builder.AddJsonLinesFileLogging());
+    }
+
+    /// <summary>
+    /// A runtime failure reaches the reporter the host supplied. Under a Windows service that is the
+    /// Event Log; the default is standard error, which a service has no console to show.
+    /// </summary>
+    [Fact]
+    public async Task Writer_ReportsAWriteFailureThroughTheSuppliedReporter()
+    {
+        var messages = new List<string>();
+        var options = new FileLogOptions { Enabled = true, Directory = BlockedDirectory() };
+
+        await using (var provider = new JsonLinesFileLoggerProvider(options, _root, null, messages.Add))
+        {
+            provider.CreateLogger("WPShield.Gateway.Request").LogInformation("Anything.");
+        }
+
+        var message = Assert.Single(messages);
+        Assert.Contains("could not write its log file", message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// One notice per streak, not one per batch. A failing disk that produced a line per entry would
+    /// be its own denial of service against whoever is reading the Event Log.
+    /// </summary>
+    [Fact]
+    public async Task Writer_ReportsAFailingStreakOnceRatherThanPerEntry()
+    {
+        var messages = new List<string>();
+        var options = new FileLogOptions { Enabled = true, Directory = BlockedDirectory() };
+
+        await using (var provider = new JsonLinesFileLoggerProvider(options, _root, null, messages.Add))
+        {
+            var logger = provider.CreateLogger("WPShield.Gateway.Request");
+            for (var index = 0; index < 50; index++)
+            {
+                logger.LogInformation("Entry {Index}.", index);
+                await Task.Delay(1);
+            }
+        }
+
+        Assert.Single(messages);
+    }
+
+    /// <summary>
+    /// A directory path whose parent is a file. Creating it fails on every platform, without touching
+    /// an ACL and without needing elevation to set one up.
+    /// </summary>
+    private string BlockedDirectory()
+    {
+        Directory.CreateDirectory(_root);
+        var blocker = Path.Combine(_root, "blocked");
+        File.WriteAllText(blocker, "This is a file, so nothing can be created underneath it.");
+        return Path.Combine(blocker, "logs");
     }
 
     private JsonLinesFileLoggerProvider CreateProvider(

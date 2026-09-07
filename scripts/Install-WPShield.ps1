@@ -52,6 +52,10 @@
 .PARAMETER ConfigurationPath
     Optional appsettings.Local.json to copy into the installation directory.
 
+.PARAMETER AllowWebRootPaths
+    Install even though -InstallPath or -LogPath is inside a directory IIS serves. Warns instead of
+    refusing. There is no good reason to do this; the switch exists for a layout nobody anticipated.
+
 .PARAMETER Start
     Start the service when the install finishes. Off by default.
 
@@ -79,6 +83,8 @@ param(
 
     [string] $ConfigurationPath,
 
+    [switch] $AllowWebRootPaths,
+
     [switch] $Start
 )
 
@@ -104,6 +110,148 @@ function Write-Step {
 function Write-Detail {
     param([string] $Text, [string] $Colour = 'DarkGray')
     Write-Host ('  ' + $Text) -ForegroundColor $Colour
+}
+
+function Get-ComparablePath {
+    param([string] $Path)
+
+    $full = $Path
+    try { $full = [System.IO.Path]::GetFullPath($Path) } catch { }
+    return ([string] $full).TrimEnd('\', '/')
+}
+
+function Test-PathIsInside {
+    param([string] $Path, [string] $Container)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or [string]::IsNullOrWhiteSpace($Container)) { return $false }
+
+    $candidate = Get-ComparablePath $Path
+    $root = Get-ComparablePath $Container
+    if ([string]::IsNullOrWhiteSpace($root)) { return $false }
+    if ($candidate -eq $root) { return $true }
+
+    return $candidate.StartsWith(($root + '\'), [System.StringComparison]::OrdinalIgnoreCase)
+}
+
+<#
+    Every directory IIS is known to serve from, plus the conventional root whether or not IIS is
+    readable. The inetpub entry is not redundant: an unelevated -WhatIf run cannot read the IIS
+    configuration, and the most common version of this mistake lands in exactly that directory.
+#>
+function Get-ServedDirectory {
+    $roots = New-Object System.Collections.Generic.List[string]
+
+    if (-not [string]::IsNullOrWhiteSpace($env:SystemDrive)) {
+        [void] $roots.Add((Join-Path $env:SystemDrive 'inetpub'))
+    }
+
+    try {
+        Import-Module WebAdministration -ErrorAction Stop
+        foreach ($site in @(Get-Website -ErrorAction Stop)) {
+            $physical = ''
+            try { $physical = [Environment]::ExpandEnvironmentVariables([string] $site.physicalPath) } catch { }
+            if (-not [string]::IsNullOrWhiteSpace($physical)) { [void] $roots.Add($physical) }
+        }
+    }
+    catch {
+        # IIS unreadable. The inetpub entry above still stands, and the check is a refusal rather
+        # than a clearance: not finding a reason to refuse is not the same as proving there is none.
+    }
+
+    return @($roots | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)
+}
+
+<#
+    WPShield is not an IIS application and must not live inside one.
+
+    Installed under a served directory, three things become true at once. The evidence log sits in
+    the tree IIS hands out, and .json is in the default IIS MIME map, so appsettings.Local.json -
+    which names every host this gateway protects and the private port behind each - is fetchable
+    over HTTP. The log's restricted ACL is the only thing standing between an attacker and a
+    description of what the shield can see. And a webshell on any neighbouring site, running as an
+    application pool identity that can read the web root, reads all of it without an HTTP request at
+    all.
+
+    This is not hypothetical. WPShield was unpacked into C:\inetpub\wwwroot\WPShield on the server
+    this project was built for, and wrote its log there for a day before anyone noticed.
+#>
+function Assert-NotUnderWebRoot {
+    param([string[]] $Path)
+
+    $roots = @(Get-ServedDirectory)
+    $offences = New-Object System.Collections.Generic.List[string]
+
+    foreach ($candidate in $Path) {
+        foreach ($root in $roots) {
+            if (Test-PathIsInside -Path $candidate -Container $root) {
+                [void] $offences.Add($candidate + '  is inside  ' + $root)
+                break
+            }
+        }
+    }
+
+    if ($offences.Count -eq 0) { return }
+
+    if ($AllowWebRootPaths) {
+        Write-Detail 'WARNING: installing inside a directory IIS serves.' 'Yellow'
+        foreach ($offence in $offences) { Write-Detail ('  ' + $offence) 'Yellow' }
+        Write-Detail 'Continuing because -AllowWebRootPaths was passed. The evidence log and' 'Yellow'
+        Write-Detail 'appsettings.Local.json are now inside the tree IIS hands out.' 'Yellow'
+        return
+    }
+
+    throw ('WPShield would be installed inside a directory IIS serves, and it refuses to be. ' +
+           ($offences -join '; ') + '. WPShield is not an IIS application: it is a separate ' +
+           'process on a loopback port that IIS forwards to, so nothing of it belongs under a web ' +
+           'root. There, appsettings.Local.json is fetchable over HTTP - .json is in the default ' +
+           'IIS MIME map - and it names every host this gateway protects. Use the defaults, or ' +
+           'pass -InstallPath and -LogPath outside every served directory. Nothing was changed.')
+}
+
+<#
+    Writes the log directory into the configuration the gateway actually reads.
+
+    Until this existed the installer created C:\ProgramData\WPShield\logs, removed inheritance from
+    it, granted the service account Modify, printed "Logs to: C:\ProgramData\WPShield\logs" - and
+    told the gateway none of it. The gateway read Logging:File:Directory, which shipped as the
+    relative "logs", resolved it against its content root and wrote next to its own binaries: a
+    directory this same installer deliberately leaves read-only for the service account. The write
+    failed, the failure was reported to a stream a Windows service has no console for, and the
+    result was an installation that reported success and produced no evidence at all.
+
+    An installer that hardens a directory nothing writes to has not hardened anything. It has only
+    told the operator it did.
+#>
+function Set-InstalledLogDirectory {
+    param([string] $ConfigurationFile, [string] $Directory)
+
+    if (-not (Test-Path -LiteralPath $ConfigurationFile -PathType Leaf)) {
+        throw ('The installed build has no appsettings.json at ' + $ConfigurationFile +
+               ', so the log directory cannot be written into it.')
+    }
+
+    $document = $null
+    try {
+        $document = Get-Content -LiteralPath $ConfigurationFile -Raw | ConvertFrom-Json
+    }
+    catch {
+        throw ('The installed appsettings.json is not valid JSON: ' + $_.Exception.Message)
+    }
+
+    # Checked rather than created. A build whose configuration has lost this section is not a build
+    # to install quietly, and adding the section here would hide the fact that it went missing.
+    if (-not ($document.PSObject.Properties.Name -contains 'Logging')) {
+        throw 'The installed appsettings.json has no Logging section. This is not a WPShield build this installer understands.'
+    }
+    if (-not ($document.Logging.PSObject.Properties.Name -contains 'File')) {
+        throw 'The installed appsettings.json has no Logging:File section. This is not a WPShield build this installer understands.'
+    }
+
+    $document.Logging.File.Directory = $Directory
+
+    $json = $document | ConvertTo-Json -Depth 20
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($ConfigurationFile, $json, $utf8NoBom)
 }
 
 <#
@@ -270,12 +418,16 @@ if (-not [string]::IsNullOrWhiteSpace($ConfigurationPath)) {
     Write-Detail ('Configuration to install: ' + $ConfigurationPath + ' (valid JSON)')
 }
 
+# Before anything is created, copied or registered, and before the elevation-dependent steps, so a
+# refusal here leaves the machine exactly as it was found.
+Assert-NotUnderWebRoot -Path @($InstallPath, $LogPath)
+
 $existingService = $null
 try { $existingService = Get-Service -Name $script:ServiceName -ErrorAction Stop } catch { }
 
 Write-Detail ('Source      : ' + $Path)
 Write-Detail ('Install to  : ' + $InstallPath)
-Write-Detail ('Logs to     : ' + $LogPath)
+Write-Detail ('Logs to     : ' + $LogPath + '  (written into appsettings.json, not just created)')
 Write-Detail ('Service     : ' + $script:ServiceName + $(if ($null -eq $existingService) { ' (new)' } else { ' (upgrade, currently ' + $existingService.Status + ')' }))
 Write-Detail ('Identity    : ' + $script:VirtualAccount)
 
@@ -318,6 +470,10 @@ if ($PSCmdlet.ShouldProcess($InstallPath, 'Copy the published build')) {
     Copy-Item -Path (Join-Path $Path '*') -Destination $InstallPath -Recurse -Force
     $copied = @(Get-ChildItem -LiteralPath $InstallPath -Recurse -File).Count
     Write-Detail ($copied.ToString() + ' files in place')
+
+    # Immediately after the copy, because the copy above just replaced the file being edited.
+    Set-InstalledLogDirectory -ConfigurationFile (Join-Path $InstallPath 'appsettings.json') -Directory $LogPath
+    Write-Detail ('Logging:File:Directory set to ' + $LogPath)
 }
 
 if (-not [string]::IsNullOrWhiteSpace($ConfigurationPath)) {
@@ -456,6 +612,13 @@ Write-Host '  3. Add the private loopback binding to each site.'
 Write-Host '  4. Add the rewrite rule, ordered BEFORE any catch-all rule the site already has.'
 Write-Host '     A WordPress permalink rule is a catch-all: put the WPShield rule above it or it never runs.'
 Write-Host '  5. Watch the log with the sites in Monitor mode before changing anything to Block.'
+
+Write-Host ''
+Write-Host 'Where the evidence goes:' -ForegroundColor Cyan
+Write-Host ('  ' + $LogPath)
+Write-Host '  That path is now written into appsettings.json, not merely created here. The gateway'
+Write-Host '  refuses to start if it cannot write there, because a gateway that inspects traffic and'
+Write-Host '  records none of it looks exactly like a quiet night.'
 
 Write-Host ''
 Write-Host 'Know the bypass before you enable the rule:' -ForegroundColor Yellow

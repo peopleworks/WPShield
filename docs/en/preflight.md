@@ -68,6 +68,7 @@ Every one of those is a five-minute fix and a very bad twenty minutes if you fin
 | `PRE-016` | The log directory: **can unprivileged accounts read it?** |
 | `PRE-017` | **Which other applications ARR already proxies** — the blast radius of the `PRE-008` fix. |
 | `PRE-018` | Catch-all rewrite rules that stop processing, which the WPShield rule must be ordered before. |
+| `PRE-019` | **Would any part of WPShield sit inside a directory IIS serves?** |
 
 `PRE-016` is a blocker rather than a warning. `C:\ProgramData` is the conventional place for a log
 directory and its default ACL grants `BUILTIN\Users` read — so a WPShield log holding request paths,
@@ -100,6 +101,29 @@ A rewrite rule with `stopProcessing="true"` and a `.*` match swallows every requ
 placed after it is evaluated. **The WordPress permalink rule has exactly this shape**, so on a
 WordPress site the WPShield rule must be ordered *first* or it never runs at all — and the failure
 mode is silent: everything keeps working, and nothing is ever inspected.
+
+## `PRE-019` — WPShield is not an IIS application
+
+WPShield is a separate process listening on a loopback port that IIS forwards to. None of it belongs
+under a web root, and `PRE-019` refuses to let that pass quietly. It compares the installation path,
+the log path and — if a WPShield service is already registered — the directory that service actually
+runs from, against `%SystemDrive%\inetpub` and the physical path of **every** IIS site, including the
+ones `-SiteName` filtered out. A site nobody asked about serves its directory just as effectively.
+
+Installed under a served directory, three things go wrong at once:
+
+- **`appsettings.Local.json` becomes fetchable over HTTP.** `.json` is in the default IIS MIME map,
+  and that file names every host this gateway protects and the private port behind each one.
+- **The evidence log sits in the tree IIS hands out.** Today `.jsonl` is not in the MIME map, so it
+  is not served. That is a table of extensions, not a security boundary, and it is one `mimeMap`
+  entry away from changing.
+- **A webshell on any neighbouring site reads all of it** without an HTTP request at all, and learns
+  exactly what the shield can and cannot see.
+
+This check exists because it happened. WPShield was unpacked into `C:\inetpub\wwwroot\WPShield` on
+the server this project was built for, and wrote its log there for a day before anyone read the first
+line of it. `Install-WPShield.ps1` now refuses the same layout outright; `-AllowWebRootPaths`
+overrides it and warns.
 
 ## The absence of findings is not a finding
 

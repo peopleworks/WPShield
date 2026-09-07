@@ -14,6 +14,34 @@ must complete first.
 
 ### Security
 
+- **The gateway now refuses to start when it cannot write its log, and the installer writes the log
+  path it hardened into the configuration the gateway reads.** These were one defect wearing two
+  faces, and together they made a by-the-book installation produce no evidence at all, in silence.
+  `Install-WPShield.ps1` created `C:\ProgramData\WPShield\logs`, removed inheritance, granted the
+  service account modify and printed the path — and told the gateway none of it. The gateway read
+  `Logging:File:Directory`, which shipped as the relative `logs`, resolved it against its content
+  root and tried to write beside its own binaries: a directory the same installer deliberately
+  leaves read-and-execute for that account, because a gateway that can overwrite its own executable
+  is a persistence mechanism waiting for a bug. Every write failed. The failure was announced on
+  standard error, which a Windows service has no console for — a comment in the source claimed the
+  service host captured it, and that claim is why nothing was ever heard. In Monitor mode the log is
+  the *only* artefact WPShield produces, so an installation in this state is indistinguishable from
+  a quiet night. Startup now proves the directory can be written to before the host is built;
+  runtime write failures still never refuse traffic, but now reach the Windows Event Log instead of
+  a stream nobody reads.
+
+- **Nothing of WPShield may be installed inside a directory IIS serves.** `Install-WPShield.ps1`
+  refuses before it creates, copies or registers anything, and `PRE-019` reports the same condition
+  for an install that already happened — checking the install path, the log path and the directory a
+  registered WPShield service actually runs from, against `%SystemDrive%\inetpub` and every IIS
+  site's physical path. Under a web root, `appsettings.Local.json` is fetchable over HTTP (`.json`
+  is in the default IIS MIME map) and it names every host the gateway protects and the private port
+  behind each; the evidence log sits in the tree IIS hands out, unserved today only because `.jsonl`
+  happens not to be in that MIME map; and a webshell on a neighbouring site reads all of it with no
+  HTTP request at all. WPShield was unpacked into `C:\inetpub\wwwroot\WPShield` on the server this
+  project was built for and wrote its log there for a day. `-AllowWebRootPaths` overrides the
+  refusal and warns.
+
 - **A site destination on loopback port 80 or 443 is now refused at startup.** It passed every
   other check - it is loopback, and it is not a listener port - so the gateway would start, report
   itself healthy, and fail only when a real request arrived, which under this traffic path means

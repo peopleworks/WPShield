@@ -84,8 +84,13 @@ Después, elevado:
 
 Lo que hace:
 
+- **Se niega a correr si `-InstallPath` o `-LogPath` está dentro de un directorio que IIS sirve**, antes
+  de haber creado, copiado o registrado nada. `-AllowWebRootPaths` lo permite con advertencia.
 - Crea `C:\Program Files\WPShield` y `C:\ProgramData\WPShield\logs`.
 - Copia la compilación, y la configuración del operador si le pasa una.
+- **Escribe la ruta de registros en `Logging:File:Directory` del `appsettings.json` instalado.** Crear
+  y endurecer un directorio del cual nunca se le habló al gateway no endurece nada; sólo reporta que
+  sí.
 - Registra un servicio llamado `WPShield`, y jamás ningún otro.
 - Le da la **cuenta virtual `NT SERVICE\WPShield`** — sin contraseña que guardar en ningún sitio, sin
   cuenta que administrar, y con una identidad por servicio que sí se puede nombrar en una ACL.
@@ -108,6 +113,24 @@ resuelve ningún host, y arrancarlo antes de que la configuración esté en su s
 peticiones, aciertos de reglas y direcciones de cliente, así que en un servidor con aplicaciones de
 otras personas ese valor por omisión lo haría legible por toda cuenta de la máquina. `PRE-016` reporta
 esa condición; la instalación no puede ser lo que la crea.
+
+### Por qué el instalador escribe la ruta además de endurecerla
+
+Durante una versión, esos dos pasos no coincidían. El instalador creaba `C:\ProgramData\WPShield\logs`,
+quitaba la herencia, le daba **modificación** a la cuenta de servicio e imprimía `Logs to:
+C:\ProgramData\WPShield\logs`. Nunca se lo dijo al gateway. El gateway leía `Logging:File:Directory`,
+que se publicaba como el relativo `logs`, lo resolvía contra su raíz de contenido e intentaba escribir
+junto a sus propios binarios — el directorio que este mismo instalador deja deliberadamente en
+**lectura y ejecución** para esa cuenta. Toda escritura fallaba. El fallo se anunciaba por la salida de
+error estándar, para la cual un servicio de Windows no tiene consola.
+
+Una instalación hecha según el manual producía cero evidencia y no decía nada al respecto. Al operador
+se le había dicho, en pantalla, que el registro estaba en un directorio endurecido.
+
+Cambiaron dos cosas. El instalador escribe la ruta que endureció en la configuración que el gateway
+lee, y el gateway **se niega a arrancar** cuando no puede escribir ahí. `Test-WPShieldScripts.ps1`
+ahora comprueba que el valor por omisión de `-LogPath` y el `Logging:File:Directory` publicado nombren
+el mismo directorio, y ejercita la edición contra una copia real del archivo publicado.
 
 ## 5. Confirmar que escucha, antes de tocar IIS
 
