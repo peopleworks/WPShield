@@ -55,10 +55,21 @@ jobs:
         shell: pwsh
         run: ./scripts/Test-WPShieldScripts.ps1
 
-      # The scripts are written for Windows PowerShell 5.1, because that is what a Windows Server
-      # host has without anything being installed on it. PowerShell 7 accepting a script is not
-      # evidence that 5.1 will, so 5.1 parses them too - which is the version the encoding trap
-      # these checks exist for belongs to.
+      # The same checks again, under the interpreter these scripts are actually written for.
+      #
+      # PowerShell 7 accepting a script is not evidence that 5.1 will, and the two differ in ways
+      # that matter here rather than in theory. The installer passed an empty string to sc.exe as a
+      # value for password=; PowerShell 7 forwards it as "", Windows PowerShell 5.1 DROPS it, so
+      # sc.exe saw a key with no value and rejected the whole command line with 1639. The install
+      # threw at step 4 of 6 - after the service had been created with its LocalSystem default and
+      # before the step that restricts the directories.
+      #
+      # Nothing here caught it, because running the suite under pwsh and merely PARSING under 5.1 is
+      # not the same as running it under 5.1. Now it runs under both.
+      - name: Run the same checks under Windows PowerShell 5.1
+        shell: powershell
+        run: ./scripts/Test-WPShieldScripts.ps1
+
       - name: Parse under Windows PowerShell 5.1
         shell: powershell
         run: |
