@@ -73,12 +73,12 @@ forensic tool that silently truncates is worse than one that refuses to start.
 | `TRIAGE-007` | An executable file created *after* the content it holds was written. One is a backup tool; hundreds across a plugin tree is a mass-rewriter working through the site. |
 | `TRIAGE-008` | The requests the IIS logs remember reaching a flagged artifact: how many, when they started and stopped, from which addresses, with which methods and status codes. |
 | `TRIAGE-009` | Installed plugins and themes, with versions. |
-| `TRIAGE-010` | **Host.** A scheduled task registered recently, or one whose action runs an interpreter. |
+| `TRIAGE-010` | **Host.** A scheduled task registered recently, hiding its command line, or running something from outside Windows. |
 | `TRIAGE-011` | **Host.** A local account whose password was set recently, and who is in the Administrators group. |
 | `TRIAGE-012` | **Host.** A Windows service whose binary lives in a temporary, user or web directory. |
 | `TRIAGE-013` | **Host.** Autorun keys. |
 | `TRIAGE-014` | **Host.** Executable content written recently into a staging directory such as `C:\Windows\Temp`. |
-| `TRIAGE-015` | **Host.** Microsoft Defender's own record of threats on this machine. |
+| `TRIAGE-015` | **Host.** Microsoft Defender's own detections: the threat family, **the files it found**, when, and whether it succeeded. |
 
 ### Why `TRIAGE-005` is not just a list of function names
 
@@ -125,6 +125,35 @@ that is silently absent reads exactly like a section that found nothing — the 
 preflight applies to an unreadable IIS configuration.
 
 Still read-only. Nothing is disabled, deleted or repaired.
+
+### What the first real run taught these checks
+
+They were written from a threat model, and the first run on an actual Windows Server host found
+three defects in them — the same lesson this project keeps relearning, and the reason the rule
+families derived from measured behaviour are the ones that hold up.
+
+**`TRIAGE-010` asked the wrong question.** "Does the action run an interpreter" fired sixteen times
+on a clean server, and all sixteen were Microsoft's own maintenance tasks: `PcaPatchDbTask`,
+`Autochk\Proxy`, the disk diagnostic collector, all `rundll32` against a system DLL. Sixteen false
+positives and no true ones is worse than no check, because it teaches the operator to skip the
+section. The mistake was describing a *mechanism* rather than an *intent* — Windows uses `rundll32`
+everywhere. What an intruder's task looks like is an encoded or hidden command line, a binary
+somewhere a binary should not be, or an interpreter running something that is not part of Windows.
+Those are the reasons now, and the same host reports six instead of sixteen, each with a named
+reason.
+
+**`TRIAGE-011` reported nothing at all** — no accounts, no group, no error. An empty `catch` had
+turned a failure into silence, which reads exactly like a clean result. It now reports the failure
+as a finding. Fixing it immediately exposed the failure underneath: `Get-LocalGroupMember` rejects
+the qualified name `BUILTIN\Administrators`, so the group is now fetched with `Get-LocalGroup -SID`,
+which sidesteps both the qualification and the language.
+
+**`TRIAGE-015` used the wrong cmdlet.** `Get-MpThreat` names the threat family but returns an empty
+`Resources` array; the file paths and detection times live on `Get-MpThreatDetection`, which
+identifies the threat only by numeric id. The check reported six threats without saying which file
+any of them was, which is the one thing an operator needs. It now joins both, and strips the
+`file:_` prefix Defender puts on a resource path — leaving it on hands the operator a path that does
+not exist.
 
 Group membership is resolved from the well-known SID rather than the name `Administrators`, because
 the group is `Administradores` on a Spanish Windows and a check written against the English name

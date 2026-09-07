@@ -1094,7 +1094,26 @@ function Invoke-TriageHostScan {
     # was registered inside the window, or when its action runs one of the interpreters that turns
     # a downloaded blob into code - regardless of when it was registered.
     # ---------------------------------------------------------------------------------
+    # The first version of this check asked "does the action run an interpreter". On a clean Windows
+    # Server that fired sixteen times and every one was Microsoft's own maintenance: PcaPatchDbTask,
+    # Autochk\Proxy, the disk diagnostic collector - all rundll32 against a system DLL. Sixteen false
+    # positives and no true ones is worse than no check, because it teaches the operator to skip the
+    # section.
+    #
+    # The mistake was describing a mechanism rather than an intent. Windows uses rundll32 everywhere;
+    # what an intruder's task looks like is an encoded or hidden command line, a binary somewhere a
+    # binary should not be, or an interpreter running something that is not part of Windows. So the
+    # reasons below are those, and "it runs an interpreter" on its own is no longer one of them.
     $interpreters = 'powershell|pwsh|cmd\.exe|wscript|cscript|mshta|rundll32|regsvr32|certutil|bitsadmin|curl|wget|php'
+
+    # Command lines that are trying not to be read. These are the strong ones: no legitimate
+    # scheduled task hides its window and passes base64.
+    $obfuscatedCommand = '-enc\b|-encodedcommand|-e\s+[A-Za-z0-9+/]{40,}|frombase64string|downloadstring|downloadfile|-w\s+hidden|-windowstyle\s+hidden|-nop\b|-noprofile\s+-w|iex\b|invoke-expression|certutil\s+.*-decode|bitsadmin\s+/transfer'
+
+    # Places a scheduled task's binary has no business living.
+    $suspectLocations = '\\temp\\|\\tmp\\|\\appdata\\|\\users\\public\\|\\inetpub\\|\\downloads\\|\\programdata\\'
+
+    $windowsRoot = ($env:windir + '\').ToLowerInvariant()
 
     try {
         foreach ($task in (Get-ScheduledTask -ErrorAction Stop)) {
@@ -1110,14 +1129,30 @@ function Invoke-TriageHostScan {
             catch { }
 
             $actionText = ($actions -join ' | ')
-            $recent = ($null -ne $registered -and $registered.ToUniversalTime() -gt $cutoff)
-            $suspicious = $actionText -match $interpreters
-
-            if (-not $recent -and -not $suspicious) { continue }
+            $expanded = [Environment]::ExpandEnvironmentVariables($actionText).ToLowerInvariant()
 
             $reasons = New-Object System.Collections.Generic.List[string]
-            if ($recent) { [void] $reasons.Add('registeredRecently') }
-            if ($suspicious) { [void] $reasons.Add('runsAnInterpreter') }
+
+            if ($null -ne $registered -and $registered.ToUniversalTime() -gt $cutoff) {
+                [void] $reasons.Add('registeredRecently')
+            }
+            if ($expanded -match $obfuscatedCommand) {
+                [void] $reasons.Add('obfuscatedCommandLine')
+            }
+            if ($expanded -match $suspectLocations) {
+                [void] $reasons.Add('runsFromSuspectLocation')
+            }
+
+            # An interpreter is only interesting when what it runs is not part of Windows. This is
+            # what separates rundll32 loading a system DLL from rundll32 loading something else.
+            if ($expanded -match $interpreters) {
+                $referencesWindows = $expanded.Contains($windowsRoot) -or $expanded.Contains('\system32\') -or $expanded.Contains('\syswow64\')
+                if (-not $referencesWindows) {
+                    [void] $reasons.Add('interpreterOutsideWindows')
+                }
+            }
+
+            if ($reasons.Count -eq 0) { continue }
 
             $registeredText = $null
             if ($null -ne $registered) {
@@ -1125,7 +1160,7 @@ function Invoke-TriageHostScan {
             }
 
             Write-TriageFinding -Level 'Warning' `
-                -Message 'A scheduled task was registered recently, or runs an interpreter that can execute downloaded content. Scheduled tasks are the most durable persistence on Windows.' `
+                -Message 'A scheduled task was registered recently, hides its command line, or runs something from outside Windows. Scheduled tasks are the most durable persistence on Windows.' `
                 -State @{
                     ruleId        = 'TRIAGE-010'
                     scope         = 'host'
@@ -1139,7 +1174,15 @@ function Invoke-TriageHostScan {
         }
     }
     catch {
-        Write-TriageHost '  scheduled tasks could not be read; run elevated for this check.' 'Yellow'
+        Write-TriageFinding -Level 'Warning' `
+            -Message 'Scheduled tasks could not be read, so this run says nothing about the most durable persistence mechanism on Windows.' `
+            -State @{
+                ruleId = 'TRIAGE-010'
+                scope  = 'host'
+                status = 'unavailable'
+                reason = $_.Exception.Message
+                remedy = 'Re-run from an elevated session.'
+            }
     }
 
     # ---------------------------------------------------------------------------------
@@ -1178,14 +1221,19 @@ function Invoke-TriageHostScan {
         Write-TriageHost '  local accounts could not be read.' 'Yellow'
     }
 
-    # Membership of the local Administrators group, resolved from its well-known SID rather than
-    # its name: the group is "Administradores" on a Spanish Windows, and a check written against
-    # the English name finds nothing there and says so in the reassuring direction.
+    # Membership of the local Administrators group, looked up by well-known SID.
+    #
+    # Not by name, because the group is "Administradores" on a Spanish Windows and a check written
+    # against the English name finds nothing there - and reports that absence in the reassuring
+    # direction. And not by translating the SID to a name either, which was the first attempt:
+    # that yields "BUILTIN\Administrators", and Get-LocalGroupMember rejects the qualified form
+    # with "Group BUILTIN\Administrators was not found". Passing the group object straight from
+    # Get-LocalGroup -SID sidesteps both the language and the qualification.
     try {
-        $administrators = (New-Object System.Security.Principal.SecurityIdentifier('S-1-5-32-544')).Translate(
-            [System.Security.Principal.NTAccount]).Value
+        $administratorsGroup = Get-LocalGroup -SID 'S-1-5-32-544' -ErrorAction Stop
+        $administrators = [string] $administratorsGroup.Name
 
-        $members = @(Get-LocalGroupMember -Group $administrators -ErrorAction Stop |
+        $members = @(Get-LocalGroupMember -Group $administratorsGroup -ErrorAction Stop |
             ForEach-Object { [string] $_.Name })
 
         Write-TriageFinding -Level 'Information' `
@@ -1197,7 +1245,21 @@ function Invoke-TriageHostScan {
                 members = $members
             }
     }
-    catch { }
+    catch {
+        # This was an empty catch, and on the first real run it turned the whole check into
+        # silence: no accounts, no group, nothing at all in the report - which reads exactly like
+        # a clean result. The absence of a finding is not a finding, and a check that cannot run
+        # has to say so in the report rather than only in the console.
+        Write-TriageFinding -Level 'Warning' `
+            -Message 'The Administrators group could not be read, so this run says nothing about who has administrative rights on this host.' `
+            -State @{
+                ruleId = 'TRIAGE-011'
+                scope  = 'host'
+                status = 'unavailable'
+                reason = $_.Exception.Message
+                remedy = 'Re-run from an elevated session.'
+            }
+    }
 
     # ---------------------------------------------------------------------------------
     # TRIAGE-012 - services whose binary is somewhere a service binary has no business being.
@@ -1323,8 +1385,49 @@ function Invoke-TriageHostScan {
     # Defender's own history is evidence somebody else already collected, and it is the one source
     # here that can name a threat family rather than describing a shape.
     # ---------------------------------------------------------------------------------
+    # Two cmdlets, because each holds half the answer. Get-MpThreat names the threat family but
+    # returned an empty Resources array on a real host - the file paths and the detection times
+    # live on Get-MpThreatDetection, which in turn identifies the threat only by numeric id. The
+    # first version of this check used Get-MpThreat alone and reported six threats without saying
+    # which file any of them was, which is the one thing an operator needs.
+    $threatNames = @{}
     try {
-        foreach ($detection in (Get-MpThreat -ErrorAction Stop)) {
+        foreach ($threat in (Get-MpThreat -ErrorAction Stop)) {
+            $threatNames[[string] $threat.ThreatID] = [pscustomobject] @{
+                Name     = [string] $threat.ThreatName
+                Severity = [string] $threat.SeverityID
+                Active   = [bool] $threat.IsActive
+            }
+        }
+    }
+    catch { }
+
+    try {
+        $detections = @(Get-MpThreatDetection -ErrorAction Stop |
+            Sort-Object InitialDetectionTime -Descending |
+            Select-Object -First 100)
+
+        foreach ($detection in $detections) {
+            $id = [string] $detection.ThreatID
+            $name = 'unknown'
+            $severity = $null
+            $active = $false
+            if ($threatNames.ContainsKey($id)) {
+                $name = $threatNames[$id].Name
+                $severity = $threatNames[$id].Severity
+                $active = $threatNames[$id].Active
+            }
+
+            # Defender reports a resource as "file:_C:\path\to\thing". The prefix is an internal
+            # scheme marker, and leaving it on gives the operator a path that does not exist.
+            $resources = @()
+            try {
+                $resources = @(@($detection.Resources) | ForEach-Object {
+                    ([string] $_) -replace '^file:_', ''
+                } | Where-Object { $_ } | Select-Object -First 8)
+            }
+            catch { }
+
             $detectedText = $null
             try {
                 if ($detection.InitialDetectionTime) {
@@ -1334,20 +1437,36 @@ function Invoke-TriageHostScan {
             catch { }
 
             Write-TriageFinding -Level 'Warning' `
-                -Message 'Microsoft Defender has a record of this threat on the host.' `
+                -Message 'Microsoft Defender detected this on the host. The paths below are what it found, and the time is when it first saw it.' `
                 -State @{
-                    ruleId          = 'TRIAGE-015'
-                    scope           = 'host'
-                    threat          = [string] $detection.ThreatName
-                    severity        = [string] $detection.SeverityID
-                    active          = [bool] $detection.IsActive
-                    resources       = @(@($detection.Resources) | Select-Object -First 8 | ForEach-Object { [string] $_ })
-                    firstDetectedUtc = $detectedText
+                    ruleId       = 'TRIAGE-015'
+                    scope        = 'host'
+                    threat       = $name
+                    threatId     = $id
+                    severity     = $severity
+                    stillActive  = $active
+                    detectedUtc  = $detectedText
+                    remediated   = [bool] $detection.ActionSuccess
+                    resources    = $resources
                 }
+        }
+
+        if ($detections.Count -eq 0) {
+            Write-TriageFinding -Level 'Information' `
+                -Message 'Microsoft Defender has no detection history on this host.' `
+                -State @{ ruleId = 'TRIAGE-015'; scope = 'host'; detections = 0 }
         }
     }
     catch {
-        Write-TriageHost '  Defender history could not be read.' 'Yellow'
+        Write-TriageFinding -Level 'Warning' `
+            -Message 'The Defender detection history could not be read, so this run says nothing about what the antivirus has already found here.' `
+            -State @{
+                ruleId = 'TRIAGE-015'
+                scope  = 'host'
+                status = 'unavailable'
+                reason = $_.Exception.Message
+                remedy = 'Re-run from an elevated session on a host where Microsoft Defender is present.'
+            }
     }
 }
 

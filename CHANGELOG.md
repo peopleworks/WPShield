@@ -45,6 +45,21 @@ must complete first.
 
 ### Fixed
 
+- **Three defects in the host checks, all found by their first run on a real server.** They were
+  written from a threat model rather than against a host, which is the mistake this project
+  documents everywhere else. `TRIAGE-010` asked "does this task run an interpreter" and fired
+  sixteen times on a clean server, every one of them Microsoft's own maintenance running `rundll32`
+  against a system DLL - sixteen false positives and no true ones, which teaches an operator to
+  skip the section. It now looks for an encoded or hidden command line, a binary somewhere a binary
+  should not be, or an interpreter running something that is not part of Windows, and reports six on
+  the same host, each with a named reason. `TRIAGE-011` reported nothing at all, because an empty
+  `catch` had turned a failure into silence that reads exactly like a clean result; it now reports
+  the failure, and fixing it exposed the failure underneath - `Get-LocalGroupMember` rejects the
+  qualified name `BUILTIN\Administrators`, so the group is fetched by SID. `TRIAGE-015` used
+  `Get-MpThreat`, which names a threat but returns no file paths, so it reported six threats without
+  saying which file any of them was; it now joins `Get-MpThreatDetection` for the paths and times,
+  and strips the `file:_` prefix Defender puts on them.
+
 - **The installer's ownership step silently undid the permissions it had just applied.** It wrote a
   freshly constructed `DirectorySecurity` carrying only an owner, and `Set-Acl` writes that object's
   empty, unprotected DACL too - so the log directory went straight back to inheriting
