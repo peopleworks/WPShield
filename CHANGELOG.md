@@ -14,6 +14,19 @@ must complete first.
 
 ### Fixed
 
+- **The gateway could not start with the configuration it ships with.** `GatewayOptions.Urls`
+  defaulted to `["http://127.0.0.1:10000"]` in code, and the shipped `appsettings.json` set
+  `Gateway:Urls:0` to the same address. `ConfigurationBinder` **appends** to an array property that
+  already holds a value rather than replacing it, so binding produced two identical entries, Kestrel
+  bound the port and then bound it again, and the process died with `Failed to bind to address
+  http://127.0.0.1:10000: address already in use` — on a machine where that port was free. As a
+  Windows service that is: starts, stops, restarts sixty seconds later, forever. It hid because it
+  only bites when the configured port *equals* the default: an operator who set any other port got
+  two working listeners and a spare nobody asked for, which reads as a harmless quirk. The one
+  configuration that fails is the one that agrees with the shipped file. The default is now empty,
+  and `GatewayConfigurationValidator` refuses duplicate listeners so the same mistake made by hand is
+  a named error instead of a socket error naming a free port.
+
 - **`PRE-018` could not see the WordPress permalink rule — the one rule it exists to find.** It
   required `stopProcessing="true"` together with a regex catch-all of `.*`, `^(.*)$` or `.`, and a
   comment in the source asserted that the WordPress rule "has exactly this shape". It does not:
