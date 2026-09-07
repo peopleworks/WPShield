@@ -4,7 +4,37 @@ public sealed class GatewayOptions
 {
     public const long AbsoluteMaximumRequestBytes = 64L * 1024 * 1024;
 
-    public string[] Urls { get; init; } = ["http://127.0.0.1:10000"];
+    /// <summary>
+    /// The loopback addresses Kestrel binds. Supplied entirely by configuration; the shipped
+    /// <c>appsettings.json</c> is the only place the port is written down.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This default is empty, and it must stay empty.</b> It used to be
+    /// <c>["http://127.0.0.1:10000"]</c>, and that single line stopped the gateway from starting at
+    /// all.
+    /// </para>
+    /// <para>
+    /// <c>ConfigurationBinder</c> <b>appends</b> to an array property that already holds a value
+    /// rather than replacing it. The shipped <c>appsettings.json</c> sets
+    /// <c>Gateway:Urls:0</c> to the same <c>http://127.0.0.1:10000</c>, so binding produced
+    /// <i>two</i> identical entries, Kestrel bound the port and then bound it again, and the process
+    /// died with <c>Failed to bind to address http://127.0.0.1:10000: address already in use</c> - on
+    /// a machine where that port was demonstrably free. As a Windows service that reads as: starts,
+    /// stops, restarts sixty seconds later, forever.
+    /// </para>
+    /// <para>
+    /// It hid for as long as it did because it only bites when the configured port <i>equals</i> the
+    /// default. An operator who set any other port got two working listeners and a spare port nobody
+    /// asked for, which looks like a harmless quirk rather than a fault. The one configuration that
+    /// fails is the one that agrees with the shipped file.
+    /// </para>
+    /// <para>
+    /// <see cref="GatewayConfigurationValidator"/> also refuses duplicate listeners now, so the same
+    /// mistake made by hand is a named error at startup instead of a socket error naming a free port.
+    /// </para>
+    /// </remarks>
+    public string[] Urls { get; init; } = [];
     public bool AllowRemoteHealthChecks { get; init; }
 
     /// <summary>

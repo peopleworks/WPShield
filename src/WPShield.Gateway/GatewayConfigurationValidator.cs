@@ -305,6 +305,8 @@ public static class GatewayConfigurationValidator
         }
 
         var listeners = new List<Uri>(urls.Length);
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         foreach (var url in urls)
         {
             if (!Uri.TryCreate(url, UriKind.Absolute, out var listener) ||
@@ -314,6 +316,19 @@ public static class GatewayConfigurationValidator
             {
                 throw new InvalidOperationException(
                     $"M1 laboratory gateway may listen only on a loopback HTTP or HTTPS IP. Invalid URL: '{url}'.");
+            }
+
+            // Compared on what actually identifies a socket, so that a trailing slash or a different
+            // capitalisation cannot smuggle the same endpoint past this twice.
+            var endpoint = $"{listener.Scheme}://{address}:{listener.Port}";
+
+            if (!seen.Add(endpoint))
+            {
+                throw new InvalidOperationException(
+                    $"Gateway:Urls lists {endpoint} more than once. Kestrel binds each entry in turn, so " +
+                    "the second attempt fails with 'address already in use' naming a port that is free, " +
+                    "and as a Windows service that reads as starting, stopping and restarting forever. " +
+                    "Remove the duplicate.");
             }
 
             listeners.Add(listener);
