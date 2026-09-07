@@ -255,6 +255,40 @@ function Set-InstalledLogDirectory {
 }
 
 <#
+    The URL that verifies THIS installation, rather than the one in the documentation.
+
+    Gateway:Urls is configurable. Printing a hardcoded port to an operator who configured a different
+    one sends them to test a port nothing is listening on, and that failure looks exactly like a
+    gateway that did not start - which is the most expensive way to be wrong at this point in an
+    install.
+
+    The source build and the overlay are read rather than the installed copy, because this also runs
+    under -WhatIf, where nothing has been copied yet. The overlay wins, as it does at runtime.
+#>
+function Get-GatewayHealthUrl {
+    param([string] $BuildPath, [string] $OverlayPath)
+
+    foreach ($candidate in @($OverlayPath, (Join-Path $BuildPath 'appsettings.json'))) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) { continue }
+
+        try {
+            $document = Get-Content -LiteralPath $candidate -Raw | ConvertFrom-Json
+            if (-not ($document.PSObject.Properties.Name -contains 'Gateway')) { continue }
+            if (-not ($document.Gateway.PSObject.Properties.Name -contains 'Urls')) { continue }
+
+            $urls = @($document.Gateway.Urls)
+            if ($urls.Count -gt 0 -and -not [string]::IsNullOrWhiteSpace([string] $urls[0])) {
+                return ([string] $urls[0]).TrimEnd('/') + '/_wpshield/health/ready'
+            }
+        }
+        catch { }
+    }
+
+    return 'http://127.0.0.1:10000/_wpshield/health/ready'
+}
+
+<#
     A real run requires elevation. A -WhatIf run does not, and refusing it there would be the wrong
     trade: the point of a dry run is that an operator can read exactly what an installer intends to
     do before deciding to let it, and requiring administrator rights to be allowed to *read* that
@@ -572,7 +606,17 @@ if ($PSCmdlet.ShouldProcess(($InstallPath + ' and ' + $LogPath), 'Replace the pe
 Write-Step '6. Start'
 # =====================================================================================
 
-$configurationInstalled = Test-Path -LiteralPath (Join-Path $InstallPath 'appsettings.Local.json')
+$localConfigurationPath = Join-Path $InstallPath 'appsettings.Local.json'
+
+# What is on disk. The start decision below hangs on this and on nothing else: -ConfigurationPath
+# having been passed is an intention, and a ShouldProcess prompt answered No means the intention did
+# not happen.
+$configurationInstalled = Test-Path -LiteralPath $localConfigurationPath
+
+# What the operator asked for. The closing notes use this instead, so that a -WhatIf preview - where
+# nothing has been copied yet - does not tell an operator who just passed -ConfigurationPath to go
+# and put the file in place.
+$configurationExpected = $configurationInstalled -or (-not [string]::IsNullOrWhiteSpace($ConfigurationPath))
 
 if (-not $Start) {
     Write-Detail 'not started: pass -Start, or use Start-Service, once the configuration is in place'
@@ -603,11 +647,18 @@ Write-Host '====================================================================
 
 Write-Host ''
 Write-Host 'Still to do, by hand, in this order:' -ForegroundColor Cyan
-Write-Host '  1. Put appsettings.Local.json in place. Invoke-WPShieldPreflight.ps1 prints one.'
-Write-Host ('     ' + (Join-Path $InstallPath 'appsettings.Local.json'))
+if ($configurationExpected) {
+    Write-Host '  1. Read back the site table the gateway resolves at startup, and check that every'
+    Write-Host '     host and destination is one you meant. The configuration is already in place:'
+}
+else {
+    Write-Host '  1. Put appsettings.Local.json in place. Invoke-WPShieldPreflight.ps1 prints one.'
+}
+Write-Host ('     ' + $localConfigurationPath)
 Write-Host '  2. Start the service and confirm it listens, before any IIS change:'
 Write-Host ('     Start-Service ' + $script:ServiceName)
-Write-Host '     Invoke-WebRequest http://127.0.0.1:10000/_wpshield/health/ready -UseBasicParsing'
+Write-Host ('     Invoke-WebRequest ' + (Get-GatewayHealthUrl -BuildPath $Path -OverlayPath $ConfigurationPath) +
+            ' -UseBasicParsing')
 Write-Host '  3. Add the private loopback binding to each site.'
 Write-Host '  4. Add the rewrite rule, ordered BEFORE any catch-all rule the site already has.'
 Write-Host '     A WordPress permalink rule is a catch-all: put the WPShield rule above it or it never runs.'

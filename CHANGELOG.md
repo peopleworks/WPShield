@@ -14,6 +14,13 @@ must complete first.
 
 ### Fixed
 
+- **The installer told an operator to install a file it had just installed.** Passing
+  `-ConfigurationPath` copies `appsettings.Local.json` into place, and the closing notes then said
+  "Put appsettings.Local.json in place" underneath the step that had done it. They now read back as a
+  confirmation instead, and the printed health-check URL is read from `Gateway:Urls` rather than
+  hardcoded to port 10000 - an operator who configured another port was being sent to test a port
+  nothing listens on, and that failure looks exactly like a gateway that did not start.
+
 - **`PRE-018` could not see the WordPress permalink rule — the one rule it exists to find.** It
   required `stopProcessing="true"` together with a regex catch-all of `.*`, `^(.*)$` or `.`, and a
   comment in the source asserted that the WordPress rule "has exactly this shape". It does not:
