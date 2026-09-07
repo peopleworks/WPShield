@@ -342,5 +342,23 @@ public static class GatewayConfigurationValidator
             throw new InvalidOperationException(
                 $"Site '{site.Id}' destination must not point back to a WPShield listener.");
         }
+
+        // Under the traffic path in ADR 0001, IIS keeps the public ports and WPShield forwards to a
+        // *private* loopback binding of the same site. Ports 80 and 443 are by definition the public
+        // ones, so a destination on either is always the wrong binding - and it fails in a way that
+        // is hard to read: an operator who writes 443 here is sending cleartext HTTP at a listener
+        // expecting TLS, and gets a connection error that says nothing about the real mistake.
+        //
+        // Every other check above passes for that value. It is loopback, and it is not a listener
+        // port. Without this one, the gateway starts, reports itself healthy, and fails only when a
+        // real request arrives - which under this design means it fails on the live site.
+        if (destination.Port is 80 or 443)
+        {
+            throw new InvalidOperationException(
+                $"Site '{site.Id}' destination points at loopback port {destination.Port}, which is a public IIS " +
+                "port. The destination is the private loopback binding WPShield forwards to, such as " +
+                "http://127.0.0.1:8081, and it must be a binding added for this purpose rather than the one " +
+                "serving the internet. See docs/en/adr/0001-production-traffic-path.md.");
+        }
     }
 }

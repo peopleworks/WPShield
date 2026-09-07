@@ -46,6 +46,21 @@ Cree `src/WPShield.Gateway/appsettings.Local.json`:
 ```
 
 > [!WARNING]
+> **`Destination` es el enlace privado de loopback, nunca el puerto público.** Según la
+> [ADR 0001](adr/0001-ruta-de-trafico-en-produccion.md), IIS conserva el 80 y el 443, y WPShield
+> reenvía a un *segundo* enlace del mismo sitio que usted añade para esto — `127.0.0.1:8081`.
+> Escribir ahí `http://127.0.0.1:443` es el error intuitivo, porque 443 es el puerto que un operador
+> asocia con el sitio, y manda HTTP en claro contra un puerto que espera TLS.
+>
+> Ese valor pasa todas las demás reglas: es loopback, y no es el puerto del listener. El gateway
+> ahora **se niega a arrancar** con un destino en el 80 o el 443, porque de lo contrario arranca, se
+> declara sano, y falla solo cuando llega una petición real — que en esta ruta de tráfico significa
+> fallar en el sitio en producción.
+>
+> El `http://` sin cifrar es correcto para ese salto. Nunca sale de la máquina; el TLS termina en el
+> enlace público de IIS.
+
+> [!WARNING]
 > **Los arreglos JSON se combinan elemento por elemento, no se reemplazan.** Esto aplica también al
 > arreglo anidado `Hosts`, no solo a `Sites`. Si `appsettings.json` declara dos sitios de ejemplo con
 > dos hosts cada uno y su superposición declara un sitio con un host, las entradas sobrantes quedan

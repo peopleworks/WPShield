@@ -46,6 +46,21 @@ Create `src/WPShield.Gateway/appsettings.Local.json`:
 ```
 
 > [!WARNING]
+> **`Destination` is the private loopback binding, never the public port.** Under
+> [ADR 0001](adr/0001-production-traffic-path.md), IIS keeps 80 and 443 and WPShield forwards to a
+> *second* binding on the same site that you add for this purpose — `127.0.0.1:8081`. Writing
+> `http://127.0.0.1:443` there is the intuitive mistake, because 443 is the port an operator
+> associates with the site, and it sends cleartext HTTP at a listener expecting TLS.
+>
+> That value passes every other rule: it is loopback, and it is not a listener port. The gateway now
+> **refuses to start** on a destination port of 80 or 443, because otherwise it starts, reports
+> itself healthy, and fails only when a real request arrives — which under this traffic path means
+> failing on the live site.
+>
+> Plain `http://` is correct for that hop. It never leaves the machine; TLS terminates at the public
+> IIS binding.
+
+> [!WARNING]
 > **JSON arrays merge element by element, they do not replace.** This applies to the nested `Hosts`
 > array as well as to `Sites`. If `appsettings.json` declares two example sites with two hosts each
 > and your overlay declares one site with one host, the surplus shipped entries stay active and
