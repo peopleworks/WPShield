@@ -1223,6 +1223,11 @@ $identityArguments = @('config', $absentService, 'obj=', 'NT SERVICE\WPShield')
 $null = & sc.exe @identityArguments 2>&1
 $identityExitCode = $LASTEXITCODE
 
+# Captured, then cleared. A native command's exit code outlives it, and GitHub Actions ends a pwsh
+# step with `exit $LASTEXITCODE` - so leaving sc.exe's 1060 here made this suite print "All checks
+# passed" and then fail the build with it. The harness reports through $failures and nothing else.
+$global:LASTEXITCODE = 0
+
 if ($identityExitCode -eq 1639) {
     Add-Failure ('sc.exe rejected the service-identity command line as invalid (1639) under ' +
         'PowerShell ' + $PSVersionTable.PSVersion + '. The install would fail at step 4 of 6, ' +
@@ -1251,3 +1256,9 @@ if ($failures.Count -gt 0) {
 
 Write-Host (' All ' + $checks + ' checks passed.') -ForegroundColor Green
 Write-Host '================================================================================'
+
+# Explicit, rather than left to whatever the last command happened to set. A suite that announces
+# success and then exits non-zero is worse than one that fails honestly: the build goes red with a
+# green report in the log, and the next person spends their time looking for a defect that is not
+# there.
+exit 0
