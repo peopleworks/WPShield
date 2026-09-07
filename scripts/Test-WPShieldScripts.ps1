@@ -1083,6 +1083,70 @@ else {
 }
 
 # =====================================================================================
+#  10. What the preflight prints has to be correct as text.
+#
+#  The preflight prints an appsettings.Local.json for the operator to paste. It printed
+#  "C:\\\\ProgramData\\\\WPShield\\\\logs" for a release, because a .NET replacement string treats
+#  backslash as an ordinary character - only $ is special there - so '\\\\' emits four of them.
+#  Windows normalises the doubled separators away, so the configuration worked and only the text was
+#  wrong, which is the kind of defect that survives a long time.
+# =====================================================================================
+
+Write-Host ''
+Write-Host 'Preflight output' -ForegroundColor Cyan
+
+foreach ($name in ($parsed.Keys | Sort-Object)) {
+    $text = Get-Content -LiteralPath (Join-Path $RepositoryRoot ('scripts\' + $name)) -Raw
+
+    # Every backslash-doubling replacement in the repository, whatever it is doubling for.
+    $replacements = [regex]::Matches($text, "-replace\s+'\\\\',\s*'(?<to>\\+)'")
+    if ($replacements.Count -eq 0) { continue }
+
+    foreach ($replacement in $replacements) {
+        $checks++
+        $to = $replacement.Groups['to'].Value
+        if ($to.Length -ne 2) {
+            Add-Failure ($name + ': a backslash is replaced with ' + $to.Length + ' backslashes. A .NET ' +
+                'replacement string does not treat backslash as an escape, so JSON escaping needs exactly ' +
+                'two. ' + $to.Length + ' produces a path with doubled separators.')
+        }
+        else {
+            Add-Pass ($name + ': backslashes are doubled once, not twice')
+        }
+    }
+}
+
+<#
+    The catch-all pattern list must include the wildcard the WordPress permalink rule actually uses.
+
+    PRE-018 exists to find the rule the WPShield rule has to be ordered before, and for a release it
+    required stopProcessing="true" together with a regex catch-all. WordPress writes
+    patternSyntax="Wildcard" with match url="*" and no stopProcessing, so on a server with three
+    WordPress sites PRE-018 reported nothing at all.
+#>
+$checks++
+$preflightText = Get-Content -LiteralPath (Join-Path $RepositoryRoot 'scripts\Invoke-WPShieldPreflight.ps1') -Raw
+
+if ($preflightText -notmatch "catchAllPatterns[^`r`n]*'\*'") {
+    Add-Failure ('PRE-018 does not treat the wildcard "*" as a catch-all. That is the pattern the ' +
+        'WordPress permalink rule uses, and it is the single rule this check exists to find.')
+}
+else {
+    Add-Pass 'PRE-018 recognises the wildcard match the WordPress permalink rule uses'
+}
+
+$checks++
+if ($preflightText -match '\$stops\s+-and\s+\$catchAllPatterns' -or
+    $preflightText -match 'if\s*\(\$stops\s+-and') {
+    Add-Failure ('PRE-018 requires stopProcessing before reporting a catch-all. A catch-all Rewrite ' +
+        'without it still consumes the request: the WPShield rule then runs against the rewritten ' +
+        'URL and every request reaches the gateway as the rewrite target.')
+}
+else {
+    Add-Pass 'PRE-018 reports stopProcessing rather than requiring it'
+}
+
+# =====================================================================================
 #  Result.
 # =====================================================================================
 
