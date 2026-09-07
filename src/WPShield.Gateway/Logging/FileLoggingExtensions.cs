@@ -23,6 +23,10 @@ internal static class FileLoggingExtensions
     /// The directory files will be written to, or <see langword="null"/> when file logging is off.
     /// The caller reports it at startup.
     /// </returns>
+    /// <exception cref="InvalidOperationException">
+    /// File logging is enabled and the resolved directory cannot be written to. Reported here rather
+    /// than at the first log line, because the first log line cannot report anything.
+    /// </exception>
     /// <remarks>
     /// The provider is registered through a factory rather than as a ready-made instance, and that is
     /// load-bearing rather than stylistic. A logger provider handed to the container as an existing
@@ -38,6 +42,11 @@ internal static class FileLoggingExtensions
         var options = builder.Configuration.GetSection(ConfigurationSection).Get<FileLogOptions>()
                       ?? new FileLogOptions();
 
+        // Registered whether or not the destination is attached, so the caller can wire it up without
+        // first asking whether file logging happens to be on.
+        var reporter = new LogWriteFailureReporter();
+        builder.Services.AddSingleton(reporter);
+
         if (!options.Enabled)
         {
             return null;
@@ -46,9 +55,17 @@ internal static class FileLoggingExtensions
         FileLogOptionsValidator.Validate(options);
 
         var contentRoot = builder.Environment.ContentRootPath;
-        builder.Services.AddSingleton<ILoggerProvider>(
-            _ => new JsonLinesFileLoggerProvider(options, contentRoot));
+        var directory = JsonLinesLogWriter.ResolveDirectory(options, contentRoot);
 
-        return JsonLinesLogWriter.ResolveDirectory(options, contentRoot);
+        // Before the provider is registered, so the failure is a refusal to start rather than a
+        // gateway that runs perfectly and records nothing. An operator reads "cannot write its log"
+        // and fixes it; nobody reads an empty directory, because an empty security log is exactly
+        // what a quiet night looks like.
+        JsonLinesLogWriter.EnsureDirectoryIsWritable(directory);
+
+        builder.Services.AddSingleton<ILoggerProvider>(
+            _ => new JsonLinesFileLoggerProvider(options, contentRoot, timeProvider: null, reporter.Report));
+
+        return directory;
     }
 }

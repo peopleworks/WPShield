@@ -265,7 +265,7 @@ nadie — y bajo un servicio de Windows no hay consola a la cual recurrir.
   "Logging": {
     "File": {
       "Enabled": true,
-      "Directory": "logs",
+      "Directory": "C:\\ProgramData\\WPShield\\logs",
       "FileNamePrefix": "wpshield",
       "MaximumFileBytes": 33554432,
       "RetainedFileCount": 14,
@@ -286,10 +286,39 @@ lo puede leer una persona que lo sigue durante un despliegue y lo puede parsear 
 agregue después. La plantilla del mensaje no se escribe: duplicaría el tamaño de cada línea y el
 mensaje compuesto ya dice lo mismo.
 
-`Directory` es relativo a la **raíz de contenido**, que para un servicio de Windows es el directorio
-de instalación y no `C:\Windows\System32`. Una ruta absoluta se usa tal cual. El filtrado por nivel
-usa el mecanismo estándar de proveedores, así que `Logging:File:LogLevel:Default` funciona igual que
-para la consola.
+`Directory` es absoluto en la configuración que se publica, y así debe quedarse. Una ruta relativa se
+sigue aceptando y se resuelve contra la **raíz de contenido**, que para un servicio de Windows es el
+directorio de instalación y no `C:\Windows\System32`. El filtrado por nivel usa el mecanismo estándar
+de proveedores, así que `Logging:File:LogLevel:Default` funciona igual que para la consola.
+
+> [!WARNING]
+> **Un directorio de registros relativo sigue a donde se haya descomprimido el build, y los dos
+> destinos son incorrectos.** Descomprimido bajo una raíz web, deja la bitácora de evidencia — y
+> `appsettings.Local.json`, que nombra todos los hosts que usted protege — dentro del árbol que IIS
+> reparte; `.json` está en el mapa MIME predeterminado de IIS, así que ese archivo se puede descargar
+> por HTTP. Descomprimido en el directorio de instalación, se resuelve a un directorio que
+> `Install-WPShield.ps1` deja deliberadamente de solo lectura para la cuenta de servicio, de modo que
+> toda escritura falla.
+>
+> Las dos cosas pasaron en el mismo servidor la misma semana. Ahora el gateway se niega a arrancar
+> cuando no puede escribir en el directorio resuelto, e `Install-WPShield.ps1` escribe la ruta que
+> endureció en esta opción en vez de suponer que el gateway la va a adivinar.
+
+### El arranque se niega antes que correr sin evidencia
+
+Si el directorio resuelto no se puede crear, o no se puede escribir un archivo dentro, el gateway no
+arranca. Reporta el directorio, la causa subyacente y qué hacer al respecto.
+
+Es una asimetría deliberada frente al comportamiento en marcha, que nunca rechaza tráfico: un disco
+que se llena a las tres de la mañana es una condición que llega mientras WPShield es lo único que
+está delante de un sitio, y descartar líneas de log es la respuesta menos mala. Un directorio sobre el
+cual la cuenta de servicio nunca recibió permiso de escritura es distinto en naturaleza. Es un error
+de despliegue, es cierto antes de que llegue la primera solicitud, y nada de él se ve desde afuera del
+proceso — el gateway arrancaría, se reportaría sano, aplicaría todas las reglas y no registraría
+ninguna.
+
+Un log de seguridad vacío se ve exactamente igual que una noche tranquila. Negarse a arrancar es la
+única manera de que ese error se note alguna vez.
 
 ### Rotación y retención
 

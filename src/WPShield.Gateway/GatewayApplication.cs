@@ -92,6 +92,13 @@ public static class GatewayApplication
 
         var app = builder.Build();
         var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
+
+        // The file writer can now announce a write failure through the destinations that still work,
+        // which under a Windows service means the Windows Event Log. Until this line it can only
+        // reach stderr, and a service has no console to read it from.
+        app.Services.GetRequiredService<LogWriteFailureReporter>()
+            .Attach(loggerFactory.CreateLogger("WPShield.Gateway.Logging"));
+
         LogLogDestination(loggerFactory, logDirectory);
         LogResolvedSites(loggerFactory, sites);
         LogInspectionConfiguration(loggerFactory, gatewayOptions, multipartOptions);

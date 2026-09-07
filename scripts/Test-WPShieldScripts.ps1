@@ -925,6 +925,164 @@ else {
 }
 
 # =====================================================================================
+#  9. The log directory contract.
+#
+#  Three separate places have to agree on where the evidence goes, and for one release they did
+#  not. The installer created C:\ProgramData\WPShield\logs, removed inheritance, granted the
+#  service account Modify and printed the path. The gateway read Logging:File:Directory, which
+#  shipped as the relative "logs", resolved it against its content root and tried to write beside
+#  its own binaries - a directory the same installer deliberately leaves read-only for that
+#  account. The write failed. The failure went to stderr, which a Windows service has no console
+#  for. A by-the-book installation produced no evidence at all and said nothing about it.
+#
+#  Nothing in that chain was individually wrong. What was missing was anything asserting that the
+#  directory the installer hardens is the directory the gateway writes to, which is what this
+#  section is.
+# =====================================================================================
+
+Write-Host ''
+Write-Host 'Log directory contract' -ForegroundColor Cyan
+
+$shippedSettingsPath = Join-Path $RepositoryRoot 'src\WPShield.Gateway\appsettings.json'
+$shippedLogDirectory = ''
+
+$checks++
+if (-not (Test-Path -LiteralPath $shippedSettingsPath)) {
+    Add-Failure ('the shipped appsettings.json was not found at ' + $shippedSettingsPath + '.')
+}
+else {
+    $shipped = Get-Content -LiteralPath $shippedSettingsPath -Raw | ConvertFrom-Json
+    $shippedLogDirectory = [string] $shipped.Logging.File.Directory
+
+    if (-not [System.IO.Path]::IsPathRooted($shippedLogDirectory)) {
+        Add-Failure ('the shipped Logging:File:Directory is "' + $shippedLogDirectory +
+            '", which is relative. A relative log directory resolves against the content root, so it ' +
+            'follows wherever the build was unpacked - into a web root, or into the read-only ' +
+            'installation directory. It must be absolute.')
+    }
+    else {
+        Add-Pass ('the shipped Logging:File:Directory is absolute: ' + $shippedLogDirectory)
+    }
+}
+
+# The installer's default and the shipped value must name the same place, or a default install
+# rewrites the configuration to something the operator was never shown.
+$checks++
+$logPathDefault = @($parsed[$installerName].FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.ParameterAst] -and
+    $node.Name.VariablePath.UserPath -eq 'LogPath'
+}, $true))
+
+if ($logPathDefault.Count -ne 1) {
+    Add-Failure ('the installer declares ' + $logPathDefault.Count + ' -LogPath parameters; expected one.')
+}
+elseif ([string]::IsNullOrWhiteSpace($shippedLogDirectory)) {
+    Add-Failure 'the shipped log directory could not be read, so -LogPath could not be compared against it.'
+}
+else {
+    $declared = $logPathDefault[0].DefaultValue.Extent.Text.Trim("'", '"')
+    if ($declared -ne $shippedLogDirectory) {
+        Add-Failure ('the installer defaults -LogPath to "' + $declared + '" and the shipped ' +
+            'appsettings.json says "' + $shippedLogDirectory + '". They must name the same directory.')
+    }
+    else {
+        Add-Pass 'the installer default and the shipped configuration name the same log directory'
+    }
+}
+
+# The refusal has to happen before anything is created, copied or registered.
+$checks++
+$installerText = Get-Content -LiteralPath (Join-Path $RepositoryRoot ('scripts\' + $installerName)) -Raw
+$guardOffset = $installerText.IndexOf('Assert-NotUnderWebRoot -Path', [System.StringComparison]::Ordinal)
+$firstMutationOffset = $installerText.IndexOf('Write-Step ''1.', [System.StringComparison]::Ordinal)
+
+if ($guardOffset -lt 0) {
+    Add-Failure 'the installer never calls Assert-NotUnderWebRoot, so it would install inside a web root.'
+}
+elseif ($firstMutationOffset -lt 0) {
+    Add-Failure 'the installer''s first step could not be located, so the guard''s position could not be checked.'
+}
+elseif ($guardOffset -gt $firstMutationOffset) {
+    Add-Failure 'the installer calls Assert-NotUnderWebRoot after it has started changing the machine. A refusal must leave the machine as it was found.'
+}
+else {
+    Add-Pass 'the web-root refusal runs before the installer changes anything'
+}
+
+$checks++
+if ($parsed['Invoke-WPShieldPreflight.ps1'].Extent.Text -notmatch "PRE-019") {
+    Add-Failure 'the preflight has no PRE-019, so nothing reports an installation sitting inside a web root.'
+}
+else {
+    Add-Pass 'the preflight reports an installation inside a web root as PRE-019'
+}
+
+# The behavioural half. A structural check cannot tell whether the edit produces valid JSON that
+# still carries every other setting, and rewriting a configuration file is exactly where that goes
+# wrong quietly.
+$checks++
+$editFunction = @($parsed[$installerName].FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Set-InstalledLogDirectory'
+}, $true))
+
+if ($editFunction.Count -ne 1) {
+    Add-Failure 'Set-InstalledLogDirectory was not found in the installer, so nothing writes the hardened log path into the configuration the gateway reads.'
+}
+elseif ([string]::IsNullOrWhiteSpace($shippedLogDirectory)) {
+    Add-Failure 'the shipped appsettings.json could not be read, so the configuration edit could not be exercised.'
+}
+else {
+    . ([scriptblock]::Create($editFunction[0].Extent.Text))
+
+    $probeDirectory = Join-Path ([System.IO.Path]::GetTempPath()) ('wpshield-cfg-' + [guid]::NewGuid().ToString('n'))
+    New-Item -ItemType Directory -Path $probeDirectory -Force | Out-Null
+    $probeSettings = Join-Path $probeDirectory 'appsettings.json'
+
+    try {
+        Copy-Item -LiteralPath $shippedSettingsPath -Destination $probeSettings -Force
+        $before = Get-Content -LiteralPath $probeSettings -Raw | ConvertFrom-Json
+
+        Set-InstalledLogDirectory -ConfigurationFile $probeSettings -Directory 'D:\evidence\wpshield'
+
+        $after = Get-Content -LiteralPath $probeSettings -Raw | ConvertFrom-Json
+
+        if ($after.Logging.File.Directory -ne 'D:\evidence\wpshield') {
+            Add-Failure ('the configuration edit left Logging:File:Directory as "' +
+                [string] $after.Logging.File.Directory + '".')
+        }
+        elseif ($after.Sites.Count -ne $before.Sites.Count) {
+            Add-Failure ('the configuration edit changed the site count from ' + $before.Sites.Count +
+                ' to ' + $after.Sites.Count + '. Rewriting the file must not lose anything else in it.')
+        }
+        elseif ($after.Gateway.MaximumRequestBytes -ne $before.Gateway.MaximumRequestBytes) {
+            Add-Failure 'the configuration edit changed Gateway:MaximumRequestBytes, so numbers are not surviving the JSON round trip.'
+        }
+        elseif ($after.Logging.File.Enabled -ne $before.Logging.File.Enabled) {
+            Add-Failure 'the configuration edit changed Logging:File:Enabled, so booleans are not surviving the JSON round trip.'
+        }
+        else {
+            Add-Pass 'the installer writes the log directory into appsettings.json and loses nothing else'
+        }
+
+        # A BOM is the failure this encoding choice avoids, and it is invisible in a diff.
+        $checks++
+        $firstBytes = [System.IO.File]::ReadAllBytes($probeSettings)
+        if ($firstBytes.Length -ge 3 -and $firstBytes[0] -eq 0xEF -and $firstBytes[1] -eq 0xBB -and $firstBytes[2] -eq 0xBF) {
+            Add-Failure 'the rewritten appsettings.json starts with a UTF-8 BOM.'
+        }
+        else {
+            Add-Pass 'the rewritten appsettings.json has no BOM'
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $probeDirectory -Recurse -Force -ErrorAction SilentlyContinue
+    }
+}
+
+# =====================================================================================
 #  Result.
 # =====================================================================================
 

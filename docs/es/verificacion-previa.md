@@ -71,6 +71,7 @@ producción.
 | `PRE-016` | El directorio de registros: **¿pueden leerlo cuentas sin privilegios?** |
 | `PRE-017` | **Qué otras aplicaciones ya pasan por ARR** — el radio de impacto del arreglo de `PRE-008`. |
 | `PRE-018` | Reglas atrapa-todo que detienen el procesamiento, antes de las cuales debe ir la de WPShield. |
+| `PRE-019` | **¿Alguna parte de WPShield quedaría dentro de un directorio que IIS sirve?** |
 
 `PRE-016` es bloqueante y no advertencia. `C:\ProgramData` es el sitio convencional para un directorio
 de registros y su ACL por omisión concede lectura a `BUILTIN\Users` — así que un registro de WPShield
@@ -104,6 +105,31 @@ Una regla con `stopProcessing="true"` y coincidencia `.*` se traga toda petició
 evalúe cualquier regla posterior. **La regla de enlaces permanentes de WordPress tiene exactamente esa
 forma**, así que en un sitio WordPress la regla de WPShield tiene que ir *primero* o no se ejecuta
 nunca — y el modo de fallo es silencioso: todo sigue funcionando, y no se inspecciona nada.
+
+## `PRE-019` — WPShield no es una aplicación de IIS
+
+WPShield es un proceso aparte que escucha en un puerto de loopback al que IIS le reenvía. Nada de él
+va debajo de una raíz web, y `PRE-019` no deja que eso pase en silencio. Compara la ruta de
+instalación, la ruta de registros y —si ya hay un servicio WPShield registrado— el directorio desde
+el cual ese servicio realmente corre, contra `%SystemDrive%\inetpub` y la ruta física de **todos** los
+sitios de IIS, incluidos los que `-SiteName` filtró. Un sitio por el que nadie preguntó sirve su
+directorio con la misma eficacia.
+
+Instalado bajo un directorio servido, tres cosas salen mal a la vez:
+
+- **`appsettings.Local.json` se puede descargar por HTTP.** `.json` está en el mapa MIME
+  predeterminado de IIS, y ese archivo nombra todos los hosts que este gateway protege y el puerto
+  privado detrás de cada uno.
+- **La bitácora de evidencia queda en el árbol que IIS reparte.** Hoy `.jsonl` no está en el mapa
+  MIME, así que no se sirve. Eso es una tabla de extensiones, no una frontera de seguridad, y está a
+  una entrada de `mimeMap` de cambiar.
+- **Un webshell en cualquier sitio vecino lo lee todo** sin necesidad de una sola petición HTTP, y
+  aprende exactamente qué puede y qué no puede ver el escudo.
+
+Esta comprobación existe porque pasó. WPShield se descomprimió en `C:\inetpub\wwwroot\WPShield` en el
+servidor para el cual se construyó este proyecto, y escribió su log ahí durante un día antes de que
+alguien leyera la primera línea. `Install-WPShield.ps1` ahora rechaza esa disposición de plano;
+`-AllowWebRootPaths` lo permite con advertencia.
 
 ## La ausencia de hallazgos no es un hallazgo
 
