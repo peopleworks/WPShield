@@ -1,3 +1,4 @@
+using Microsoft.Extensions.Configuration;
 using WPShield.Core;
 
 namespace WPShield.Gateway.Tests;
@@ -344,6 +345,72 @@ public sealed class GatewayConfigurationValidatorTests
             [CreateSite("one", "example.test", 51001)]);
 
         Assert.Empty(new GatewayOptions().TrustedProxies);
+    }
+
+    /// <summary>
+    /// The regression that stopped the gateway from starting at all.
+    /// </summary>
+    /// <remarks>
+    /// <c>ConfigurationBinder</c> appends to an array property that already holds a value rather than
+    /// replacing it. <c>GatewayOptions.Urls</c> defaulted to <c>["http://127.0.0.1:10000"]</c> and
+    /// the shipped <c>appsettings.json</c> set the same value, so binding produced two identical
+    /// entries and Kestrel bound the port twice. The process died with "address already in use"
+    /// naming a port that was free.
+    /// </remarks>
+    [Fact]
+    public void Bind_DoesNotAppendConfiguredUrlsToTheCodeDefault()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?>
+            {
+                ["Gateway:Urls:0"] = "http://127.0.0.1:10000"
+            })
+            .Build();
+
+        var options = configuration.GetSection("Gateway").Get<GatewayOptions>();
+
+        Assert.NotNull(options);
+        Assert.Equal(["http://127.0.0.1:10000"], options.Urls);
+    }
+
+    /// <summary>
+    /// The property this hangs on, asserted directly, because a future edit restoring a "helpful"
+    /// default would reintroduce the fault and every other test here would still pass.
+    /// </summary>
+    [Fact]
+    public void Urls_DefaultsToEmptyInCode()
+    {
+        Assert.Empty(new GatewayOptions().Urls);
+    }
+
+    [Theory]
+    [InlineData("http://127.0.0.1:10000", "http://127.0.0.1:10000")]
+    [InlineData("http://127.0.0.1:10000", "http://127.0.0.1:10000/")]
+    [InlineData("http://127.0.0.1:10000", "HTTP://127.0.0.1:10000")]
+    public void Validate_RejectsDuplicateListeners(string first, string second)
+    {
+        var options = new GatewayOptions { Urls = [first, second], TrustedProxies = [] };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(options, [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("more than once", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("address already in use", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Two listeners on different ports stay legal. Only the duplicate is a mistake.
+    /// </summary>
+    [Fact]
+    public void Validate_AcceptsTwoListenersOnDifferentPorts()
+    {
+        var options = new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:10000", "http://127.0.0.1:11000"],
+            TrustedProxies = []
+        };
+
+        GatewayConfigurationValidator.Validate(options, [CreateSite("one", "example.test", 51001)]);
     }
 
     private static GatewayOptions CreateGatewayOptions(string[]? trustedProxies = null)
