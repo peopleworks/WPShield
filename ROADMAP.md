@@ -196,6 +196,8 @@ not read as more than they claim:
 
 ## M3 — Rate limiting and automated behavior
 
+> **M3 refuses requests. It does not touch the firewall.** [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md) records why: a brute-force blocker's job is to modify firewall rules automatically, which is the inverse of an invariant this project depends on for deployment onto shared hosts. The HTTP half belongs here, inline, where the real client address is already resolved; RDP, FTP, SMTP and SQL belong to a sibling project with its own safety contract.
+
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
 > traffic path chosen in [ADR 0001](docs/en/adr/0001-production-traffic-path.md) every request
 > arrives from a local proxy, so `Gateway:TrustedProxies` had to exist before this milestone could
