@@ -79,6 +79,7 @@ must complete first.
 
 ### Added
 
+- **ADR 0002 records where brute-force defence belongs**, prompted by a real measurement: 40,779 requests to `wp-login.php` across two sites in thirty days, on a host that also exposes RDP. The capability is worth having and **cannot live inside WPShield**, because a brute-force blocker's job is to modify firewall rules automatically and `AGENTS.md` forbids exactly that - the two safety contracts are inverses, not merely different. The HTTP half stays inline in M3, where the real client address is already resolved and where reacting is immediate rather than minutes late behind a log buffer; RDP, FTP, SMTP and SQL belong to a sibling project. The ADR also records the design problem that has to be solved first, which is not log parsing but **lockout**: a tool that blocks addresses will eventually block the administrator's own, and on a remote server there is no way back in.
 - **The triage tool can look outside the web root.** `-IncludeHost` adds scheduled tasks, local
   accounts and Administrators membership, services running from temporary or web directories,
   autorun keys, executable content recently written into staging directories such as

@@ -593,6 +593,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | Preflight | [Preflight](docs/en/preflight.md) | [Verificación previa](docs/es/verificacion-previa.md) |
 | Deployment | [Deployment](docs/en/deployment.md) | [Despliegue](docs/es/despliegue.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
+| ADR 0002 — brute-force defence | [Where brute-force defence belongs](docs/en/adr/0002-host-level-brute-force-defence.md) | [Dónde vive la defensa contra fuerza bruta](docs/es/adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.
 
