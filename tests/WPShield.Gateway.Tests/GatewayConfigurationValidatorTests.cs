@@ -76,6 +76,48 @@ public sealed class GatewayConfigurationValidatorTests
         Assert.Contains("must remain on loopback", exception.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A destination on loopback port 80 or 443 passes every other check - it is loopback, and it is
+    /// not a listener port - so without this rule the gateway starts, reports itself healthy, and
+    /// fails only when a real request arrives. Under this design that means it fails on the live
+    /// site, with a connection error that says nothing about the real mistake.
+    /// </summary>
+    /// <remarks>
+    /// This is not hypothetical: it is the value an operator reached for when writing their first
+    /// configuration, because 443 is the port they associate with the site. The destination is the
+    /// private binding WPShield forwards to, and 80 and 443 are by definition the public ones.
+    /// </remarks>
+    [Theory]
+    [InlineData("http://127.0.0.1:443")]
+    [InlineData("http://127.0.0.1:80")]
+    [InlineData("http://localhost:443")]
+    [InlineData("https://127.0.0.1:443")]
+    [InlineData("http://[::1]:80")]
+    public void Validate_RejectsDestinationOnAPublicIisPort(string destination)
+    {
+        var site = CreateSite("one", "example.test", 51001, destination);
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(CreateGatewayOptions(), [site]));
+
+        Assert.Contains("public IIS", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("private loopback binding", exception.Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// The private binding ports this design actually uses must keep working.
+    /// </summary>
+    [Theory]
+    [InlineData("http://127.0.0.1:8081")]
+    [InlineData("http://127.0.0.1:8082")]
+    [InlineData("http://127.0.0.1:8443")]
+    public void Validate_AcceptsAPrivateLoopbackBinding(string destination)
+    {
+        var site = CreateSite("one", "example.test", 51001, destination);
+
+        GatewayConfigurationValidator.Validate(CreateGatewayOptions(), [site]);
+    }
+
     [Theory]
     [InlineData("http://localhost:10000")]
     [InlineData("http://127.0.0.1:10000")]

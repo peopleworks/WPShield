@@ -14,6 +14,15 @@ must complete first.
 
 ### Security
 
+- **A site destination on loopback port 80 or 443 is now refused at startup.** It passed every
+  other check - it is loopback, and it is not a listener port - so the gateway would start, report
+  itself healthy, and fail only when a real request arrived, which under this traffic path means
+  failing on the live site with a connection error that says nothing about the real mistake. Under
+  [ADR 0001](docs/en/adr/0001-production-traffic-path.md) IIS keeps the public ports and WPShield
+  forwards to a *private* loopback binding, so 80 and 443 are by definition the wrong ones. Not
+  hypothetical: it is the value an operator reached for when writing their first configuration,
+  because 443 is the port they associate with the site.
+
 - **WPShield now inspects the request line of every request, and this one is not from a threat
   model.** A WordPress site on IIS was found running six webshells, and its server logs held the
   exploitation traffic in full. Every request that reached one was an ordinary `GET` or `POST` to an
