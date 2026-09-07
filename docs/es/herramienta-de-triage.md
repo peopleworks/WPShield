@@ -77,12 +77,12 @@ arrancar.
 | `TRIAGE-007` | Un archivo ejecutable creado *después* de escribirse el contenido que guarda. Uno es una herramienta de respaldo; cientos en un árbol de plugins es un reescritor masivo recorriendo el sitio. |
 | `TRIAGE-008` | Las peticiones que los registros de IIS recuerdan haber llegado a un artefacto marcado: cuántas, cuándo empezaron y terminaron, desde qué direcciones, con qué métodos y códigos de estado. |
 | `TRIAGE-009` | Plugins y temas instalados, con sus versiones. |
-| `TRIAGE-010` | **Host.** Una tarea programada registrada hace poco, o cuya acción ejecuta un intérprete. |
+| `TRIAGE-010` | **Host.** Una tarea programada registrada hace poco, que oculta su línea de comandos, o que ejecuta algo de fuera de Windows. |
 | `TRIAGE-011` | **Host.** Una cuenta local cuya contraseña se fijó hace poco, y quién está en el grupo de administradores. |
 | `TRIAGE-012` | **Host.** Un servicio de Windows cuyo binario vive en un directorio temporal, de usuario o web. |
 | `TRIAGE-013` | **Host.** Claves de arranque automático. |
 | `TRIAGE-014` | **Host.** Código ejecutable escrito hace poco en un directorio de paso como `C:\Windows\Temp`. |
-| `TRIAGE-015` | **Host.** El registro propio de Microsoft Defender sobre amenazas en esta máquina. |
+| `TRIAGE-015` | **Host.** Las detecciones propias de Microsoft Defender: la familia, **los archivos que encontró**, cuándo, y si lo consiguió. |
 
 ### Por qué `TRIAGE-005` no es una simple lista de nombres de función
 
@@ -131,6 +131,35 @@ ausente en silencio se lee exactamente igual que una sección que no encontró n
 principio que la verificación previa aplica a una configuración de IIS ilegible.
 
 Sigue siendo de solo lectura. Nada se desactiva, se borra ni se repara.
+
+### Lo que enseñó la primera ejecución real
+
+Estas comprobaciones se escribieron desde un modelo de amenazas, y la primera ejecución sobre un
+Windows Server real encontró tres defectos en ellas — la misma lección que este proyecto reaprende
+una y otra vez, y la razón por la que las familias de reglas derivadas de comportamiento medido son
+las que aguantan.
+
+**`TRIAGE-010` hacía la pregunta equivocada.** «¿La acción ejecuta un intérprete?» se disparó
+dieciséis veces en un servidor limpio, y las dieciséis eran tareas de mantenimiento de Microsoft:
+`PcaPatchDbTask`, `Autochk\Proxy`, el recolector de diagnóstico de disco, todas `rundll32` contra una
+DLL del sistema. Dieciséis falsos positivos y cero verdaderos es peor que no tener comprobación,
+porque enseña al operador a saltarse la sección. El error fue describir un *mecanismo* en vez de una
+*intención* — Windows usa `rundll32` en todas partes. Lo que parece la tarea de un intruso es una
+línea de comandos codificada u oculta, un binario donde un binario no debería estar, o un intérprete
+ejecutando algo que no forma parte de Windows. Esas son ahora las razones, y el mismo servidor
+reporta seis en vez de dieciséis, cada una con su motivo.
+
+**`TRIAGE-011` no reportó absolutamente nada** — ni cuentas, ni grupo, ni error. Un `catch` vacío
+había convertido un fallo en silencio, y eso se lee exactamente igual que un resultado limpio. Ahora
+reporta el fallo como hallazgo. Arreglarlo destapó de inmediato el fallo que había debajo:
+`Get-LocalGroupMember` rechaza el nombre cualificado `BUILTIN\Administrators`, así que el grupo se
+obtiene con `Get-LocalGroup -SID`, que esquiva a la vez la cualificación y el idioma.
+
+**`TRIAGE-015` usaba el cmdlet equivocado.** `Get-MpThreat` nombra la familia pero devuelve un
+`Resources` vacío; las rutas y las fechas viven en `Get-MpThreatDetection`, que a su vez identifica
+la amenaza solo por un id numérico. La comprobación reportaba seis amenazas sin decir de qué archivo
+era ninguna, que es justo lo que el operador necesita. Ahora une las dos, y quita el prefijo
+`file:_` que Defender pone en la ruta — dejarlo le entrega al operador una ruta que no existe.
 
 La pertenencia al grupo se resuelve desde el SID conocido y no desde el nombre `Administrators`,
 porque el grupo es `Administradores` en un Windows en español y una comprobación escrita contra el
