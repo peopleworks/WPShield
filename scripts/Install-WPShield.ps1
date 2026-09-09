@@ -26,7 +26,7 @@
         nothing to do with WPShield. They are documented as manual steps, and they stay manual.
       - It does not touch any service other than WPShield.
       - It does not write appsettings.Local.json. That file carries real hostnames and topology; it
-        belongs to the operator, and Invoke-WPShieldPreflight.ps1 prints its contents to be pasted.
+        belongs to the operator, and wpshield preflight prints its contents to be pasted.
         Pass -ConfigurationPath to copy one that already exists.
       - It does not start the service unless asked. A gateway with no site configuration resolves
         no host, and starting it before the configuration is in place proves nothing.
@@ -66,7 +66,7 @@
     .\Install-WPShield.ps1 -Path C:\staging\wpshield -ConfigurationPath C:\staging\appsettings.Local.json
 
 .NOTES
-    Run elevated. Run Invoke-WPShieldPreflight.ps1 first and clear every blocker.
+    Run elevated. Run wpshield preflight first and clear every blocker.
 
     Part of WPShield, a research preview. Not approved for production traffic.
     https://github.com/peopleworks/WPShield
@@ -682,7 +682,7 @@ if ($configurationExpected) {
     Write-Host '     host and destination is one you meant. The configuration is already in place:'
 }
 else {
-    Write-Host '  1. Put appsettings.Local.json in place. Invoke-WPShieldPreflight.ps1 prints one.'
+    Write-Host '  1. Put appsettings.Local.json in place. wpshield preflight prints one.'
 }
 Write-Host ('     ' + $localConfigurationPath)
 Write-Host '  2. Start the service and confirm it listens, before any IIS change:'

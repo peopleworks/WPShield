@@ -1,28 +1,25 @@
 # Preflight
 
-`scripts/Invoke-WPShieldPreflight.ps1` checks whether a Windows and IIS host is ready for WPShield to
+`wpshield preflight` checks whether a Windows and IIS host is ready for WPShield to
 sit in front of its live sites, and reports every blocker. **It changes nothing** — no IIS setting,
 no binding, no rewrite rule, no service, no ACL, no firewall rule.
 
 Run it before anything is installed. Run it again after fixing what it names.
 
 ```powershell
-.\scripts\Invoke-WPShieldPreflight.ps1
-.\scripts\Invoke-WPShieldPreflight.ps1 -SiteName 'example-one','example-two' -OutputPath .\preflight.jsonl
+wpshield preflight
+wpshield preflight --site example-one,example-two --output preflight.jsonl
 ```
 
-> **Running it from `cmd.exe`.** A `.ps1` is not executable from the command prompt: typing its name
-> there opens it in an editor or reports an unrecognized command, depending on the file association.
-> Call the interpreter explicitly, from an **elevated** prompt:
->
-> ```
-> powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Invoke-WPShieldPreflight.ps1 -OutputPath C:\temp\preflight.jsonl
-> ```
+> **It runs from anywhere.** `wpshield.exe` is an ordinary executable, so `cmd.exe`, PowerShell and a
+> scheduled task all invoke it the same way. The PowerShell version needed a note here explaining how
+> to call the interpreter, which is one of the smaller reasons it moved — see
+> [ADR 0003](adr/0003-operator-tooling-in-dotnet.md).
 
 Run it elevated. Without elevation the IIS configuration, the listening ports and the directory
 permissions are all partly unreadable, and the answer comes out wrong **in the optimistic
-direction** — which is the worst direction for a readiness check. The script reports its own lack of
-elevation as a blocker for exactly that reason.
+direction** — which is the worst direction for a readiness check. It reports its own lack of elevation as a
+blocker for exactly that reason.
 
 ## Why this exists
 
@@ -51,7 +48,7 @@ Every one of those is a five-minute fix and a very bad twenty minutes if you fin
 | ID | What it answers |
 | --- | --- |
 | `PRE-001` | Is this session elevated? Blocker if not, because everything below would answer optimistically. |
-| `PRE-002` | Windows and PowerShell versions. |
+| `PRE-002` | Windows and .NET versions. |
 | `PRE-003` | Is an ASP.NET Core 10 runtime present, or is the self-contained build needed? |
 | `PRE-004` | Is IIS installed, is `W3SVC` running, is its configuration readable? |
 | `PRE-005` | Is URL Rewrite installed? Without it there is no way in. |

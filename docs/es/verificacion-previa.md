@@ -1,6 +1,6 @@
 # Verificación previa
 
-`scripts/Invoke-WPShieldPreflight.ps1` comprueba si un servidor Windows con IIS está listo para poner
+`wpshield preflight` comprueba si un servidor Windows con IIS está listo para poner
 WPShield delante de sus sitios en producción, e informa de cada bloqueante. **No cambia nada**: ni un
 ajuste de IIS, ni un enlace, ni una regla de reescritura, ni un servicio, ni una ACL, ni una regla de
 cortafuegos.
@@ -8,22 +8,19 @@ cortafuegos.
 Ejecútela antes de instalar nada. Vuelva a ejecutarla después de arreglar lo que nombre.
 
 ```powershell
-.\scripts\Invoke-WPShieldPreflight.ps1
-.\scripts\Invoke-WPShieldPreflight.ps1 -SiteName 'example-one','example-two' -OutputPath .\preflight.jsonl
+wpshield preflight
+wpshield preflight --site example-one,example-two --output preflight.jsonl
 ```
 
-> **Ejecutarlo desde `cmd.exe`.** Un `.ps1` no es ejecutable desde el símbolo del sistema: escribir su
-> nombre allí lo abre en un editor o reporta un comando no reconocido, según la asociación de
-> archivos. Hay que llamar al intérprete de forma explícita, desde un símbolo **elevado**:
->
-> ```
-> powershell -NoProfile -ExecutionPolicy Bypass -File C:\temp\Invoke-WPShieldPreflight.ps1 -OutputPath C:\temp\preflight.jsonl
-> ```
+> **Corre desde donde sea.** `wpshield.exe` es un ejecutable normal, así que `cmd.exe`, PowerShell y
+> una tarea programada lo invocan igual. La versión en PowerShell necesitaba una nota aquí explicando
+> cómo llamar al intérprete, que es una de las razones menores por las que se mudó — vea la
+> [ADR 0003](adr/0003-herramientas-de-operador-en-dotnet.md).
 
 Ejecútela elevada. Sin elevación, la configuración de IIS, los puertos a la escucha y los permisos de
 los directorios son parcialmente ilegibles, y la respuesta sale mal **en la dirección optimista** —
-que es la peor dirección para una verificación de preparación. El script reporta su propia falta de
-elevación como bloqueante justamente por eso.
+que es la peor dirección para una verificación de preparación. Reporta su propia falta de elevación como
+bloqueante justamente por eso.
 
 ## Por qué existe
 
@@ -54,7 +51,7 @@ producción.
 | ID | Qué responde |
 | --- | --- |
 | `PRE-001` | ¿Está elevada la sesión? Bloqueante si no, porque todo lo de abajo respondería optimistamente. |
-| `PRE-002` | Versiones de Windows y de PowerShell. |
+| `PRE-002` | Versiones de Windows y de .NET. |
 | `PRE-003` | ¿Hay runtime de ASP.NET Core 10, o hace falta la compilación autocontenida? |
 | `PRE-004` | ¿Está IIS instalado, corre `W3SVC`, se lee su configuración? |
 | `PRE-005` | ¿Está instalado URL Rewrite? Sin él no hay forma de entrar. |
