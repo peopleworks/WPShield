@@ -31,7 +31,7 @@ the same set.
 | ADR 0002 — brute-force defence · Defensa contra fuerza bruta | [Where brute-force defence belongs](en/adr/0002-host-level-brute-force-defence.md) | [Dónde vive la defensa contra fuerza bruta](es/adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md) |
 | ADR 0003 — operator tooling · Herramientas de operador | [Operator tooling moves to a .NET CLI](en/adr/0003-operator-tooling-in-dotnet.md) | [Las herramientas de operador pasan a una CLI de .NET](es/adr/0003-herramientas-de-operador-en-dotnet.md) |
 | ADR 0004 — name and scope · Nombre y alcance | [What WPShield stands for](en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](es/adr/0004-que-significa-wpshield.md) |
-| ADR 0005 — putting it in the path · Poner en la ruta *(proposed)* | [Putting WPShield in the path](en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](es/adr/0005-poner-wpshield-en-la-ruta.md) |
+| ADR 0005 — putting it in the path · Poner en la ruta | [Putting WPShield in the path](en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](es/adr/0005-poner-wpshield-en-la-ruta.md) |
 
 The threat model's English original sits at the repository root, because `README.md`, `SECURITY.md`
 and `AGENTS.md` all point readers there; its Spanish translation lives here with the other pairs.

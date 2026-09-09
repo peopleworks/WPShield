@@ -1,6 +1,6 @@
 # ADR 0005 — Poner WPShield en la ruta, y si una herramienta puede hacerlo
 
-- **Estado:** Propuesto
+- **Estado:** Aceptado
 - **Deciden:** Mantenedores de WPShield
 - **Afecta:** `AGENTS.md`, el despliegue, y unos posibles verbos `enable` / `disable`
 

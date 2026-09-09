@@ -57,6 +57,8 @@ internal static class ProgramMain
                 "install" => InstallCommand.Run(options, Console.Out),
                 "uninstall" => UninstallCommand.Run(options, Console.Out),
                 "publish" => PublishCommand.Run(options, Console.Out),
+                "enable" => EnableCommand.Run(options, Console.Out),
+                "disable" => DisableCommand.Run(options, Console.Out),
                 "status" => StatusCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
@@ -109,6 +111,14 @@ internal static class ProgramMain
                 Console.WriteLine(PublishCommand.Help);
                 return 0;
 
+            case "enable":
+                Console.WriteLine(EnableCommand.Help);
+                return 0;
+
+            case "disable":
+                Console.WriteLine(DisableCommand.Help);
+                return 0;
+
             case "status":
                 Console.WriteLine(StatusCommand.Help);
                 return 0;
@@ -141,6 +151,13 @@ internal static class ProgramMain
                           rewrite rule still forwards to the gateway.
                           [--remove-files] [--remove-logs] [--force] [--dry-run]
 
+              enable      Put WPShield in the traffic path for ONE site, verify the site still
+                          works, and revert everything if it does not.
+                          --site <name> [--gateway-port n] [--destination-port n] [--dry-run]
+
+              disable     Take it back out. THIS IS THE ROLLBACK - stopping the service is not.
+                          --site <name> [--dry-run]
+
               status      Report what is installed, which account runs it, and whether it is
                           writing a log. Reads only.
 
@@ -156,9 +173,10 @@ internal static class ProgramMain
 
             Exit codes:
               0   ready, healthy, or the command did what was asked
-              1   an argument was wrong, or the host is not ready
+              1   an argument was wrong, the host is not ready, or a refusal fired
               2   installed, and something about it is wrong
               3   nothing is installed
+              4   a change was applied, the site did not answer, everything was reverted
 
             Not here on purpose:
               Invoke-WPShieldTriage.ps1 stays a PowerShell script. It runs on hosts that have no
