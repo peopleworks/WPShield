@@ -11,7 +11,7 @@ off. Three scripts and four manual IIS steps.
 
 | Step | Who does it | Why |
 | --- | --- | --- |
-| `Publish-WPShield.ps1` | build machine | Self-contained `win-x64` build, archived with a checksum. |
+| `wpshield publish` | build machine | Self-contained `win-x64` build, archived with a checksum. |
 | `Invoke-WPShieldTriage.ps1` | server | Is this host already compromised? A gateway in front of an existing webshell protects the way in, not what is inside. |
 | `wpshield preflight` | server | Can the traffic path work here? Clear every blocker. |
 | `wpshield install` | server | Directories, ACLs, service, least-privilege identity. |
@@ -30,7 +30,7 @@ modifies IIS, certificates, DNS, firewall rules or Windows services automaticall
 ## 1. Build
 
 ```powershell
-.\scripts\Publish-WPShield.ps1
+wpshield publish
 ```
 
 Produces `artifacts\wpshield-<version>-win-x64-RESEARCH-PREVIEW-NOT-FOR-PRODUCTION\`, the same as a

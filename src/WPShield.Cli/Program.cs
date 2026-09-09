@@ -56,6 +56,7 @@ internal static class ProgramMain
                 "preflight" => PreflightCommand.Run(options, Console.Out),
                 "install" => InstallCommand.Run(options, Console.Out),
                 "uninstall" => UninstallCommand.Run(options, Console.Out),
+                "publish" => PublishCommand.Run(options, Console.Out),
                 "status" => StatusCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
@@ -104,6 +105,10 @@ internal static class ProgramMain
                 Console.WriteLine(UninstallCommand.Help);
                 return 0;
 
+            case "publish":
+                Console.WriteLine(PublishCommand.Help);
+                return 0;
+
             case "status":
                 Console.WriteLine(StatusCommand.Help);
                 return 0;
@@ -138,6 +143,10 @@ internal static class ProgramMain
 
               status      Report what is installed, which account runs it, and whether it is
                           writing a log. Reads only.
+
+              publish     Build a self-contained win-x64 deployment, with a checksum. Runs on a
+                          build machine, not on a server.
+                          [--repository <dir>] [--output <dir>] [--skip-archive]
 
               version     Print the version. --version and -v also work.
 

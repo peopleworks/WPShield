@@ -14,6 +14,25 @@ must complete first.
 
 ### Changed
 
+- **`wpshield publish` replaces `Publish-WPShield.ps1`, which is deleted.** The migration ADR 0003
+  set out is done except for the triage tool: **5,561 lines of PowerShell down to 2,893**, and what
+  remains is the triage tool, the IIS lab and the harness that watches them.
+
+  It now publishes **both** executables into one directory — the gateway and this tool — so an
+  operator can run the install from the artifact itself. ADR 0003 claimed their runtime files are
+  identical and the archive would not double; the verb **asserts that** rather than assuming it, and
+  a real run confirms it: 356 files and 106.5 MB for two applications, against 350 files and 105.9 MB
+  for one. Six extra files, not a second runtime. Any future change that made them diverge — a
+  different target framework, a different runtime identifier — fails the publish instead of quietly
+  adding a hundred megabytes to every copy over RDP.
+
+  Everything the script refused, it still refuses: an output containing `appsettings.Local.json` is
+  deleted rather than shipped, a binary whose version disagrees with `Directory.Build.props` stops
+  the publish, and the artifact name still carries `RESEARCH-PREVIEW-NOT-FOR-PRODUCTION`, because an
+  archive gets renamed and forwarded and unpacked months later by someone who never saw the page that
+  said so.
+
+
 - **`wpshield install` and `wpshield uninstall` replace their scripts, which are deleted.** With the
   preflight, that is **2,050 lines of PowerShell gone** and the total down from 5,561 to 3,065 - what
   is left is the triage tool, the publish script, the IIS lab and the harness that watches them.

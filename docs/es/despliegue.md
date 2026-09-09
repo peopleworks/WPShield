@@ -11,7 +11,7 @@ quitarlo. Tres scripts y cuatro pasos manuales en IIS.
 
 | Paso | Quién lo hace | Por qué |
 | --- | --- | --- |
-| `Publish-WPShield.ps1` | máquina de compilación | Compilación autocontenida `win-x64`, archivada con checksum. |
+| `wpshield publish` | máquina de compilación | Compilación autocontenida `win-x64`, archivada con checksum. |
 | `Invoke-WPShieldTriage.ps1` | servidor | ¿Este servidor ya está comprometido? Un gateway delante de un webshell existente protege la entrada, no lo que ya está dentro. |
 | `wpshield preflight` | servidor | ¿Puede funcionar aquí la ruta de tráfico? Despeje todo bloqueante. |
 | `wpshield install` | servidor | Directorios, ACLs, servicio, identidad de mínimo privilegio. |
@@ -31,7 +31,7 @@ en IIS dentro de cualquier script.
 ## 1. Compilar
 
 ```powershell
-.\scripts\Publish-WPShield.ps1
+wpshield publish
 ```
 
 Produce `artifacts\wpshield-<versión>-win-x64-RESEARCH-PREVIEW-NOT-FOR-PRODUCTION\`, lo mismo como
