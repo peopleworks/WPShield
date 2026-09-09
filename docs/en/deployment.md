@@ -13,7 +13,7 @@ off. Three scripts and four manual IIS steps.
 | --- | --- | --- |
 | `Publish-WPShield.ps1` | build machine | Self-contained `win-x64` build, archived with a checksum. |
 | `Invoke-WPShieldTriage.ps1` | server | Is this host already compromised? A gateway in front of an existing webshell protects the way in, not what is inside. |
-| `Invoke-WPShieldPreflight.ps1` | server | Can the traffic path work here? Clear every blocker. |
+| `wpshield preflight` | server | Can the traffic path work here? Clear every blocker. |
 | `Install-WPShield.ps1` | server | Directories, ACLs, service, least-privilege identity. |
 | **IIS: private binding** | **by hand** | The port WPShield forwards back to. |
 | **IIS: `preserveHostHeader`** | **by hand** | Server-wide. See the warning below. |
@@ -60,7 +60,7 @@ the web root.
 ## 3. Preflight
 
 ```powershell
-.\scripts\Invoke-WPShieldPreflight.ps1 -OutputPath .\preflight.jsonl
+wpshield preflight --output preflight.jsonl
 ```
 
 Read-only. Clear every blocker before continuing, and re-run until there are none. See

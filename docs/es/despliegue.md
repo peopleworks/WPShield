@@ -13,7 +13,7 @@ quitarlo. Tres scripts y cuatro pasos manuales en IIS.
 | --- | --- | --- |
 | `Publish-WPShield.ps1` | máquina de compilación | Compilación autocontenida `win-x64`, archivada con checksum. |
 | `Invoke-WPShieldTriage.ps1` | servidor | ¿Este servidor ya está comprometido? Un gateway delante de un webshell existente protege la entrada, no lo que ya está dentro. |
-| `Invoke-WPShieldPreflight.ps1` | servidor | ¿Puede funcionar aquí la ruta de tráfico? Despeje todo bloqueante. |
+| `wpshield preflight` | servidor | ¿Puede funcionar aquí la ruta de tráfico? Despeje todo bloqueante. |
 | `Install-WPShield.ps1` | servidor | Directorios, ACLs, servicio, identidad de mínimo privilegio. |
 | **IIS: enlace privado** | **a mano** | El puerto al que WPShield reenvía de vuelta. |
 | **IIS: `preserveHostHeader`** | **a mano** | Es de servidor entero. Vea la advertencia. |
@@ -61,7 +61,7 @@ nada con los shells que ya están en disco, y no expulsa a un intruso que se mov
 ## 3. Verificación previa
 
 ```powershell
-.\scripts\Invoke-WPShieldPreflight.ps1 -OutputPath .\preflight.jsonl
+wpshield preflight --output preflight.jsonl
 ```
 
 Solo lectura. Despeje todo bloqueante antes de continuar, y repita hasta que no quede ninguno. Vea

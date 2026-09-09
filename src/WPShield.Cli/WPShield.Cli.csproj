@@ -13,7 +13,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="System.CommandLine" />
+    <!--
+      The supported managed API for reading IIS, rather than parsing applicationHost.config or
+      shelling out to appcmd. It reads only here; nothing in this tool writes an IIS setting.
+    -->
+    <PackageReference Include="Microsoft.Web.Administration" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
   </ItemGroup>
 

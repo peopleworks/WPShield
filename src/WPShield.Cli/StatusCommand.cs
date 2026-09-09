@@ -1,5 +1,3 @@
-using System.CommandLine;
-
 namespace WPShield.Cli;
 
 /// <summary>
@@ -29,14 +27,31 @@ internal static class StatusCommand
     /// <summary>Nothing is installed. Not a failure; there is simply nothing to report on.</summary>
     public const int ExitNotInstalled = 3;
 
-    public static Command Create()
-    {
-        var command = new Command(
-            "status",
-            "Report what is installed, which account runs it, and whether it is writing a log.");
+    public const string Help = """
+        wpshield status - what is installed, under which account, and whether it is writing
+        anything down. Reads only.
 
-        command.SetAction(_ => Run(InstallationReport.Gather(), Console.Out));
-        return command;
+        Usage: wpshield status
+
+        No options. Every question it answers had to be answered by hand, from four separate
+        commands, during the first real deployment - and the one that mattered most was the one
+        nobody thought to ask. An install that threw partway through left the gateway running as
+        LocalSystem with both directories still inheriting their parents, and every summary the
+        installer had printed still said otherwise.
+
+        Exit codes:
+          0   healthy
+          1   an argument was wrong
+          2   installed, and something about it is wrong
+          3   nothing is installed
+        """;
+
+    public static int Run(CliOptions arguments, TextWriter output)
+    {
+        ArgumentNullException.ThrowIfNull(arguments);
+        arguments.RejectUnknown();
+
+        return Run(InstallationReport.Gather(), output);
     }
 
     internal static int Run(InstallationReport report, TextWriter output)
