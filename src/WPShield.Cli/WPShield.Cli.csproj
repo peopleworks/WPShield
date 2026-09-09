@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <!--
+      Windows-only by nature: every verb here reads a Windows service, an NTFS ACL or an IIS
+      configuration. The target framework says so rather than leaving CA1416 to be suppressed at
+      each call site, and the Linux CI leg builds only the three portable projects, so this one
+      never reaches it.
+    -->
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>wpshield</AssemblyName>
+    <RootNamespace>WPShield.Cli</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Core and the rule set, never WPShield.Gateway.
+
+      That direction is the point of ADR 0003 rather than a tidiness preference. The triage tool
+      carries hand-written COPIES of the gateway's extension and directory lists because a
+      PowerShell script cannot reference a .NET assembly, and an entire section of
+      Test-WPShieldScripts.ps1 exists to watch those copies for drift. A CLI that references the
+      rules has no copy to drift, and that whole category of defect disappears with it.
+
+      Referencing WPShield.Gateway would drag ASP.NET Core and YARP into a console tool for nothing:
+      the gateway is a service host, and this is the thing that installs it.
+    -->
+    <ProjectReference Include="../WPShield.Core/WPShield.Core.csproj" />
+    <ProjectReference Include="../WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPShield.Cli.Tests" />
+  </ItemGroup>
+</Project>
