@@ -14,12 +14,12 @@ off. Three scripts and four manual IIS steps.
 | `Publish-WPShield.ps1` | build machine | Self-contained `win-x64` build, archived with a checksum. |
 | `Invoke-WPShieldTriage.ps1` | server | Is this host already compromised? A gateway in front of an existing webshell protects the way in, not what is inside. |
 | `wpshield preflight` | server | Can the traffic path work here? Clear every blocker. |
-| `Install-WPShield.ps1` | server | Directories, ACLs, service, least-privilege identity. |
+| `wpshield install` | server | Directories, ACLs, service, least-privilege identity. |
 | **IIS: private binding** | **by hand** | The port WPShield forwards back to. |
 | **IIS: `preserveHostHeader`** | **by hand** | Server-wide. See the warning below. |
 | **IIS: the rewrite rule** | **by hand** | The switch that puts WPShield in the path. |
 | **IIS: verify and watch** | **by hand** | Monitor mode, reading the log, before anything blocks. |
-| `Uninstall-WPShield.ps1` | server | Reverses the install. **Not** a rollback on its own. |
+| `wpshield uninstall` | server | Reverses the install. **Not** a rollback on its own. |
 
 The IIS steps are manual on purpose. They are the changes that take a live site down, they need a
 person looking at the site while they happen, and on a shared host they affect applications that
@@ -72,19 +72,19 @@ to use, filled in from the sites it found.
 Preview first. `-WhatIf` prints every step without doing any of it, and does not require elevation:
 
 ```powershell
-.\scripts\Install-WPShield.ps1 -Path C:\staging\wpshield -WhatIf
+wpshield install --path C:\staging\wpshield --dry-run
 ```
 
 Then, elevated:
 
 ```powershell
-.\scripts\Install-WPShield.ps1 -Path C:\staging\wpshield -ConfigurationPath C:\staging\appsettings.Local.json
+wpshield install --path C:\staging\wpshield --config C:\staging\appsettings.Local.json
 ```
 
 What it does:
 
 - **Refuses to run if `-InstallPath` or `-LogPath` is inside a directory IIS serves**, before it has
-  created, copied or registered anything. `-AllowWebRootPaths` overrides it and warns.
+  created, copied or registered anything. `--allow-web-root-paths` overrides it and warns.
 - Creates `C:\Program Files\WPShield` and `C:\ProgramData\WPShield\logs`.
 - Copies the build, and the operator configuration if you pass one.
 - **Writes the log path into `Logging:File:Directory` in the installed `appsettings.json`.** Creating
@@ -202,13 +202,13 @@ state the service is in. That is the control to reach for, and it is the one to 
 | WPShield is blocking something it should not | Set the site to `Monitor` and restart the service. |
 | The gateway is misbehaving and you need the site back now | **Disable the rewrite rule.** |
 | Something else broke after `preserveHostHeader` | Set it back to `$false`, then investigate. |
-| Removing WPShield for good | Disable the rules, confirm the sites serve, then `Uninstall-WPShield.ps1`. |
+| Removing WPShield for good | Disable the rules, confirm the sites serve, then `wpshield uninstall`. |
 
 ## Uninstalling
 
 ```powershell
-.\scripts\Uninstall-WPShield.ps1 -WhatIf
-.\scripts\Uninstall-WPShield.ps1 -RemoveFiles
+.\scripts\wpshield uninstall -WhatIf
+.\scripts\wpshield uninstall --remove-files
 ```
 
 It **refuses to run** while it can still see an enabled WPShield rewrite rule, and equally refuses
@@ -217,7 +217,7 @@ nothing there", and on an uninstall that difference decides whether the site sta
 overrides, for when you have confirmed the rule is disabled or the site is already down.
 
 Logs are **kept** by default. They are the record of what the gateway saw, and an uninstall during
-an incident is the worst moment to delete evidence. Pass `-RemoveLogs` when you mean it.
+an incident is the worst moment to delete evidence. Pass `--remove-logs` when you mean it.
 
 The virtual account disappears with the service; there is no account left behind. The IIS bindings
 and rules you added by hand are still there — remove those yourself if the gateway is not coming

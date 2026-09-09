@@ -146,7 +146,7 @@ Installed under a served directory, three things go wrong at once:
 
 This check exists because it happened. WPShield was unpacked into `C:\inetpub\wwwroot\WPShield` on
 the server this project was built for, and wrote its log there for a day before anyone read the first
-line of it. `Install-WPShield.ps1` now refuses the same layout outright; `-AllowWebRootPaths`
+line of it. `wpshield install` now refuses the same layout outright; `--allow-web-root-paths`
 overrides it and warns.
 
 ## The absence of findings is not a finding

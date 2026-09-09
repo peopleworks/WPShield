@@ -353,11 +353,11 @@ mechanism, so `Logging:File:LogLevel:Default` works exactly as it does for the c
 > wrong.** Unpacked under a web root it puts the evidence log — and `appsettings.Local.json`, which
 > names every host you protect — inside the tree IIS hands out; `.json` is in the default IIS MIME
 > map, so that file is fetchable over HTTP. Unpacked into the installation directory it resolves to a
-> directory `Install-WPShield.ps1` deliberately leaves read-only for the service account, so every
+> directory `wpshield install` deliberately leaves read-only for the service account, so every
 > write fails.
 >
 > Both of those happened on the same server in the same week. The gateway now refuses to start when
-> it cannot write to the resolved directory, and `Install-WPShield.ps1` writes the path it hardened
+> it cannot write to the resolved directory, and `wpshield install` writes the path it hardened
 > into this setting rather than assuming the gateway will guess it.
 
 ### Startup refuses rather than running without evidence

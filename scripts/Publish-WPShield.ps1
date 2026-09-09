@@ -6,7 +6,7 @@
 
 .DESCRIPTION
     Runs on a build machine, not on the server. Produces a directory that can be copied to a Windows
-    Server host and installed with Install-WPShield.ps1, plus an archive and a SHA-256 file so the
+    Server host and installed with wpshield install, plus an archive and a SHA-256 file so the
     transport can be verified rather than trusted.
 
     SELF-CONTAINED, DELIBERATELY. A framework-dependent build is smaller and works wherever the
@@ -167,6 +167,6 @@ Write-Host ''
 Write-Host 'Next, on the server:' -ForegroundColor Cyan
 Write-Host ('  1. Copy the directory or the archive across, and verify the SHA-256.')
 Write-Host ('  2. Run wpshield preflight and clear every blocker.')
-Write-Host ('  3. Run Install-WPShield.ps1 -Path <the copied directory> -WhatIf first, then without it.')
+Write-Host ('  3. Run wpshield install -Path <the copied directory> -WhatIf first, then without it.')
 Write-Host ''
 Write-Host 'This is a research preview. It is not approved for production traffic.' -ForegroundColor Yellow

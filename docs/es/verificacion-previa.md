@@ -150,8 +150,8 @@ Instalado bajo un directorio servido, tres cosas salen mal a la vez:
 
 Esta comprobación existe porque pasó. WPShield se descomprimió en `C:\inetpub\wwwroot\WPShield` en el
 servidor para el cual se construyó este proyecto, y escribió su log ahí durante un día antes de que
-alguien leyera la primera línea. `Install-WPShield.ps1` ahora rechaza esa disposición de plano;
-`-AllowWebRootPaths` lo permite con advertencia.
+alguien leyera la primera línea. `wpshield install` ahora rechaza esa disposición de plano;
+`--allow-web-root-paths` lo permite con advertencia.
 
 ## La ausencia de hallazgos no es un hallazgo
 
