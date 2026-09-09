@@ -12,7 +12,43 @@ must complete first.
 
 ## [Unreleased]
 
+### Added
+
+- **`wpshield enable` and `wpshield disable`, and [ADR 0005](docs/en/adr/0005-putting-wpshield-in-the-path.md)
+  is Accepted.** The last manual step of a deployment was three changes in IIS and the site's own
+  application, in an order where getting it wrong takes a live site down - and it did.
+
+  **The argument is not that typing is tedious.** A person types a rewrite rule, saves, and finding
+  out whether the site broke requires them to check, notice, diagnose which of three changes did it,
+  and undo the right one under pressure. `enable` applies the change, requests the site, reads the
+  status code, and **has reverted before the command returns.** On the deployment this comes from,
+  that window was hours.
+
+  It changes only the per-site, individually reversible things: the loopback binding, the allowed
+  server variable, and the rule - placed **first**, because below a catch-all it either never runs or
+  runs against the already-rewritten URL, and both look like a working site.
+
+  Every refusal is part of why it is allowed to exist. It **will not** touch `preserveHostHeader`,
+  which is server-wide and would alter what sixty-five unrelated applications send downstream. It
+  **will not** write `wp-config.php`, which is the site's own source - instead it reads it and refuses
+  to proceed without the scheme translation, **which is what makes the verb unable to create the
+  redirect loop it exists to prevent.** It takes exactly one site and there is no `--all`, because the
+  reason these steps were manual is that they need a person looking at the site.
+
+  `disable` is the rollback and is documented first, because an operator reaches for it when things
+  are already going wrong. It sets `enabled="false"` rather than deleting the rule, so the ordering -
+  the thing that is easy to get wrong and silent when you do - survives.
+
 ### Changed
+
+- **`AGENTS.md`'s IIS invariant is restated in terms of what it always meant.** It said *"never modify
+  IIS, certificates, DNS, firewall rules, or Windows services automatically"*, and that was already
+  not literally true: `wpshield install` creates the WPShield service, sets its identity and rewrites
+  two directories' ACLs, and always did. What the line was protecting was never the list - it was the
+  sixty-five other applications on a shared host. It now says so, and the old structural guard moved
+  rather than disappeared: **exactly one type may commit an IIS change, every entry point on it names
+  one site, and nothing may reach the server-wide proxy section** - asserted, not documented.
+
 
 - **[ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md): WPShield now stands for *Windows Power
   Shield*, and the README says what that does not cover yet.** The name was regretted in the second
