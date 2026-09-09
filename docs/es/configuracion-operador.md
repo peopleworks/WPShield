@@ -218,6 +218,74 @@ solo no le dirá en cuál está hasta que el tráfico ya esté fluyendo. Una ent
 se informa como Warning: el gateway solo acepta conexiones de loopback, así que esa entrada nunca
 podría coincidir.
 
+## Limitación de tasa
+
+`Gateway:RateLimit` acota cuántas veces un cliente puede llegar a las rutas que usted nombre. Está
+**apagada en código y encendida en la configuración publicada**, y es **dirigida, no global** — el
+operador lista las rutas.
+
+```json
+{
+  "Gateway": {
+    "RateLimit": {
+      "Enabled": true,
+      "Rules": [
+        {
+          "Id": "wordpress-login",
+          "Paths": [ "/wp-login.php", "/xmlrpc.php" ],
+          "PermitLimit": 10,
+          "WindowSeconds": 300
+        }
+      ]
+    }
+  }
+}
+```
+
+### Por qué dirigida y no global
+
+Una sola vista de página de WordPress son decenas de peticiones — hojas de estilo, scripts, fuentes,
+imágenes. Un presupuesto aplicado a todas o se pone tan alto que no detiene nada, o estrangula a los
+lectores.
+
+El tráfico para el cual existe esto no se parece a eso. Dos sitios en un mismo host registraron
+**40.779 peticiones a `wp-login.php` en treinta días**, desde más de sesenta direcciones, y todas
+fueron al mismo puñado de rutas. El [ADR 0002](adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md)
+decidió que la mitad HTTP de la defensa contra fuerza bruta se queda dentro de WPShield; esta es esa
+mitad.
+
+### Obedece el modo del sitio, como todo lo demás
+
+| `Mode` del sitio | Qué pasa cuando un cliente agota su presupuesto |
+| --- | --- |
+| `Disabled` | Nada. Ni se consulta el limitador. |
+| `Monitor` | Una línea de log en Information con `Action=Observe`, y **la petición se reenvía**. |
+| `Block` | HTTP **429** con `Retry-After`, una línea en Warning con `Action=Block`. |
+
+Un limitador que rechazara tráfico en Monitor sería el único componente aquí donde Monitor no es
+Monitor, así que se comprueba a través del pipeline real en vez de darse por sentado.
+
+### Particionado por el cliente resuelto, no por el par que conecta
+
+Los presupuestos se indexan por sitio, luego regla, luego la dirección de cliente que resolvió
+`Gateway:TrustedProxies`. **Esa última parte carga peso.** Bajo esta ruta de tráfico toda petición
+llega desde un proxy local, así que un limitador indexado por el par que conecta metería a todo
+internet en un solo cubo: el visitante número once del día quedaría rechazado y una fuerza bruta se
+vería igual que una tarde ocupada. Configure `TrustedProxies` antes de confiar en un límite de tasa.
+
+### Qué vigilar
+
+- **Las rutas se comparan enteras**, sin distinguir mayúsculas, contra la ruta decodificada. Un
+  WordPress instalado bajo `/blog` necesita `/blog/wp-login.php`. Coincidir con más de lo que usted
+  escribió es como un limitador empieza a rechazar tráfico que nadie le pidió mirar.
+- **`Rules` es un arreglo, así que una superposición lo fusiona elemento por elemento** — la misma
+  trampa que trae `Sites`. Declare todas las reglas que quiera, no solo la que está cambiando.
+- **Una oficina detrás de una sola dirección NAT comparte presupuesto.** Diez intentos cada cinco
+  minutos es generoso para una persona y brutal para un script, pero contrástelo con cómo entran sus
+  propios usuarios antes de poner un sitio en `Block`.
+- El arranque imprime cada regla cargada, e imprime `Rate limiting is off` cuando no hay ninguna. Se
+  reportan los dos estados porque el comportamiento por sí solo no le dice en cuál está.
+
 ## Límites de inspección
 
 `Gateway:Multipart` contiene los límites de la pasada de inspección de cargas. A diferencia de

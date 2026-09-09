@@ -209,6 +209,72 @@ Both states are printed because both are wrong somewhere, and behavior alone wil
 one you are in until traffic is already flowing. A non-loopback entry is reported at Warning: the
 gateway accepts loopback connections only, so such an entry can never match.
 
+## Rate limiting
+
+`Gateway:RateLimit` bounds how many times one client may reach the paths you name. It is **off in
+code and on in the shipped configuration**, and it is **targeted rather than global** — the operator
+lists the paths.
+
+```json
+{
+  "Gateway": {
+    "RateLimit": {
+      "Enabled": true,
+      "Rules": [
+        {
+          "Id": "wordpress-login",
+          "Paths": [ "/wp-login.php", "/xmlrpc.php" ],
+          "PermitLimit": 10,
+          "WindowSeconds": 300
+        }
+      ]
+    }
+  }
+}
+```
+
+### Why targeted and not global
+
+One WordPress page view is dozens of requests — stylesheets, scripts, fonts, images. A budget applied
+to every request is either set so high that it stops nothing, or it throttles readers.
+
+The traffic this exists for does not look like that. Two sites on one host recorded **40,779 requests
+to `wp-login.php` in thirty days**, from more than sixty addresses, and every one went to the same
+handful of paths. [ADR 0002](adr/0002-host-level-brute-force-defence.md) decided that the HTTP half of
+brute-force defence stays inside WPShield; this is that half.
+
+### It obeys the site's mode, like everything else
+
+| Site `Mode` | What happens when a client runs out of budget |
+| --- | --- |
+| `Disabled` | Nothing. The limiter is not consulted. |
+| `Monitor` | One log line at Information with `Action=Observe`, and **the request is forwarded**. |
+| `Block` | HTTP **429** with `Retry-After`, one log line at Warning with `Action=Block`. |
+
+A limiter that refused traffic in Monitor would be the one component here where Monitor is not
+Monitor, so it is asserted through the real pipeline rather than assumed.
+
+### Partitioned by the resolved client, not by the peer
+
+Budgets are keyed by site, then rule, then the client address `Gateway:TrustedProxies` resolved.
+**That last part is load-bearing.** Under this traffic path every request arrives from a local proxy,
+so a limiter keyed on the connecting peer would put the whole internet in one bucket: the eleventh
+visitor of the day would be refused and a brute force would look like a busy afternoon. Configure
+`TrustedProxies` before you trust a rate limit.
+
+### What to watch for
+
+- **Paths are matched whole**, case-insensitively, against the decoded path. A WordPress installed
+  under `/blog` needs `/blog/wp-login.php`. Matching more than you wrote is how a limiter starts
+  refusing traffic nobody asked it to look at.
+- **`Rules` is an array, so an overlay merges it element by element** — the same trap `Sites` carries.
+  Declare every rule you want, not only the one you are changing.
+- **An office behind one NAT address shares a budget.** Ten attempts per five minutes is generous for
+  a person and brutal for a script, but check it against how your own users log in before moving a
+  site to `Block`.
+- Startup prints every loaded rule, and prints `Rate limiting is off` when there is none. Both states
+  are reported because behaviour alone will not tell you which one you are in.
+
 ## Inspection bounds
 
 `Gateway:Multipart` holds the bounds for the upload inspection pass. Unlike `Sites`, it is a JSON

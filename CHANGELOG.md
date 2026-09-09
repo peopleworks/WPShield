@@ -12,6 +12,30 @@ must complete first.
 
 ## [Unreleased]
 
+### Added
+
+- **Rate limiting, the HTTP half of the brute-force defence [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md)
+  decided on and nothing had built.** Two WordPress sites on one host recorded **40,779 requests to
+  `wp-login.php` in thirty days**, from more than sixty addresses, and until now WPShield could see
+  every one of them and count none.
+
+  It is **targeted rather than global**, and that is the design rather than a limitation. One
+  WordPress page view is dozens of requests, so a budget applied to everything is either set high
+  enough to stop nothing or it throttles readers; the traffic this exists for went to the same
+  handful of paths. The operator names them. The shipped rule covers `/wp-login.php` and
+  `/xmlrpc.php` at ten requests per five minutes.
+
+  It obeys the site's mode like every other control here: `Monitor` records what it would have
+  refused and **forwards anyway**, `Block` answers **429** with `Retry-After`, `Disabled` never
+  consults it. That is asserted through the real pipeline rather than assumed, because a limiter that
+  refused traffic in Monitor would be the one component where Monitor is not Monitor.
+
+  Budgets are partitioned by site, then rule, then the **resolved** client address. Keying them on
+  the connecting peer would put the entire internet in one bucket under this traffic path, where
+  every request arrives from a local proxy — the eleventh visitor of the day would be refused and a
+  brute force would look like a busy afternoon. `Gateway:TrustedProxies` has to be configured before
+  a rate limit means anything.
+
 ### Fixed
 
 - **The gateway could not start with the configuration it ships with.** `GatewayOptions.Urls`
