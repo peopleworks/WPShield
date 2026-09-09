@@ -14,6 +14,48 @@ must complete first.
 
 ### Changed
 
+- **`wpshield publish` replaces `Publish-WPShield.ps1`, which is deleted.** The migration ADR 0003
+  set out is done except for the triage tool: **5,561 lines of PowerShell down to 2,893**, and what
+  remains is the triage tool, the IIS lab and the harness that watches them.
+
+  It now publishes **both** executables into one directory — the gateway and this tool — so an
+  operator can run the install from the artifact itself. ADR 0003 claimed their runtime files are
+  identical and the archive would not double; the verb **asserts that** rather than assuming it, and
+  a real run confirms it: 356 files and 106.5 MB for two applications, against 350 files and 105.9 MB
+  for one. Six extra files, not a second runtime. Any future change that made them diverge — a
+  different target framework, a different runtime identifier — fails the publish instead of quietly
+  adding a hundred megabytes to every copy over RDP.
+
+  Everything the script refused, it still refuses: an output containing `appsettings.Local.json` is
+  deleted rather than shipped, a binary whose version disagrees with `Directory.Build.props` stops
+  the publish, and the artifact name still carries `RESEARCH-PREVIEW-NOT-FOR-PRODUCTION`, because an
+  archive gets renamed and forwarded and unpacked months later by someone who never saw the page that
+  said so.
+
+
+- **`wpshield install` and `wpshield uninstall` replace their scripts, which are deleted.** With the
+  preflight, that is **2,050 lines of PowerShell gone** and the total down from 5,561 to 3,065 - what
+  is left is the triage tool, the publish script, the IIS lab and the harness that watches them.
+
+  **The order is now asserted rather than read.** The defect that cost a day was an install that threw
+  between registering the service and restricting the directories, leaving the gateway running as
+  `LocalSystem` with an evidence log readable by every account on a sixty-six-site server - while
+  every summary it had printed said otherwise. Behind `IInstallEnvironment`, a test states that the
+  per-service SID is enabled before the ACLs are written, that the log directory reaches the
+  configuration after the copy that would overwrite it, that a dry run performs no mutation at all,
+  and that the web-root refusal fires before the first one.
+
+  The uninstall guard is testable for the first time, and it is the one that matters most:
+  **uninstalling is not a rollback.** With the rewrite rule still enabled, removing the service takes
+  the site down. It refuses while it can see a WPShield rule - and refuses just as hard when IIS
+  cannot be read at all, because collapsing "could not check" into "checked and fine" is the shape of
+  the mistake that takes a site down during an incident.
+
+  `sc.exe` is called through `ProcessStartInfo.ArgumentList`, and an empty argument is refused
+  outright rather than passed. That is the exact bug Windows PowerShell 5.1 produced by silently
+  dropping one.
+
+
 - **`wpshield preflight` replaces `Invoke-WPShieldPreflight.ps1`, which is deleted.** 1,086 lines of
   PowerShell gone, and with them one of the two hand-written JSON escapers this project was carrying.
 

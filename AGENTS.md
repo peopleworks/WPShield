@@ -199,7 +199,7 @@ there.
   because preflight and uninstall have to be able to ask what IIS is configured to do.
 - **A service-mutating cmdlet binds its name to the script's own constant, never to a literal.** The
   failure this prevents is `Stop-Service 'W3SVC'` in an installer that runs on a host carrying sixty
-  applications. `Install-WPShield.ps1` may create, configure, start and stop exactly one service,
+  applications. `wpshield install` may create, configure, start and stop exactly one service,
   and it is the one named in `$script:ServiceName`.
 - **The service runs as the virtual account `NT SERVICE\WPShield`.** No password is stored anywhere,
   there is no account to manage, and the identity can be named in an ACL. It gets read and execute

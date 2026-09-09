@@ -11,15 +11,15 @@ quitarlo. Tres scripts y cuatro pasos manuales en IIS.
 
 | Paso | Quién lo hace | Por qué |
 | --- | --- | --- |
-| `Publish-WPShield.ps1` | máquina de compilación | Compilación autocontenida `win-x64`, archivada con checksum. |
+| `wpshield publish` | máquina de compilación | Compilación autocontenida `win-x64`, archivada con checksum. |
 | `Invoke-WPShieldTriage.ps1` | servidor | ¿Este servidor ya está comprometido? Un gateway delante de un webshell existente protege la entrada, no lo que ya está dentro. |
 | `wpshield preflight` | servidor | ¿Puede funcionar aquí la ruta de tráfico? Despeje todo bloqueante. |
-| `Install-WPShield.ps1` | servidor | Directorios, ACLs, servicio, identidad de mínimo privilegio. |
+| `wpshield install` | servidor | Directorios, ACLs, servicio, identidad de mínimo privilegio. |
 | **IIS: enlace privado** | **a mano** | El puerto al que WPShield reenvía de vuelta. |
 | **IIS: `preserveHostHeader`** | **a mano** | Es de servidor entero. Vea la advertencia. |
 | **IIS: la regla de reescritura** | **a mano** | El interruptor que pone a WPShield en la ruta. |
 | **IIS: verificar y observar** | **a mano** | Modo Monitor, leyendo el registro, antes de bloquear nada. |
-| `Uninstall-WPShield.ps1` | servidor | Revierte la instalación. **No** es una marcha atrás por sí solo. |
+| `wpshield uninstall` | servidor | Revierte la instalación. **No** es una marcha atrás por sí solo. |
 
 Los pasos de IIS son manuales a propósito. Son los cambios que tumban un sitio en producción,
 necesitan una persona mirando el sitio mientras ocurren, y en un servidor compartido afectan a
@@ -31,7 +31,7 @@ en IIS dentro de cualquier script.
 ## 1. Compilar
 
 ```powershell
-.\scripts\Publish-WPShield.ps1
+wpshield publish
 ```
 
 Produce `artifacts\wpshield-<versión>-win-x64-RESEARCH-PREVIEW-NOT-FOR-PRODUCTION\`, lo mismo como
@@ -73,19 +73,19 @@ el `appsettings.Local.json` a usar, rellenado con los sitios que encontró.
 Primero en seco. `-WhatIf` imprime cada paso sin hacer ninguno, y no exige elevación:
 
 ```powershell
-.\scripts\Install-WPShield.ps1 -Path C:\staging\wpshield -WhatIf
+wpshield install --path C:\staging\wpshield --dry-run
 ```
 
 Después, elevado:
 
 ```powershell
-.\scripts\Install-WPShield.ps1 -Path C:\staging\wpshield -ConfigurationPath C:\staging\appsettings.Local.json
+wpshield install --path C:\staging\wpshield --config C:\staging\appsettings.Local.json
 ```
 
 Lo que hace:
 
 - **Se niega a correr si `-InstallPath` o `-LogPath` está dentro de un directorio que IIS sirve**, antes
-  de haber creado, copiado o registrado nada. `-AllowWebRootPaths` lo permite con advertencia.
+  de haber creado, copiado o registrado nada. `--allow-web-root-paths` lo permite con advertencia.
 - Crea `C:\Program Files\WPShield` y `C:\ProgramData\WPShield\logs`.
 - Copia la compilación, y la configuración del operador si le pasa una.
 - **Escribe la ruta de registros en `Logging:File:Directory` del `appsettings.json` instalado.** Crear
@@ -205,13 +205,13 @@ como esté el servicio. Ese es el control al que hay que recurrir, y el que hay 
 | WPShield bloquea algo que no debería | Ponga el sitio en `Monitor` y reinicie el servicio. |
 | El gateway se porta mal y necesita el sitio ya | **Desactive la regla de reescritura.** |
 | Algo más se rompió tras `preserveHostHeader` | Póngalo de vuelta en `$false`, y luego investigue. |
-| Quitar WPShield definitivamente | Desactive las reglas, confirme que los sitios sirven, y entonces `Uninstall-WPShield.ps1`. |
+| Quitar WPShield definitivamente | Desactive las reglas, confirme que los sitios sirven, y entonces `wpshield uninstall`. |
 
 ## Desinstalar
 
 ```powershell
-.\scripts\Uninstall-WPShield.ps1 -WhatIf
-.\scripts\Uninstall-WPShield.ps1 -RemoveFiles
+.\scripts\wpshield uninstall -WhatIf
+.\scripts\wpshield uninstall --remove-files
 ```
 
 **Se niega a ejecutarse** mientras vea una regla de reescritura de WPShield habilitada, y se niega
@@ -220,7 +220,7 @@ igualmente cuando no puede leer la configuración de IIS en absoluto — porque 
 anula, para cuando ya confirmó que la regla está desactivada o el sitio ya está caído.
 
 Los registros **se conservan** por omisión. Son la memoria de lo que el gateway vio, y una
-desinstalación durante un incidente es el peor momento para borrar evidencia. Pase `-RemoveLogs` cuando
+desinstalación durante un incidente es el peor momento para borrar evidencia. Pase `--remove-logs` cuando
 lo diga en serio.
 
 La cuenta virtual desaparece con el servicio; no queda ninguna cuenta atrás. Los enlaces y las reglas
