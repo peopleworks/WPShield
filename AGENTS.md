@@ -146,7 +146,7 @@ there.
 - **Target Windows PowerShell 5.1**, and verify against it, not only against PowerShell 7. 5.1 is
   what a Windows Server host has before anything is installed on it, and the host being triaged is
   not a host to install things on. PowerShell 7 accepting a script is not evidence 5.1 will.
-- **`Invoke-WPShieldTriage.ps1` and `Invoke-WPShieldPreflight.ps1` read and report. They never
+- **`Invoke-WPShieldTriage.ps1` and `wpshield preflight` read and report. They never
   repair.** No deletion, no quarantine, no rename, no move, no IIS setting, no binding, no rewrite
   rule, no ACL, no service or firewall change, and the triage tool never executes a file it finds.
   Deleting a webshell before understanding how it arrived destroys the evidence and leaves the way

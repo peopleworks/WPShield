@@ -166,7 +166,7 @@ Write-Host 'Done.' -ForegroundColor Green
 Write-Host ''
 Write-Host 'Next, on the server:' -ForegroundColor Cyan
 Write-Host ('  1. Copy the directory or the archive across, and verify the SHA-256.')
-Write-Host ('  2. Run Invoke-WPShieldPreflight.ps1 and clear every blocker.')
+Write-Host ('  2. Run wpshield preflight and clear every blocker.')
 Write-Host ('  3. Run Install-WPShield.ps1 -Path <the copied directory> -WhatIf first, then without it.')
 Write-Host ''
 Write-Host 'This is a research preview. It is not approved for production traffic.' -ForegroundColor Yellow

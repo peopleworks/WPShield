@@ -12,6 +12,31 @@ must complete first.
 
 ## [Unreleased]
 
+### Changed
+
+- **`wpshield preflight` replaces `Invoke-WPShieldPreflight.ps1`, which is deleted.** 1,086 lines of
+  PowerShell gone, and with them one of the two hand-written JSON escapers this project was carrying.
+
+  **The point of the move is that the checks are now testable.** The PowerShell version could only be
+  exercised by running it on a server that had IIS, ARR, URL Rewrite and the right failure conditions,
+  which in practice meant it was exercised once, on production. That is how `PRE-018` shipped unable
+  to match the WordPress permalink rule it existed to find, and how `PRE-019` passed on the very
+  server where an unpacked copy of the gateway sat inside a web root. Both are now asserted from facts
+  a test can state, along with the ARR switches, the `PRE-016` blocker and the rule that every blocker
+  carries a remedy.
+
+  Two things the PowerShell version got wrong are fixed in the move. The report is serialised by
+  `System.Text.Json` rather than a hand-written escaper. And **the printed IIS instructions now carry
+  all three changes** — the allowed server variable, the rewrite rule *with* its `serverVariables`
+  block, and the `wp-config.php` translation — where before it printed the rule without the block and
+  warned that the alternative was a redirect loop without naming what prevents it. An operator
+  followed that output exactly and took a live site down with `ERR_TOO_MANY_REDIRECTS`.
+
+  The CLI now parses arguments by hand rather than through `System.CommandLine`, reversing the first
+  draft. The package is good and it does not answer `/?`, which is the form a Windows operator reaches
+  for first; more importantly, SQLDiff, DBFSync and SyncJob already parse, help and exit exactly like
+  this, and a fourth tool run by the same person at eleven at night should not have its own dialect.
+
 ### Added
 
 - **`wpshield.exe`, and [ADR 0003](docs/en/adr/0003-operator-tooling-in-dotnet.md) recording why the
