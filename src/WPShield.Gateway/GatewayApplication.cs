@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Net;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -81,6 +82,7 @@ public static class GatewayApplication
         builder.Services.AddSingleton(new SiteResolver(sites));
         builder.Services.AddSingleton<IReadOnlyList<SiteOptions>>(sites);
         builder.Services.AddSingleton(multipartOptions);
+        builder.Services.AddSingleton(new RequestRateLimiter(gatewayOptions.RateLimit));
         builder.Services.AddSingleton<WPShieldTransformer>();
         builder.Services.TryAddSingleton(_ => CreateProxyClient());
 
@@ -113,6 +115,8 @@ public static class GatewayApplication
         // signature of the fallback handler down to what actually varies per request.
         var inspectionService = app.Services.GetRequiredService<UploadInspectionService>();
         var pathInspectionService = app.Services.GetRequiredService<RequestPathInspectionService>();
+        var rateLimiter = app.Services.GetRequiredService<RequestRateLimiter>();
+        LogRateLimitConfiguration(loggerFactory, gatewayOptions.RateLimit);
 
         var requestConfig = new ForwarderRequestConfig
         {
@@ -214,6 +218,53 @@ public static class GatewayApplication
                     "Site protection disabled; request forwarded. RequestId={RequestId} SiteId={SiteId}",
                     context.TraceIdentifier,
                     site.Id);
+            }
+
+            // Before the rules, because this is the cheapest refusal there is and because the traffic
+            // it exists for looks entirely legitimate to them. A credential stuffing run is thousands
+            // of well-formed POSTs to a real login form: no rule finds anything, and nothing except a
+            // budget tells the thousandth attempt apart from the first.
+            if (rateLimiter.IsActive && site.Mode != ProtectionMode.Disabled)
+            {
+                var exceeded = rateLimiter.Evaluate(site.Id, client, context.Request.Path.Value ?? "/");
+
+                if (exceeded is { } limit)
+                {
+                    var refusing = site.Mode == ProtectionMode.Block;
+
+                    // Warning for a refusal, Information for an observation - the same split the path
+                    // and upload inspections use. An operator alerting on Error must not be paged
+                    // because someone tried ten passwords.
+                    logger.Log(
+                        refusing ? LogLevel.Warning : LogLevel.Information,
+                        "Rate limit exceeded. RequestId={RequestId} SiteId={SiteId} RuleId={RuleId} " +
+                        "Client={Client} Method={Method} Path={Path} PermitLimit={PermitLimit} " +
+                        "WindowSeconds={WindowSeconds} Action={Action} Mode={Mode}",
+                        context.TraceIdentifier,
+                        site.Id,
+                        limit.RuleId,
+                        client,
+                        context.Request.Method,
+                        context.Request.Path.Value,
+                        limit.PermitLimit,
+                        limit.WindowSeconds,
+                        refusing ? "Block" : "Observe",
+                        site.Mode);
+
+                    if (refusing)
+                    {
+                        // Retry-After in seconds. A client that honours it stops hammering, and one
+                        // that does not has told you something about itself.
+                        await WriteGatewayErrorAsync(
+                            context,
+                            StatusCodes.Status429TooManyRequests,
+                            "rate_limited",
+                            null,
+                            [limit.RuleId],
+                            limit.WindowSeconds);
+                        return;
+                    }
+                }
             }
 
             // Before anything touches the body. A path refusal costs no buffer, no multipart parse
@@ -413,12 +464,18 @@ public static class GatewayApplication
     /// whatever went wrong first.
     /// </para>
     /// </remarks>
+    /// <param name="retryAfterSeconds">
+    /// Emitted as <c>Retry-After</c>. It is a parameter rather than something the caller sets
+    /// beforehand because <c>Response.Clear()</c> below discards headers set earlier - which it did,
+    /// silently, until an integration test asked for the header on a 429 and did not find it.
+    /// </param>
     private static async Task WriteGatewayErrorAsync(
         HttpContext context,
         int statusCode,
         string error,
         string? reason = null,
-        IReadOnlyList<string>? ruleIds = null)
+        IReadOnlyList<string>? ruleIds = null,
+        int? retryAfterSeconds = null)
     {
         if (context.Response.HasStarted)
         {
@@ -430,6 +487,11 @@ public static class GatewayApplication
         context.Response.Headers["X-WPShield-Request-ID"] = context.TraceIdentifier;
         context.Response.Headers["X-Content-Type-Options"] = "nosniff";
         context.Response.Headers.CacheControl = "no-store";
+
+        if (retryAfterSeconds is { } retryAfter)
+        {
+            context.Response.Headers.RetryAfter = retryAfter.ToString(CultureInfo.InvariantCulture);
+        }
         await context.Response.WriteAsJsonAsync(
             new GatewayErrorResponse(error, context.TraceIdentifier, reason, ruleIds),
             context.RequestAborted);
@@ -522,6 +584,37 @@ public static class GatewayApplication
     /// no-op over-specification into an outage. Saying so at startup is the honest middle.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Reports the rate limiter at startup, including when it is off.
+    /// </summary>
+    /// <remarks>
+    /// Both states are printed for the same reason the trusted-proxy report prints both: behaviour
+    /// alone will not tell an operator which one they are in until traffic is already flowing, and a
+    /// limiter that is silently disabled looks exactly like a limiter nobody is testing.
+    /// </remarks>
+    private static void LogRateLimitConfiguration(ILoggerFactory loggerFactory, RateLimitOptions options)
+    {
+        var logger = loggerFactory.CreateLogger("WPShield.Gateway.Configuration");
+
+        if (!options.Enabled || options.Rules.Length == 0)
+        {
+            logger.LogInformation(
+                "Rate limiting is off. Nothing bounds how many times one client may reach any path; "
+                + "see Gateway:RateLimit.");
+            return;
+        }
+
+        foreach (var rule in options.Rules)
+        {
+            logger.LogInformation(
+                "Rate limit rule. RuleId={RuleId} PermitLimit={PermitLimit} WindowSeconds={WindowSeconds} Paths={Paths}",
+                rule.Id,
+                rule.PermitLimit,
+                rule.WindowSeconds,
+                string.Join(", ", rule.Paths));
+        }
+    }
+
     private static void LogInspectionConfiguration(
         ILoggerFactory loggerFactory,
         GatewayOptions gatewayOptions,

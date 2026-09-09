@@ -75,4 +75,14 @@ public sealed class GatewayOptions
     /// editing one line expects.
     /// </remarks>
     public MultipartInspectionOptions Multipart { get; init; } = new();
+
+    /// <summary>
+    /// The request rate limiter, bound from <c>Gateway:RateLimit</c>.
+    /// </summary>
+    /// <remarks>
+    /// A JSON object rather than an array at this level, so an overlay that turns the limiter off
+    /// does not have to restate every rule. The rules themselves are an array and do merge element
+    /// by element, which is the same trap <c>Sites</c> carries and is documented with it.
+    /// </remarks>
+    public RateLimitOptions RateLimit { get; init; } = new();
 }

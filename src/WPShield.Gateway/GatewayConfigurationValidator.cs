@@ -52,6 +52,7 @@ public static class GatewayConfigurationValidator
         ValidateRequestLimits(gatewayOptions);
         ValidateTrustedProxies(gatewayOptions.TrustedProxies);
         ValidateMultipartInspection(multipartOptions);
+        ValidateRateLimit(gatewayOptions.RateLimit);
 
         if (sites.Count == 0)
         {
@@ -294,6 +295,99 @@ public static class GatewayConfigurationValidator
             throw new InvalidOperationException(
                 "Gateway:Multipart:ReadTimeoutSeconds must be between 1 and " +
                 $"{MultipartInspectionOptions.AbsoluteMaximumReadTimeoutSeconds}.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses a rate-limit configuration that would not do what it says.
+    /// </summary>
+    /// <remarks>
+    /// A rate limiter is the one component here whose misconfiguration is invisible until it matters:
+    /// a rule with no paths never fires, a permit limit of zero refuses everything, and a duplicated
+    /// path silently gives the first rule the traffic the second one was written for. None of those
+    /// produce an error at runtime — they produce a log that reads exactly like a quiet night, or a
+    /// login form nobody can reach.
+    /// </remarks>
+    private static void ValidateRateLimit(RateLimitOptions? options)
+    {
+        if (options is null || !options.Enabled)
+        {
+            return;
+        }
+
+        if (options.Rules.Length > RateLimitOptions.AbsoluteMaximumRules)
+        {
+            throw new InvalidOperationException(
+                $"Gateway:RateLimit:Rules holds {options.Rules.Length} rules, and the maximum is " +
+                $"{RateLimitOptions.AbsoluteMaximumRules}.");
+        }
+
+        var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var claimedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var rule in options.Rules)
+        {
+            if (string.IsNullOrWhiteSpace(rule.Id))
+            {
+                throw new InvalidOperationException(
+                    "Every entry in Gateway:RateLimit:Rules needs a non-empty Id. It is what the log " +
+                    "names when the rule fires, and a finding nobody can trace to a rule is not evidence.");
+            }
+
+            if (!ruleIds.Add(rule.Id))
+            {
+                throw new InvalidOperationException(
+                    $"Gateway:RateLimit:Rules contains more than one rule with Id '{rule.Id}'.");
+            }
+
+            if (rule.Paths.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Rate limit rule '{rule.Id}' lists no paths, so it can never fire. Remove it, or " +
+                    "give it the paths it is meant to cover - this limiter is deliberately targeted " +
+                    "rather than global.");
+            }
+
+            if (rule.Paths.Length > RateLimitOptions.AbsoluteMaximumPathsPerRule)
+            {
+                throw new InvalidOperationException(
+                    $"Rate limit rule '{rule.Id}' lists {rule.Paths.Length} paths, and the maximum is " +
+                    $"{RateLimitOptions.AbsoluteMaximumPathsPerRule}.");
+            }
+
+            foreach (var path in rule.Paths)
+            {
+                if (string.IsNullOrWhiteSpace(path) || !path.StartsWith('/'))
+                {
+                    throw new InvalidOperationException(
+                        $"Rate limit rule '{rule.Id}' lists the path '{path}'. Paths are matched whole " +
+                        "against the decoded request path, so each one must begin with '/'.");
+                }
+
+                if (claimedPaths.TryGetValue(path, out var owner))
+                {
+                    throw new InvalidOperationException(
+                        $"Rate limit rules '{owner}' and '{rule.Id}' both list '{path}'. Only the first " +
+                        "would ever fire for it, so the second rule's budget would silently never apply.");
+                }
+
+                claimedPaths[path] = rule.Id;
+            }
+
+            if (rule.PermitLimit < 1 || rule.PermitLimit > RateLimitOptions.AbsoluteMaximumPermitLimit)
+            {
+                throw new InvalidOperationException(
+                    $"Rate limit rule '{rule.Id}' has PermitLimit {rule.PermitLimit}. It must be between " +
+                    $"1 and {RateLimitOptions.AbsoluteMaximumPermitLimit}. Zero would refuse every " +
+                    "request to those paths, including the operator's own login.");
+            }
+
+            if (rule.WindowSeconds < 1 || rule.WindowSeconds > RateLimitOptions.AbsoluteMaximumWindowSeconds)
+            {
+                throw new InvalidOperationException(
+                    $"Rate limit rule '{rule.Id}' has WindowSeconds {rule.WindowSeconds}. It must be " +
+                    $"between 1 and {RateLimitOptions.AbsoluteMaximumWindowSeconds}.");
+            }
         }
     }
 
