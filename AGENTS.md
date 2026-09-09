@@ -24,7 +24,16 @@ Before modifying code:
 - Implement defensive functionality only.
 - Keep `Monitor` as the default protection mode.
 - Never expose the gateway publicly during M1 or M2.
-- Never modify IIS, certificates, DNS, firewall rules, or Windows services automatically.
+- **Never change infrastructure the operator did not name, and never as a side effect of asking a
+  different question.** A verb may change IIS only for a single site named on the command line, only
+  for changes that are individually reversible, and only when it verifies the result and reverts on
+  failure. Server-wide settings, certificates, DNS, firewall rules, and any service other than
+  WPShield stay manual. See [ADR 0005](docs/en/adr/0005-putting-wpshield-in-the-path.md).
+
+  This replaces "never modify IIS, certificates, DNS, firewall rules, or Windows services
+  automatically", which was already not literally true: `wpshield install` creates the WPShield
+  service, sets its identity and rewrites two directories' ACLs, and always did. What the old line
+  was protecting was never the list - it was the sixty-five other applications on a shared host.
 - Never log credentials, cookies, authorization headers, nonces, tokens, full query strings, or complete request bodies.
 - Reject unknown hosts; do not configure a default backend.
 - Remove the whole untrusted forwarding set, not only `X-Forwarded-For`, `-Proto` and `-Host`. It

@@ -1,6 +1,6 @@
 # ADR 0005 — Putting WPShield in the path, and whether a tool may do it
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Deciders:** WPShield maintainers
 - **Affects:** `AGENTS.md`, the deployment, and a possible `enable` / `disable` verb
 
