@@ -14,6 +14,27 @@ must complete first.
 
 ### Added
 
+- **`wpshield.exe`, and [ADR 0003](docs/en/adr/0003-operator-tooling-in-dotnet.md) recording why the
+  operator surface leaves PowerShell.** The request came from the operator, not the maintainers:
+  *"soy un usuario de .NET, acostumbrado a herramientas CLI con parámetros, ayuda con `/?`... y este
+  proyecto está lleno de PowerShell para todo."* Measured, that was **5,561 lines of PowerShell
+  against 9,831 of C#** — thirty-six per cent of the project — of which 1,264 lines are a hand-built
+  test harness supplying what `dotnet test` supplies for free.
+
+  Three of the ten defects found in three days of real deployment **cannot exist in C#**: an empty
+  argument that Windows PowerShell 5.1 drops when calling `sc.exe`, a `-replace` emitting four
+  backslashes where two were meant, and a native command's exit code leaking out of the harness so
+  that it printed `All 71 checks passed` and failed the build with it. None was visible to any test,
+  because there is no compiler.
+
+  The decision is Option C: everything moves except the triage tool, which stays a single ASCII file
+  because it runs on hosts that have no WPShield installed and are not trusted enough to install one.
+  The first verb is `wpshield status` — is the service installed, **under which account**, where is
+  its configuration, and is it writing anything down. Every one of those questions had to be answered
+  by hand during the first deployment, and the account was the one nobody thought to ask: an install
+  that threw at step 4 of 6 left the gateway running as `LocalSystem` while every summary it printed
+  said otherwise.
+
 - **Rate limiting, the HTTP half of the brute-force defence [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md)
   decided on and nothing had built.** Two WordPress sites on one host recorded **40,779 requests to
   `wp-login.php` in thirty days**, from more than sixty addresses, and until now WPShield could see
