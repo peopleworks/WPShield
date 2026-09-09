@@ -2,7 +2,11 @@
 
 # WPShield
 
-**An open-source security gateway for WordPress on Windows Server and IIS**
+**WPShield — Windows Power Shield.** An open-source security gateway for Windows Server and IIS.
+
+<sub>The name states a direction. <b>Today the detection rules are WordPress rules</b>; the preflight,
+the installer, the host triage and the rate limiter are not. <a href="docs/en/adr/0004-what-wpshield-stands-for.md">ADR 0004</a>
+records the gap and what closes it.</sub>
 
 **[See how it works →](https://peopleworks.github.io/WPShield/)**
 
@@ -595,6 +599,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 | ADR 0002 — brute-force defence | [Where brute-force defence belongs](docs/en/adr/0002-host-level-brute-force-defence.md) | [Dónde vive la defensa contra fuerza bruta](docs/es/adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md) |
 | ADR 0003 — operator tooling | [Operator tooling moves to a .NET CLI](docs/en/adr/0003-operator-tooling-in-dotnet.md) | [Las herramientas de operador pasan a una CLI de .NET](docs/es/adr/0003-herramientas-de-operador-en-dotnet.md) |
+| ADR 0004 — name and scope | [What WPShield stands for](docs/en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](docs/es/adr/0004-que-significa-wpshield.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.
 

@@ -14,6 +14,25 @@ must complete first.
 
 ### Changed
 
+- **[ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md): WPShield now stands for *Windows Power
+  Shield*, and the README says what that does not cover yet.** The name was regretted in the second
+  week — *"debí llamarle IISShield o algo más, porque los ataques van a todos los sites aunque no sean
+  WordPress"* — and the project has since been re-engineered rather than merely extended: the operator
+  surface, the host triage, the brute-force work and the traffic path are all about Windows and IIS.
+  Only the rule engine is about WordPress.
+
+  The measurement that decided it: the server this was built against runs **sixty-six IIS sites, and
+  its own preflight detects two as WordPress.**
+
+  Keeping the letters costs nothing — same URL, same namespaces, same artifact names, same service
+  identity — but a name claiming Windows-wide protection while shipping only WordPress rules would be
+  the same defect this project spent three days finding in smaller fonts: an installer that reported
+  hardening a directory nothing wrote to, a preflight that reported checking a rule family it could
+  not match, a gateway that reported itself healthy while writing no evidence. So the ADR names three
+  exit conditions, and the first line of the README now states today's coverage rather than implying
+  the name's.
+
+
 - **`wpshield publish` replaces `Publish-WPShield.ps1`, which is deleted.** The migration ADR 0003
   set out is done except for the triage tool: **5,561 lines of PowerShell down to 2,893**, and what
   remains is the triage tool, the IIS lab and the harness that watches them.
