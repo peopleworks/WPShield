@@ -14,6 +14,29 @@ must complete first.
 
 ### Changed
 
+- **`wpshield install` and `wpshield uninstall` replace their scripts, which are deleted.** With the
+  preflight, that is **2,050 lines of PowerShell gone** and the total down from 5,561 to 3,065 - what
+  is left is the triage tool, the publish script, the IIS lab and the harness that watches them.
+
+  **The order is now asserted rather than read.** The defect that cost a day was an install that threw
+  between registering the service and restricting the directories, leaving the gateway running as
+  `LocalSystem` with an evidence log readable by every account on a sixty-six-site server - while
+  every summary it had printed said otherwise. Behind `IInstallEnvironment`, a test states that the
+  per-service SID is enabled before the ACLs are written, that the log directory reaches the
+  configuration after the copy that would overwrite it, that a dry run performs no mutation at all,
+  and that the web-root refusal fires before the first one.
+
+  The uninstall guard is testable for the first time, and it is the one that matters most:
+  **uninstalling is not a rollback.** With the rewrite rule still enabled, removing the service takes
+  the site down. It refuses while it can see a WPShield rule - and refuses just as hard when IIS
+  cannot be read at all, because collapsing "could not check" into "checked and fine" is the shape of
+  the mistake that takes a site down during an incident.
+
+  `sc.exe` is called through `ProcessStartInfo.ArgumentList`, and an empty argument is refused
+  outright rather than passed. That is the exact bug Windows PowerShell 5.1 produced by silently
+  dropping one.
+
+
 - **`wpshield preflight` replaces `Invoke-WPShieldPreflight.ps1`, which is deleted.** 1,086 lines of
   PowerShell gone, and with them one of the two hand-written JSON escapers this project was carrying.
 

@@ -54,6 +54,8 @@ internal static class ProgramMain
             return command switch
             {
                 "preflight" => PreflightCommand.Run(options, Console.Out),
+                "install" => InstallCommand.Run(options, Console.Out),
+                "uninstall" => UninstallCommand.Run(options, Console.Out),
                 "status" => StatusCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
@@ -94,6 +96,14 @@ internal static class ProgramMain
                 Console.WriteLine(PreflightCommand.Help);
                 return 0;
 
+            case "install":
+                Console.WriteLine(InstallCommand.Help);
+                return 0;
+
+            case "uninstall":
+                Console.WriteLine(UninstallCommand.Help);
+                return 0;
+
             case "status":
                 Console.WriteLine(StatusCommand.Help);
                 return 0;
@@ -116,6 +126,15 @@ internal static class ProgramMain
               preflight   Check whether this host is ready. Reads and reports; changes nothing.
                           [--gateway-port 10000] [--private-port 8081,8082] [--site <names>]
                           [--install-path <dir>] [--log-path <dir>] [--output report.jsonl]
+
+              install     Install the gateway as a Windows service with a least-privilege identity
+                          and restricted directories. Touches nothing in IIS.
+                          --path <build> [--install-path <dir>] [--log-path <dir>]
+                          [--config appsettings.Local.json] [--start] [--dry-run]
+
+              uninstall   Remove the service and, optionally, its files. Refuses while an IIS
+                          rewrite rule still forwards to the gateway.
+                          [--remove-files] [--remove-logs] [--force] [--dry-run]
 
               status      Report what is installed, which account runs it, and whether it is
                           writing a log. Reads only.

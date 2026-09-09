@@ -365,11 +365,11 @@ de proveedores, así que `Logging:File:LogLevel:Default` funciona igual que para
 > `appsettings.Local.json`, que nombra todos los hosts que usted protege — dentro del árbol que IIS
 > reparte; `.json` está en el mapa MIME predeterminado de IIS, así que ese archivo se puede descargar
 > por HTTP. Descomprimido en el directorio de instalación, se resuelve a un directorio que
-> `Install-WPShield.ps1` deja deliberadamente de solo lectura para la cuenta de servicio, de modo que
+> `wpshield install` deja deliberadamente de solo lectura para la cuenta de servicio, de modo que
 > toda escritura falla.
 >
 > Las dos cosas pasaron en el mismo servidor la misma semana. Ahora el gateway se niega a arrancar
-> cuando no puede escribir en el directorio resuelto, e `Install-WPShield.ps1` escribe la ruta que
+> cuando no puede escribir en el directorio resuelto, e `wpshield install` escribe la ruta que
 > endureció en esta opción en vez de suponer que el gateway la va a adivinar.
 
 ### El arranque se niega antes que correr sin evidencia
