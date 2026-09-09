@@ -459,6 +459,53 @@ tr.is-fp td { background: color-mix(in srgb, var(--warn) 9%, transparent); }
 :root[data-theme="light"] .figure .fig-light { display: block; }
 :root[data-theme="light"] .figure .fig-dark { display: none; }
 
+/* ------------------------------------------------------------------- steps */
+/* The deployment guide. Numbered, and the numbers are load-bearing in a way nothing else on this
+   page is: two of these steps take a live site down if they run before the one above them. The rail
+   exists so the order is visible before any of the words are read. */
+.steps { counter-reset: step; list-style: none; margin: 2.6rem 0 0; padding: 0; }
+.steps > li {
+  counter-increment: step;
+  position: relative;
+  margin-left: 1rem;
+  padding: 0 0 2.4rem 3rem;
+  border-left: 1px solid var(--line);
+}
+.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
+.steps > li::before {
+  content: counter(step);
+  position: absolute; left: -1rem; top: -.2rem;
+  width: 2rem; height: 2rem;
+  display: grid; place-items: center;
+  border-radius: 50%;
+  background: var(--bg-soft);
+  border: 1px solid var(--line-strong);
+  font-family: var(--mono); font-size: .82rem; color: var(--accent);
+}
+.steps > li > h3 { margin: .1rem 0 .6rem; font-size: 1.04rem; }
+.steps > li > p { margin: 0 0 .75rem; max-width: 44rem; }
+.steps .evidence { margin-top: 1rem; }
+.steps .grid { margin-top: 1.4rem; }
+
+/* A warning attached to one step rather than to the page. Uses --warn, which on this page always
+   means "this part is not finished yet" - here, "this part is where it breaks". */
+.step-warn {
+  margin-top: .9rem;
+  padding: .75rem 1rem;
+  border-left: 2px solid var(--warn);
+  background: color-mix(in srgb, var(--warn) 7%, transparent);
+  border-radius: 0 6px 6px 0;
+  font-size: .89rem;
+  color: var(--ink-muted);
+  max-width: 44rem;
+}
+.step-warn strong { color: var(--ink); }
+
+@media (max-width: 640px) {
+  .steps > li { padding-left: 2.2rem; margin-left: .8rem; }
+  .steps > li::before { width: 1.7rem; height: 1.7rem; left: -.86rem; font-size: .74rem; }
+}
+
 .note {
   margin-top: 1.7rem;
   padding-left: 1.1rem;
@@ -558,6 +605,7 @@ footer p { max-width: 46rem; }
   <a href="#findings" class="nav__hideable"><span lang="en">Findings</span><span lang="es">Hallazgos</span></a>
   <a href="#routing" class="nav__hideable"><span lang="en">Routing</span><span lang="es">Enrutado</span></a>
   <a href="#status" class="nav__hideable"><span lang="en">Status</span><span lang="es">Estado</span></a>
+  <a href="#deploy" class="nav__hideable"><span lang="en">Deploy</span><span lang="es">Despliegue</span></a>
   <a href="#docs" class="nav__hideable"><span lang="en">Docs</span><span lang="es">Documentación</span></a>
   <a href="https://github.com/peopleworks/WPShield" class="is-cta">GitHub&nbsp;&#8599;</a>
 </nav>
@@ -1574,6 +1622,431 @@ footer p { max-width: 46rem; }
   </section>
 
   <!-- ------------------------------------------------------------- docs -->
+  <section id="deploy" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Step by step</span>
+      <span lang="es">Paso a paso</span>
+    </p>
+
+    <h2 lang="en">Eight steps, and two of them<br>take a live site down if you rush.</h2>
+    <h2 lang="es">Ocho pasos, y dos de ellos tumban<br>un sitio en vivo si los apura.</h2>
+
+    <p class="wide" lang="en">
+      This is the order that works, written after running it against a Windows Server hosting
+      sixty-six sites. Steps 1 to 6 change nothing an external visitor can see; step 7 is the one
+      that touches live traffic, and step 8 is where you find out whether the rules fit your site.
+      Every command below reports what it is about to do before doing it.
+    </p>
+    <p class="wide" lang="es">
+      Este es el orden que funciona, escrito después de ejecutarlo contra un Windows Server con
+      sesenta y seis sitios. Los pasos 1 a 6 no cambian nada que un visitante externo pueda ver; el
+      paso 7 es el que toca el tráfico en vivo, y el 8 es donde usted descubre si las reglas encajan
+      con su sitio. Cada comando reporta lo que va a hacer antes de hacerlo.
+    </p>
+
+    <ol class="steps">
+
+      <li>
+        <h3 lang="en">Publish on a build machine, never on the server</h3>
+        <h3 lang="es">Publique en una máquina de compilación, nunca en el servidor</h3>
+        <p lang="en">
+          <code>Publish-WPShield.ps1</code> needs the .NET SDK. A web server does not have one and
+          should not get one. It produces a self-contained <code>win-x64</code> directory, a zip and
+          a SHA-256, so the transport can be verified rather than trusted.
+        </p>
+        <p lang="es">
+          <code>Publish-WPShield.ps1</code> necesita el SDK de .NET. Un servidor web no lo tiene y no
+          debería tenerlo. Produce un directorio autocontenido <code>win-x64</code>, un zip y un
+          SHA-256, para que el transporte se verifique en vez de confiarse.
+        </p>
+        <div class="evidence">
+          <div class="evidence__bar">
+            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+            <span style="margin-left:.4rem">build machine</span>
+          </div>
+<pre><span class="e-dim">PS&gt;</span> .\scripts\Publish-WPShield.ps1</pre>
+        </div>
+      </li>
+
+      <li>
+        <h3 lang="en">Copy two things across, not one</h3>
+        <h3 lang="es">Copie dos cosas al servidor, no una</h3>
+        <p lang="en">
+          The archive holds the gateway and nothing else. <strong>The scripts are not inside it</strong>,
+          so <code>scripts\*.ps1</code> travels separately — and it travels <em>every</em> time, not
+          only the first.
+        </p>
+        <p lang="es">
+          El archivo lleva el gateway y nada más. <strong>Los scripts no van dentro</strong>, así que
+          <code>scripts\*.ps1</code> viaja aparte — y viaja <em>cada</em> vez, no solo la primera.
+        </p>
+        <div class="step-warn" lang="en">
+          <strong>Stale scripts are the quiet failure here.</strong> An older installer has none of
+          the checks the current one has: it will not refuse a path inside a web root, it will not
+          write the log directory into the configuration, and the preflight will not report an
+          installation IIS is already serving. If the preflight prints no <code>PRE-019</code>, you
+          copied the old ones.
+        </div>
+        <div class="step-warn" lang="es">
+          <strong>Los scripts viejos son el fallo silencioso de este paso.</strong> Un instalador
+          anterior no tiene ninguna de las comprobaciones del actual: no rechaza una ruta dentro de
+          una raíz web, no escribe el directorio de registros en la configuración, y el preflight no
+          reporta una instalación que IIS ya esté sirviendo. Si el preflight no imprime
+          <code>PRE-019</code>, copió los viejos.
+        </div>
+      </li>
+
+      <li>
+        <h3 lang="en">Run the preflight and clear every blocker</h3>
+        <h3 lang="es">Corra el preflight y despeje todo bloqueador</h3>
+        <p lang="en">
+          Nineteen checks, read-only, elevated. It changes no IIS setting, no binding, no rule, no
+          service, no ACL. It exists because this traffic path has several ways to fail
+          <em>on the live site</em>, at the moment the rewrite rule is enabled, with an error that
+          does not say what is wrong.
+        </p>
+        <p lang="es">
+          Diecinueve comprobaciones, de solo lectura, elevado. No cambia ningún ajuste de IIS, ni un
+          binding, ni una regla, ni un servicio, ni una ACL. Existe porque esta ruta de tráfico tiene
+          varias formas de fallar <em>en el sitio en vivo</em>, justo cuando se activa la regla de
+          reescritura, con un error que no dice qué está mal.
+        </p>
+        <div class="evidence">
+          <div class="evidence__bar">
+            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+            <span style="margin-left:.4rem">server</span>
+          </div>
+<pre><span class="e-dim">PS&gt;</span> .\Invoke-WPShieldPreflight.ps1
+
+  <span class="e-key">Pass</span>    PRE-007  ARR server-level proxy is enabled
+  <span class="e-key">Pass</span>    PRE-008  ARR preserves the client Host header
+  <span class="e-score">Warn</span>    PRE-018  Catch-all rewrite rules the WPShield rule must be ordered before
+  <span class="e-key">Pass</span>    PRE-019  Nothing of WPShield sits inside a directory IIS serves</pre>
+        </div>
+      </li>
+
+      <li>
+        <h3 lang="en">Install, with a dry run first</h3>
+        <h3 lang="es">Instale, con una pasada en seco primero</h3>
+        <p lang="en">
+          The installer registers a service named <code>WPShield</code> and only ever that one, gives
+          it the virtual account <code>NT SERVICE\WPShield</code> — no password stored anywhere —
+          replaces the permissions on both directories, and writes the log path into the
+          configuration the gateway actually reads. <strong>It touches nothing in IIS.</strong>
+        </p>
+        <p lang="es">
+          El instalador registra un servicio llamado <code>WPShield</code> y jamás ningún otro, le da
+          la cuenta virtual <code>NT SERVICE\WPShield</code> — sin contraseña guardada en ningún
+          sitio —, reemplaza los permisos de ambos directorios y escribe la ruta de registros en la
+          configuración que el gateway realmente lee. <strong>No toca nada de IIS.</strong>
+        </p>
+        <div class="evidence">
+          <div class="evidence__bar">
+            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+            <span style="margin-left:.4rem">server, elevated</span>
+          </div>
+<pre><span class="e-dim">PS&gt;</span> .\Install-WPShield.ps1 -Path C:\staging\wpshield -WhatIf
+<span class="e-dim">PS&gt;</span> .\Install-WPShield.ps1 -Path C:\staging\wpshield
+
+  identity: NT SERVICE\WPShield
+  no unprivileged account can read either directory</pre>
+        </div>
+        <div class="step-warn" lang="en">
+          <strong>Read those last two lines back.</strong> An install that stops early can leave the
+          service running as <code>LocalSystem</code> with both directories still inheriting their
+          parents — and the summary above them will still have printed. Confirm it from outside:
+          <code>Get-CimInstance Win32_Service</code> and look at <code>StartName</code>.
+        </div>
+        <div class="step-warn" lang="es">
+          <strong>Lea esas dos últimas líneas.</strong> Una instalación que se detiene a medias puede
+          dejar el servicio corriendo como <code>LocalSystem</code> y ambos directorios heredando de
+          sus padres — y el resumen de arriba se habrá impreso igual. Confírmelo por fuera:
+          <code>Get-CimInstance Win32_Service</code> y mire <code>StartName</code>.
+        </div>
+      </li>
+
+      <li>
+        <h3 lang="en">Write the configuration, and declare every host</h3>
+        <h3 lang="es">Escriba la configuración, y declare todos los hosts</h3>
+        <p lang="en">
+          <code>appsettings.Local.json</code> holds your real hostnames, so it stays on the server and
+          out of the repository. The preflight prints one filled in from what it found.
+        </p>
+        <p lang="es">
+          <code>appsettings.Local.json</code> lleva sus nombres de host reales, así que se queda en el
+          servidor y fuera del repositorio. El preflight imprime uno relleno con lo que encontró.
+        </p>
+        <div class="evidence">
+          <div class="evidence__bar">
+            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+            <span style="margin-left:.4rem">appsettings.Local.json</span>
+          </div>
+<pre>{
+  <span class="e-key">"Gateway"</span>: { <span class="e-key">"TrustedProxies"</span>: [ <span class="e-dim">"127.0.0.1"</span>, <span class="e-dim">"::1"</span> ] },
+  <span class="e-key">"Sites"</span>: [
+    {
+      <span class="e-key">"Id"</span>: <span class="e-dim">"site-one"</span>,
+      <span class="e-key">"Hosts"</span>: [ <span class="e-dim">"wordpress-one.example"</span>, <span class="e-dim">"www.wordpress-one.example"</span> ],
+      <span class="e-key">"Destination"</span>: <span class="e-dim">"http://127.0.0.1:8081"</span>,
+      <span class="e-key">"Mode"</span>: <span class="e-dim">"Monitor"</span>
+    }
+  ]
+}</pre>
+        </div>
+        <div class="step-warn" lang="en">
+          <strong>Two traps live in this file.</strong> <code>Destination</code> is the
+          <em>private</em> loopback binding you added for this — never 80 or 443, which the gateway
+          now refuses outright. And JSON arrays merge element by element, so an overlay declaring
+          fewer sites or fewer hosts leaves the shipped <code>.example</code> entries active and
+          routable; the gateway refuses to start when it sees real hostnames mixed with placeholders.
+        </div>
+        <div class="step-warn" lang="es">
+          <strong>Dos trampas viven en este archivo.</strong> <code>Destination</code> es el enlace de
+          loopback <em>privado</em> que usted añadió para esto — nunca el 80 ni el 443, que el gateway
+          ahora rechaza de plano. Y los arreglos JSON se fusionan elemento por elemento, así que una
+          superposición con menos sitios o menos hosts deja activas y enrutables las entradas
+          <code>.example</code> publicadas; el gateway se niega a arrancar si ve hosts reales
+          mezclados con marcadores.
+        </div>
+      </li>
+
+      <li>
+        <h3 lang="en">Prove it forwards — before touching IIS</h3>
+        <h3 lang="es">Demuestre que reenvía — antes de tocar IIS</h3>
+        <p lang="en">
+          This is the step that separates <em>the gateway is broken</em> from <em>IIS is not sending
+          it anything</em>, and skipping it means debugging both at once on a live site.
+        </p>
+        <p lang="es">
+          Este es el paso que separa <em>el gateway está roto</em> de <em>IIS no le está mandando
+          nada</em>, y saltárselo significa depurar los dos a la vez sobre un sitio en vivo.
+        </p>
+        <div class="evidence">
+          <div class="evidence__bar">
+            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+            <span style="margin-left:.4rem">server</span>
+          </div>
+<pre><span class="e-dim">PS&gt;</span> Start-Service WPShield
+<span class="e-dim">PS&gt;</span> curl.exe -i -H <span class="e-dim">"Host: wordpress-one.example"</span> http://127.0.0.1:10000/
+
+  HTTP/1.1 <span class="e-key">200</span> OK
+  <span class="e-id">X-WPShield-Request-ID</span>: 0980620a0c18458498620581088af67c</pre>
+        </div>
+        <p lang="en">
+          That header is the proof. It means WPShield resolved the host, forwarded to the private
+          binding, and stamped the loop guard. Check the log too: it must say
+          <strong>one</strong> <code>Now listening on</code> line and no error.
+        </p>
+        <p lang="es">
+          Esa cabecera es la prueba. Significa que WPShield resolvió el host, reenvió al enlace
+          privado y estampó el guardia de bucle. Mire también el log: debe decir
+          <strong>una sola</strong> línea <code>Now listening on</code> y ningún error.
+        </p>
+      </li>
+
+      <li>
+        <h3 lang="en">IIS. Three changes, in this order.</h3>
+        <h3 lang="es">IIS. Tres cambios, en este orden.</h3>
+        <p lang="en">
+          This is the step that goes wrong, and doing the second before the first returns
+          <strong>500 for the whole site</strong>. Start with a site you can afford to break.
+        </p>
+        <p lang="es">
+          Este es el paso que sale mal, y hacer el segundo antes que el primero devuelve
+          <strong>500 en todo el sitio</strong>. Empiece por un sitio que pueda permitirse romper.
+        </p>
+        <div class="grid grid--3">
+          <div class="card">
+            <div class="card__tag">a</div>
+            <h3 lang="en">Allow the server variable</h3>
+            <h3 lang="es">Permita la variable de servidor</h3>
+            <p lang="en">
+              IIS Manager, the site, <em>URL Rewrite</em>, <em>View Server Variables</em>, add
+              <code>HTTP_X_FORWARDED_PROTO</code>. URL Rewrite refuses to set an
+              <code>HTTP_</code> variable that is not on this list, and the symptom is a 500.
+            </p>
+            <p lang="es">
+              IIS Manager, el sitio, <em>URL Rewrite</em>, <em>View Server Variables</em>, añada
+              <code>HTTP_X_FORWARDED_PROTO</code>. URL Rewrite se niega a establecer una variable
+              <code>HTTP_</code> que no esté en esa lista, y el síntoma es un 500.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card__tag">b</div>
+            <h3 lang="en">The rule, ordered first</h3>
+            <h3 lang="es">La regla, en primer lugar</h3>
+            <p lang="en">
+              The WPShield rule must sit <strong>above</strong> the WordPress permalink rule. Below
+              it, either the rule never runs or it runs against the already-rewritten URL — and both
+              look like a site working perfectly.
+            </p>
+            <p lang="es">
+              La regla de WPShield debe ir <strong>encima</strong> de la de enlaces permanentes de
+              WordPress. Debajo, o no se ejecuta nunca o se ejecuta contra la URL ya reescrita — y las
+              dos cosas se ven como un sitio funcionando perfecto.
+            </p>
+          </div>
+          <div class="card">
+            <div class="card__tag">c</div>
+            <h3 lang="en">Let WordPress read it</h3>
+            <h3 lang="es">Que WordPress lo lea</h3>
+            <p lang="en">
+              WordPress on IIS reads <code>$_SERVER['HTTPS']</code>, which IIS derives from the
+              <em>real</em> connection — plain HTTP on the private binding. Without translating the
+              header in <code>wp-config.php</code>, every page redirects to HTTPS forever.
+            </p>
+            <p lang="es">
+              WordPress sobre IIS lee <code>$_SERVER['HTTPS']</code>, que IIS deriva de la conexión
+              <em>real</em> — HTTP plano en el enlace privado. Sin traducir la cabecera en
+              <code>wp-config.php</code>, cada página redirige a HTTPS para siempre.
+            </p>
+          </div>
+        </div>
+        <div class="evidence">
+          <div class="evidence__bar">
+            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
+            <span style="margin-left:.4rem">web.config — first rule in the list</span>
+          </div>
+<pre>&lt;<span class="e-key">rule</span> name=<span class="e-dim">"WPShield"</span> patternSyntax=<span class="e-dim">"ECMAScript"</span> stopProcessing=<span class="e-dim">"true"</span>&gt;
+  &lt;<span class="e-key">match</span> url=<span class="e-dim">".*"</span> /&gt;
+  &lt;<span class="e-key">conditions</span>&gt;
+    &lt;add input=<span class="e-dim">"{HTTP_X_WPSHIELD_REQUEST_ID}"</span> pattern=<span class="e-dim">"^$"</span> /&gt;
+  &lt;/<span class="e-key">conditions</span>&gt;
+  &lt;<span class="e-key">serverVariables</span>&gt;
+    &lt;set name=<span class="e-dim">"HTTP_X_FORWARDED_PROTO"</span> value=<span class="e-dim">"https"</span> /&gt;
+  &lt;/<span class="e-key">serverVariables</span>&gt;
+  &lt;<span class="e-key">action</span> type=<span class="e-dim">"Rewrite"</span> url=<span class="e-dim">"http://127.0.0.1:10000/{R:0}"</span> /&gt;
+&lt;/<span class="e-key">rule</span>&gt;</pre>
+        </div>
+        <div class="step-warn" lang="en">
+          <strong>Know the rollback before you save.</strong> Once the rule is live, stopping the
+          service does <em>not</em> bypass WPShield — it takes the site down, because IIS keeps
+          forwarding to a port with nothing behind it. The control that puts the site back is
+          <strong>disabling the rewrite rule</strong>. The condition above is the loop guard: WPShield
+          stamps that header on everything it forwards and strips any inbound copy, so the request
+          coming back does not match the rule and a visitor cannot forge it to skip inspection. Both
+          halves are load-bearing.
+        </div>
+        <div class="step-warn" lang="es">
+          <strong>Conozca la vuelta atrás antes de guardar.</strong> Con la regla activa, detener el
+          servicio <em>no</em> esquiva WPShield — tumba el sitio, porque IIS sigue reenviando a un
+          puerto sin nada detrás. El control que devuelve el sitio es <strong>deshabilitar la regla de
+          reescritura</strong>. La condición de arriba es el guardia de bucle: WPShield estampa esa
+          cabecera en todo lo que reenvía y borra cualquier copia entrante, así que la petición de
+          vuelta no coincide con la regla y un visitante no puede falsificarla para saltarse la
+          inspección. Las dos mitades cargan peso.
+        </div>
+      </li>
+
+      <li>
+        <h3 lang="en">Watch Monitor before you touch Block</h3>
+        <h3 lang="es">Observe en Monitor antes de tocar Block</h3>
+        <p lang="en">
+          In Monitor the gateway forwards everything and refuses nothing, so the log is the only
+          artefact it produces. Read it for days, not minutes: what you are looking for is the false
+          positive that would have refused a real visitor.
+        </p>
+        <p lang="es">
+          En Monitor el gateway reenvía todo y no rechaza nada, así que el log es lo único que
+          produce. Léalo durante días, no minutos: lo que busca es el falso positivo que habría
+          rechazado a un visitante real.
+        </p>
+        <div class="step-warn" lang="en">
+          <strong>An empty log with real traffic is a finding, not a quiet night.</strong> It means
+          the rule is not live, or it is ordered below the permalink rule — and in that second case
+          the site works perfectly while nothing is inspected at all.
+        </div>
+        <div class="step-warn" lang="es">
+          <strong>Un log vacío con tráfico real es un hallazgo, no una noche tranquila.</strong>
+          Significa que la regla no está activa, o que quedó debajo de la de enlaces permanentes — y
+          en ese segundo caso el sitio funciona perfecto mientras no se inspecciona nada.
+        </div>
+      </li>
+
+    </ol>
+
+    <h3 lang="en" style="margin-top:3.4rem">When it goes wrong, it goes wrong in four ways</h3>
+    <h3 lang="es" style="margin-top:3.4rem">Cuando sale mal, sale mal de cuatro formas</h3>
+
+    <div class="table-scroll">
+      <table lang="en">
+        <caption>Four failure modes, and the first move for each.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Symptom</th>
+            <th scope="col">Cause</th>
+            <th scope="col">First move</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="num">421</span></td>
+            <td>The <code>Host</code> is not in your site table, or ARR is not preserving it.</td>
+            <td>Disable the rule. Compare <code>Hosts</code> against the site's bindings.</td>
+          </tr>
+          <tr>
+            <td><span class="num">ERR_TOO_MANY_REDIRECTS</span></td>
+            <td>WordPress sees plain HTTP behind an HTTPS site. One of the three pieces in step 7 is missing.</td>
+            <td>Disable the rule. Check <code>wp-config.php</code> first — it is the one most often skipped.</td>
+          </tr>
+          <tr>
+            <td><span class="num">500.19</span></td>
+            <td>Malformed <code>web.config</code>, or a server variable set without being allowed.</td>
+            <td>Restore the backup you took, then do step 7a before 7b.</td>
+          </tr>
+          <tr>
+            <td><span class="num">Nothing in the log</span></td>
+            <td>The site works and nothing is inspected. The rule is inactive, or ordered below the catch-all.</td>
+            <td>This is the silent one. Check the rule order before concluding anything.</td>
+          </tr>
+        </tbody>
+      </table>
+      <table lang="es">
+        <caption>Cuatro modos de fallo, y el primer movimiento para cada uno.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Síntoma</th>
+            <th scope="col">Causa</th>
+            <th scope="col">Primer movimiento</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="num">421</span></td>
+            <td>El <code>Host</code> no está en su tabla de sitios, o ARR no lo está preservando.</td>
+            <td>Deshabilite la regla. Compare <code>Hosts</code> con los bindings del sitio.</td>
+          </tr>
+          <tr>
+            <td><span class="num">ERR_TOO_MANY_REDIRECTS</span></td>
+            <td>WordPress ve HTTP plano detrás de un sitio HTTPS. Falta una de las tres piezas del paso 7.</td>
+            <td>Deshabilite la regla. Revise <code>wp-config.php</code> primero — es la que más se olvida.</td>
+          </tr>
+          <tr>
+            <td><span class="num">500.19</span></td>
+            <td><code>web.config</code> mal formado, o una variable de servidor puesta sin permitirla.</td>
+            <td>Restaure el respaldo, y haga el paso 7a antes que el 7b.</td>
+          </tr>
+          <tr>
+            <td><span class="num">Nada en el log</span></td>
+            <td>El sitio funciona y no se inspecciona nada. La regla está inactiva, o quedó debajo del atrapa-todo.</td>
+            <td>Este es el silencioso. Revise el orden de las reglas antes de concluir nada.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note" lang="en">
+      <strong>Every step above exists because it failed first.</strong> The order, the dry runs and
+      the four symptoms in that table were written after a deployment onto a live sixty-six-site
+      Windows Server, and each one of them cost an evening.
+    </div>
+    <div class="note" lang="es">
+      <strong>Cada paso de arriba existe porque falló primero.</strong> El orden, las pasadas en seco
+      y los cuatro síntomas de esa tabla se escribieron después de un despliegue sobre un Windows
+      Server en vivo con sesenta y seis sitios, y cada uno costó una tarde.
+    </div>
+  </section>
+
   <section id="docs" class="reveal">
     <p class="eyebrow">
       <span lang="en">Read before evaluating</span>
