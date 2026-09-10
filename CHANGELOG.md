@@ -14,6 +14,22 @@ must complete first.
 
 ### Added
 
+- **`wpshield report` - a PDF over a window of the evidence log, the durable companion to `watch`.**
+  Where `watch` is the live view, this reads the same JSON Lines files and produces the report an
+  operator files or forwards: an executive summary, the findings broken down by rule and by site, the
+  most-hit upload paths, and a **SHA-256 evidence appendix** that hashes every source file so the
+  report can be tied to the exact log it summarised - the chain-of-custody shape the operator's own
+  pen-test reports already carry. Rendered with QuestPDF, the same engine those reports use.
+
+  `--since 7d` bounds the window, `--host` scopes to a site, `--log-file` reports on a single log
+  pulled off a server, and `--out` names the PDF. It reads only: it opens each log for shared
+  reading, hashes it, and writes one PDF where told - nothing else is touched.
+
+  **It counts what the log contains, not total traffic**, and says so on the page: a boxed note
+  records that a clean non-upload request is never logged, so the totals are findings, verdicts, and
+  inspected uploads rather than a request rate the log cannot support. The same honesty `watch`
+  keeps, now printed where a reader of the PDF would otherwise assume a total.
+
 - **`wpshield watch` - a live console over the evidence log, and the first verb that only watches.**
   It tails the JSON Lines file the gateway already writes and shows findings and verdicts as they
   land - time, site, rule, score, and the action taken - with running counts and an

@@ -26,6 +26,14 @@
       IIS, and 'watch' itself only tails a log the gateway already writes.
     -->
     <PackageReference Include="Spectre.Console" />
+    <!--
+      The 'wpshield report' PDF. QuestPDF is the engine the operator's own pen-test reports already
+      render through, so the report a WPShield deployment produces looks like the reports its owner
+      already files. Used under the Community licence, set in code at the report entry point; this is
+      an MIT-licensed research preview by a company well under the revenue threshold that licence
+      names. It renders a document from the aggregated log and touches nothing else.
+    -->
+    <PackageReference Include="QuestPDF" />
   </ItemGroup>
 
   <ItemGroup>

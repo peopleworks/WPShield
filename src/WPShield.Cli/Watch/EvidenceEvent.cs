@@ -87,6 +87,9 @@ internal sealed record EvidenceEvent
     /// <summary>The normalized request path, when the line records one. Never a raw client value.</summary>
     public string? Path { get; init; }
 
+    /// <summary>The site's protection mode on a verdict line — "Monitor" or "Block". Null elsewhere.</summary>
+    public string? Mode { get; init; }
+
     /// <summary>The rendered message, kept for the detail view and for lines the console shows verbatim.</summary>
     public required string Message { get; init; }
 }

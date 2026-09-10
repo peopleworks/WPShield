@@ -84,7 +84,8 @@ internal static class EvidenceParser
                 Score = GetStateInt(state, "Score"),
                 Action = ReadAction(state),
                 Method = GetStateString(state, "Method"),
-                Path = GetStateString(state, "Path")
+                Path = GetStateString(state, "Path"),
+                Mode = GetStateString(state, "Mode")
             };
         }
     }
