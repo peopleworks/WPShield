@@ -51,8 +51,6 @@ internal static class WatchCommand
           1   an argument was wrong, or no log directory could be found
         """;
 
-    private const string DefaultLogDirectory = @"C:\ProgramData\WPShield\logs";
-
     private static readonly string[] KnownOptions =
     [
         "--log-dir", "--host", "--from-start", "--plain", "--interval"
@@ -73,7 +71,7 @@ internal static class WatchCommand
 
         var hosts = arguments.List("--host");
         var fromStart = arguments.Flag("--from-start");
-        var logDirectory = ResolveLogDirectory(arguments.Get("--log-dir"));
+        var logDirectory = EvidenceLog.ResolveDirectory(arguments.Get("--log-dir"));
 
         var settings = new WatchSettings
         {
@@ -89,41 +87,6 @@ internal static class WatchCommand
         return plain
             ? session.RunPlain(output)
             : session.RunLive();
-    }
-
-    /// <summary>
-    /// Finds the directory to tail: the operator's explicit choice, else what the installed service
-    /// is configured to use, else the installer's default. It must exist — a typo that silently
-    /// watched an empty default would look exactly like a quiet night.
-    /// </summary>
-    private static string ResolveLogDirectory(string? explicitDirectory)
-    {
-        if (!string.IsNullOrWhiteSpace(explicitDirectory))
-        {
-            if (!Directory.Exists(explicitDirectory))
-            {
-                throw new CliArgumentException(
-                    $"--log-dir '{explicitDirectory}' does not exist. Point it at the gateway's log directory.");
-            }
-
-            return explicitDirectory;
-        }
-
-        var configured = InstallationReport.Gather().ConfiguredLogDirectory;
-        if (!string.IsNullOrWhiteSpace(configured) && Directory.Exists(configured))
-        {
-            return configured;
-        }
-
-        if (Directory.Exists(DefaultLogDirectory))
-        {
-            return DefaultLogDirectory;
-        }
-
-        throw new CliArgumentException(
-            "No log directory found. WPShield does not appear to be installed here, and " +
-            $"'{DefaultLogDirectory}' does not exist. Pass --log-dir <dir> to watch a specific log " +
-            "folder, for example a copy pulled from a server.");
     }
 }
 

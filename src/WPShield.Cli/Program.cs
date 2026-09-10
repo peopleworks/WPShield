@@ -61,6 +61,7 @@ internal static class ProgramMain
                 "disable" => DisableCommand.Run(options, Console.Out),
                 "status" => StatusCommand.Run(options, Console.Out),
                 "watch" => WatchCommand.Run(options, Console.Out),
+                "report" => ReportCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -128,6 +129,10 @@ internal static class ProgramMain
                 Console.WriteLine(WatchCommand.Help);
                 return 0;
 
+            case "report":
+                Console.WriteLine(ReportCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -169,6 +174,11 @@ internal static class ProgramMain
               watch       A live console over the gateway's evidence log: findings and verdicts as
                           they land, with running counts. Reads only.
                           [--log-dir <dir>] [--host <names>] [--from-start] [--plain]
+
+              report      A PDF over a window of the evidence log: executive summary, findings by
+                          rule and by site, and a SHA-256 evidence appendix. Reads only.
+                          [--log-dir <dir>] [--log-file <file>] [--host <names>] [--since 7d]
+                          [--out report.pdf]
 
               publish     Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.
