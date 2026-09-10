@@ -60,6 +60,7 @@ internal static class ProgramMain
                 "enable" => EnableCommand.Run(options, Console.Out),
                 "disable" => DisableCommand.Run(options, Console.Out),
                 "status" => StatusCommand.Run(options, Console.Out),
+                "watch" => WatchCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -123,6 +124,10 @@ internal static class ProgramMain
                 Console.WriteLine(StatusCommand.Help);
                 return 0;
 
+            case "watch":
+                Console.WriteLine(WatchCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -160,6 +165,10 @@ internal static class ProgramMain
 
               status      Report what is installed, which account runs it, and whether it is
                           writing a log. Reads only.
+
+              watch       A live console over the gateway's evidence log: findings and verdicts as
+                          they land, with running counts. Reads only.
+                          [--log-dir <dir>] [--host <names>] [--from-start] [--plain]
 
               publish     Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.

@@ -19,6 +19,13 @@
     -->
     <PackageReference Include="Microsoft.Web.Administration" />
     <PackageReference Include="System.ServiceProcess.ServiceController" />
+    <!--
+      The live console for 'wpshield watch'. Spectre.Console is the .NET counterpart of the Rich/
+      Textual stack the operator already likes; picking it keeps the operator surface a single .NET
+      tool rather than growing a second language. It renders only - it reads no files, touches no
+      IIS, and 'watch' itself only tails a log the gateway already writes.
+    -->
+    <PackageReference Include="Spectre.Console" />
   </ItemGroup>
 
   <ItemGroup>
