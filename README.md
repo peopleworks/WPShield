@@ -351,6 +351,16 @@ dotnet test WPShield.slnx --configuration Release --no-build
 
 The suite is 215 tests across four projects — 59 for the abstractions, 24 for the core, 84 for the rules and 48 for the gateway — and finishes in a few seconds.
 
+### Build the release to carry to the server
+
+On a build machine with the SDK — never on the server:
+
+```powershell
+.\publish.cmd
+```
+
+It produces a self-contained `win-x64` build of both executables — the gateway service and `wpshield.exe` — in one directory under `artifacts\`, with a `.zip` and its `.sha256`. The script is a thin wrapper over `wpshield publish`, which owns the packaging rules: it refuses to ship `appsettings.Local.json`, checks the binary version, and asserts the two executables share one runtime rather than doubling it. Copy the artifact across, verify the SHA-256, then run `wpshield preflight` on the server.
+
 ### Run the inspection engine demonstration
 
 ```powershell
