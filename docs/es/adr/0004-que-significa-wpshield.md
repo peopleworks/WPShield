@@ -3,6 +3,56 @@
 - **Estado:** Aceptado
 - **Deciden:** Mantenedores de WPShield
 - **Afecta:** el nombre, el README, el sitio, y dónde va una regla que no trate de WordPress
+- **Corregida:** 2026-09-09 — véase abajo. La decisión sigue en pie; una de sus premisas de hecho no.
+
+## Corrección — 2026-09-09
+
+**La sección de Contexto exagera cuánto del conjunto de reglas trata de WordPress, y esta ADR se
+aceptó con ese error dentro.** Se corrige aquí y no en silencio, porque el error es de la misma clase
+de defecto sobre la que se escribió la ADR.
+
+### Cómo ocurrió
+
+El inventario detrás de la afirmación original fue un solo comando:
+
+```
+grep -rhoE '"(WP|FILE|MULTIPART)-[A-Z]+-[0-9]+"'
+```
+
+Buscó los tres prefijos que el autor ya esperaba y encontró exactamente esos tres. **La medición
+llevaba su propia conclusión dentro.** Es la misma forma que el preflight que reportaba comprobar una
+familia de reglas que no podía reconocer — al que esta misma ADR cita, cuatro secciones más abajo,
+como parte de la evidencia de su propia decisión.
+
+### Qué se publica de verdad, regla por regla
+
+| | Reglas | ¿Reportarían algo en un sitio que no es WordPress? |
+| --- | --- | --- |
+| Acopladas a WordPress | `WP-PATH-001` | **No.** Reconoce por nombre los pares de directorios `wp-content/uploads`, `wp-content/upgrade` y `wp-content/updraft`. |
+| Conscientes de WordPress | `WP-UPLOAD-001`, `WP-UPLOAD-002`, `IIS-UPLOAD-001`, `IIS-CONFIG-001`, `FILE-NAME-001` | **Sí.** Deciden sobre la vista NTFS del nombre. La vista de `sanitize_file_name()` es una *segunda* vista que solo agrega hallazgos, y vive en `WPShield.Abstractions`, no en el paquete de WordPress. |
+| Sin nada de WordPress dentro | `WP-PATH-002`, `IIS-PATH-001`, `PHP-CONTENT-001`, `PHP-CONTENT-002`, `FILE-TYPE-001` | **Sí.** `PHP-CONTENT-001` es `<?php` o `<?=` en la muestra y nada más. |
+
+`WP-PATH-002` es el caso más agudo. Su lista de directorios es `dist`, `build`, `_next`, `out`,
+`node_modules`, `bower_components`, `static`, `fonts`, `webfonts`, `img` e `images` — ni un solo
+directorio de WordPress, y `_next` es de Next.js. Lleva un prefijo `WP-` que la condición de salida 3
+prohíbe, y ya se publicaba el día en que se escribió esa condición.
+
+### Qué sobrevive a la corrección
+
+La brecha es real y la decisión sigue en pie, pero es una brecha distinta de la registrada. No es que
+las reglas solo sepan de WordPress. Son tres cosas:
+
+- **Empaquetado.** Once reglas en un solo ensamblado llamado `WPShield.Rules.WordPress`, cinco de las
+  cuales no contienen nada de WordPress. El leg de CI en Linux ya compila y prueba ese paquete sin
+  dependencias de Windows, que es evidencia de lo mismo desde el otro lado.
+- **Cobertura.** Nada en `src/` fuera de la CLI menciona `.env`, `.git`, `.bak` ni `.sql`. El escaneo
+  que llega a los sesenta y seis sitios sigue sin encontrarse ninguna regla. **Esa afirmación era
+  cierta y sigue siéndolo**, y es la parte que importaba.
+- **Etiquetado.** Un identificador ya publicado miente sobre lo que es.
+
+Las condiciones de salida quedaron replanteadas contra esas tres. La sección de Contexto conserva su
+redacción original con el error marcado, porque una ADR que borra sus errores deja de ser un
+registro.
 
 ## Contexto
 
@@ -23,8 +73,12 @@ envejeció; es la cosa detrás del nombre que fue rediseñada.**
 | Ruta de tráfico | [ADR 0001](0001-ruta-de-trafico-en-produccion.md), IIS delante | También una opción verificada de binding directo por HTTP.SYS |
 | Cómo se sabe que algo funciona | Leyendo el script | Comprobado: orden de los pasos, permisos, disciplina de modos |
 
-De esa lista, **solo el motor de reglas trata de WordPress.** La CLI, el preflight, el instalador, el
-triage de host, el limitador de tasa y el registro tratan de Windows y de IIS.
+De esa lista, ~~**solo el motor de reglas trata de WordPress.**~~ La CLI, el preflight, el instalador,
+el triage de host, el limitador de tasa y el registro tratan de Windows y de IIS.
+
+> **La frase tachada es falsa.** De las once reglas publicadas, una está acoplada a WordPress, cinco
+> son conscientes de WordPress, y cinco no contienen nada de WordPress. Véase la corrección al inicio
+> de este archivo. El resto del párrafo, y la medición de abajo, no se ven afectados.
 
 ### La medición que lo vuelve urgente
 
@@ -62,6 +116,9 @@ Honesto sobre las reglas y deshonesto sobre todo lo demás. El preflight, el ins
 host y el limitador de tasa no son funcionalidades de WordPress ni lo fueron nunca, y un nombre que
 describe solo el motor de reglas describe alrededor de una quinta parte del código.
 
+*(Tras la corrección de arriba esta opción queda aún más débil: tampoco sería honesta sobre las
+reglas. Diez de las once disparan en un sitio que nunca ha corrido WordPress.)*
+
 Además cierra la dirección que señala la medición, en un servidor donde el nombre estaría protegiendo
 dos sitios de sesenta y seis.
 
@@ -94,27 +151,43 @@ proyecto menos merecería.
 Tres condiciones de salida. Hasta que las tres se cumplan, este ADR es lo que mantiene visible la
 promesa.
 
-1. **Un segundo paquete de reglas que no trate de WordPress, publicado y activo por omisión.** La
-   arquitectura ya lo anticipa: `WPShield.Abstractions` y `WPShield.Core` están libres de ASP.NET
-   Core, YARP, IIS y dependencias de Windows — un leg de CI en Linux compila y prueba exactamente
-   esos tres proyectos, que es lo que mantiene esa afirmación falsable. `WPShield.Rules.WordPress` es
-   un paquete, no el motor.
+*Replanteadas el 2026-09-09. Las originales se escribieron contra la premisa falsa corregida al
+inicio de este archivo: las condiciones 1 y 2 pedían algo que el código ya había hecho en parte, y la
+condición 3 pedía algo que una regla publicada ya estaba violando.*
+
+1. **Las reglas que no tratan de WordPress están empaquetadas donde corresponde, y la superficie .NET
+   está cubierta.** Dos mitades, y la primera no es "escribir un segundo paquete" — es *partir el que
+   existe*. `WPShield.Rules.Windows` se lleva las cinco reglas que no contienen nada de WordPress; el
+   paquete de WordPress conserva `WP-PATH-001` y las cinco que consultan la vista de
+   `sanitize_file_name()`. La segunda mitad es la que de verdad falta: **ninguna regla en ningún lado
+   lee `.env`, `.git`, un `.bak` o `.sql` olvidado, ni una ruta de administración expuesta**, que es
+   justamente todo lo que un escaneo le manda a los sesenta y cuatro sitios. La arquitectura ya
+   permite ambas: `WPShield.Abstractions` y `WPShield.Core` están libres de ASP.NET Core, YARP, IIS y
+   dependencias de Windows, y un leg de CI en Linux compila y prueba esos dos más el paquete de
+   reglas, que es lo que mantiene esa afirmación falsable.
 
 2. **El README y el sitio dicen qué se cubre hoy.** Un lector debe poder enterarse, sin desplazarse,
-   de que las reglas de hoy son reglas de WordPress y que las herramientas de host no lo son.
+   de qué superficie alcanzan las reglas — las subidas de WordPress, y la superficie de Windows, IIS,
+   PHP y nombres de archivo debajo de ellas — y cuál no alcanzan en absoluto: la superficie de
+   aplicaciones .NET que presentan esos sesenta y cuatro sitios.
 
-3. **El esquema de identificadores de regla tiene sitio para ello.** Hoy todo identificador es `WP-*`,
-   `FILE-*` o `MULTIPART-*`. `WP-` significa WordPress y debe seguir significándolo; una familia que
-   no trate de WordPress necesita su propio prefijo en vez de archivarse bajo uno que miente sobre
-   ella.
+3. **El esquema de identificadores de regla tiene sitio para ello, y ningún identificador miente.**
+   `WP-` significa WordPress y debe seguir significándolo; una familia que no trate de WordPress
+   necesita su propio prefijo en vez de archivarse bajo uno que miente sobre ella. **`WP-PATH-002`
+   rompe esto hoy** — su lista de directorios es salida de compilación y árboles de paquetes, y su
+   prefijo dice WordPress. Renombrar un identificador publicado es un cambio incompatible para todo
+   hallazgo almacenado y para cualquier consulta que un operador haya guardado, así que es su propia
+   decisión y no un efecto secundario de esta; se nombra aquí para que no se olvide.
 
 ## Consecuencias
 
-### `WPShield.Rules.WordPress` conserva su nombre
+### `WPShield.Rules.WordPress` conserva su nombre, por una razón peor que la escrita al principio
 
-Es un paquete de reglas de WordPress y el nombre es exactamente correcto. Nada de este ADR lo
-renombra — el punto es que pase a ser *uno de* los paquetes de reglas en vez de *el* paquete de
-reglas.
+~~Es un paquete de reglas de WordPress y el nombre es exactamente correcto.~~ **Corregido el
+2026-09-09.** El nombre no es correcto: cinco de las once reglas que contiene no llevan nada de
+WordPress. Conserva el nombre de todas formas, porque renombrar un ensamblado y partirlo son trabajos
+distintos y solo el segundo vale la pena — la condición de salida 1 pide la partición, y después de
+ella el paquete que quede sí merecerá el nombre que ya tiene.
 
 ### Vale la pena nombrar la ironía en voz alta
 
@@ -138,10 +211,14 @@ de hacerlo.
 
 ## Lo que este ADR no decide
 
-- **De qué trata el segundo paquete de reglas.** El candidato obvio es la superficie .NET sobre IIS
-  que presentan sesenta y cuatro de esos sesenta y seis sitios, y hay evidencia medida disponible para
-  ello, pero elegir sus reglas es su propia decisión, tomada contra registros reales y no contra un
-  modelo de amenazas. Este proyecto aprendió esa diferencia de forma cara.
+- **Qué reglas cubren la superficie .NET.** La condición de salida 1 dice que esa superficie debe
+  cubrirse. No dice con qué. Los candidatos son tan obvios que resultan peligrosos — `.env`, `.git`,
+  respaldos, rutas de administración — y escogerlos desde un modelo de amenazas es como un conjunto
+  de reglas termina puntuando cosas que nadie manda. Se escogen contra los registros reales de este
+  servidor, y esa es su propia decisión.
+- **A qué se renombra `WP-PATH-002`, y cuándo.** Un identificador de regla publicado aparece en los
+  hallazgos almacenados y en lo que un operador haya construido encima. Cambiar uno es un cambio
+  incompatible y necesita su propia ADR, una ruta de deprecación, o ambas.
 - **Si el repositorio se renombra alguna vez.** La Opción A sigue disponible si las letras llegan a
   confundir más de lo que valen.
 
