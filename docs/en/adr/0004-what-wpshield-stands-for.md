@@ -3,6 +3,55 @@
 - **Status:** Accepted
 - **Deciders:** WPShield maintainers
 - **Affects:** the name, the README, the site, and where a rule that is not about WordPress goes
+- **Corrected:** 2026-09-09 — see below. The decision stands; one of its factual premises did not.
+
+## Correction — 2026-09-09
+
+**The Context section below overstates how much of the rule set is about WordPress, and this ADR was
+accepted with that error in it.** It is corrected here rather than quietly, because the error is the
+same class of defect the ADR was written about.
+
+### How it happened
+
+The inventory behind the original claim was one command:
+
+```
+grep -rhoE '"(WP|FILE|MULTIPART)-[A-Z]+-[0-9]+"'
+```
+
+It searched for the three prefixes the author already expected and found exactly those three.
+**The measurement encoded its own conclusion.** That is the same shape as the preflight that
+reported checking a rule family it could not match — which this ADR cites, four sections down, as
+part of the evidence for its own decision.
+
+### What is actually shipped, read rule by rule
+
+| | Rules | Would they report anything on a site that is not WordPress? |
+| --- | --- | --- |
+| WordPress-coupled | `WP-PATH-001` | **No.** It matches the directory pairs `wp-content/uploads`, `wp-content/upgrade` and `wp-content/updraft` by name. |
+| WordPress-aware | `WP-UPLOAD-001`, `WP-UPLOAD-002`, `IIS-UPLOAD-001`, `IIS-CONFIG-001`, `FILE-NAME-001` | **Yes.** They decide on the NTFS view of the name. The `sanitize_file_name()` view is a *second* view that only ever adds findings, and it lives in `WPShield.Abstractions`, not in the WordPress package. |
+| Nothing about WordPress in them at all | `WP-PATH-002`, `IIS-PATH-001`, `PHP-CONTENT-001`, `PHP-CONTENT-002`, `FILE-TYPE-001` | **Yes.** `PHP-CONTENT-001` is `<?php` or `<?=` in the sample and nothing else. |
+
+`WP-PATH-002` is the sharpest case. Its directory list is `dist`, `build`, `_next`, `out`,
+`node_modules`, `bower_components`, `static`, `fonts`, `webfonts`, `img` and `images` — not one
+WordPress directory, and `_next` is Next.js. It carries a `WP-` prefix that exit condition 3 below
+forbids, and it was already shipping on the day that condition was written.
+
+### What survives the correction
+
+The gap is real and the decision stands, but it is a different gap than the one recorded. It is not
+that the rules only know WordPress. It is three things:
+
+- **Packaging.** Eleven rules in one assembly named `WPShield.Rules.WordPress`, five of which
+  contain no WordPress at all. The Linux CI leg already builds and tests that package with no
+  Windows dependency, which is evidence of the same thing from the other direction.
+- **Coverage.** Nothing in `src/` outside the CLI mentions `.env`, `.git`, `.bak` or `.sql`. The
+  scan that reaches all sixty-six sites still meets no rule. **That claim was true and stays true**,
+  and it is the part that mattered.
+- **Labelling.** One shipped identifier already lies about what it is.
+
+The exit conditions have been restated against those three. The Context section keeps its original
+wording with the error marked, because an ADR that edits its mistakes away is not a record.
 
 ## Context
 
@@ -23,8 +72,12 @@ it is a case of the thing behind the name being re-engineered.**
 | Traffic path | [ADR 0001](0001-production-traffic-path.md), IIS in front | Also a verified HTTP.SYS direct-binding option |
 | How anything is known to work | By reading the script | Asserted: step order, permissions, mode discipline |
 
-Of that list, **only the rule engine is about WordPress.** The CLI, the preflight, the installer, the
-host triage, the rate limiter and the logging are about Windows and IIS.
+Of that list, ~~**only the rule engine is about WordPress.**~~ The CLI, the preflight, the installer,
+the host triage, the rate limiter and the logging are about Windows and IIS.
+
+> **The struck sentence is wrong.** Of the eleven shipped rules, one is WordPress-coupled, five are
+> WordPress-aware, and five contain no WordPress at all. See the correction at the top of this file.
+> The rest of the paragraph, and the measurement below, are unaffected.
 
 ### The measurement that makes this urgent
 
@@ -61,6 +114,9 @@ Honest about the rules and dishonest about everything else. The preflight, the i
 triage and the rate limiter are not WordPress features and never were, and a name that describes only
 the rule engine describes about a fifth of the code.
 
+*(After the correction above, this option is weaker still: it would not be honest about the rules
+either. Ten of the eleven fire on a site that has never run WordPress.)*
+
 It also forecloses the direction the measurement points at, on a host where the name would be
 protecting two sites out of sixty-six.
 
@@ -93,25 +149,41 @@ without writing this down would be the version of that mistake this project woul
 Three exit conditions. Until all three are met, this ADR stays the thing that keeps the promise
 visible.
 
-1. **A second rule package that is not about WordPress, shipped and enabled by default.** The
-   architecture already anticipates it: `WPShield.Abstractions` and `WPShield.Core` are free of
-   ASP.NET Core, YARP, IIS and Windows dependencies — a Linux CI leg builds and tests exactly those
-   three projects, which is what keeps that claim falsifiable. `WPShield.Rules.WordPress` is a
-   package, not the engine.
+*Restated on 2026-09-09. The originals were written against the false premise corrected at the top
+of this file; conditions 1 and 2 asked for something the code had partly done already, and condition
+3 asked for something a shipped rule was already violating.*
+
+1. **The rules that are not about WordPress are packaged where they belong, and the .NET surface is
+   covered.** Two halves, and the first is not "write a second package" — it is *split the one that
+   exists*. `WPShield.Rules.Windows` takes the five rules that contain no WordPress; the WordPress
+   package keeps `WP-PATH-001` and the five that consult the `sanitize_file_name()` view. The second
+   half is the part that is genuinely missing: **no rule anywhere reads `.env`, `.git`, a stray
+   `.bak` or `.sql`, or an exposed admin path**, which is the whole of what a scan sends at the
+   sixty-four sites. The architecture already permits both: `WPShield.Abstractions` and
+   `WPShield.Core` are free of ASP.NET Core, YARP, IIS and Windows dependencies, and a Linux CI leg
+   builds and tests those two plus the rules package, which is what keeps that claim falsifiable.
 
 2. **The README and the site say what is covered today.** A reader must be able to learn, without
-   scrolling, that the rules today are WordPress rules and the host tooling is not.
+   scrolling, which surface the rules reach — WordPress uploads, and the Windows, IIS, PHP and
+   filename surface underneath them — and which one they do not reach at all: the .NET application
+   surface those sixty-four sites present.
 
-3. **The rule identifier scheme has room for it.** Today every identifier is `WP-*`, `FILE-*` or
-   `MULTIPART-*`. `WP-` means WordPress and must keep meaning that; a family that is not about
-   WordPress needs its own prefix rather than being filed under one that lies about it.
+3. **The rule identifier scheme has room for it, and no identifier lies.** `WP-` means WordPress and
+   must keep meaning that; a family that is not about WordPress needs its own prefix rather than
+   being filed under one that lies about it. **`WP-PATH-002` breaks this today** — its directory list
+   is build output and package trees, and its prefix says WordPress. Renaming a published identifier
+   is a breaking change to every stored finding and every operator's saved query, so it is its own
+   decision rather than a side effect of this one; it is named here so it cannot be forgotten.
 
 ## Consequences
 
-### `WPShield.Rules.WordPress` keeps its name
+### `WPShield.Rules.WordPress` keeps its name, for a worse reason than first written
 
-It is a WordPress rule package and the name is exactly right. Nothing about this ADR renames it —
-the point is that it becomes *one of* the rule packages rather than *the* rule package.
+~~It is a WordPress rule package and the name is exactly right.~~ **Corrected 2026-09-09.** The name
+is not right: five of the eleven rules inside it contain no WordPress. It keeps the name anyway,
+because renaming an assembly and splitting one are different jobs and only the second one is worth
+doing — exit condition 1 asks for the split, and after it the remaining package will deserve the
+name it already has.
 
 ### The irony is worth naming out loud
 
@@ -134,10 +206,13 @@ altered behaviour would be the worst possible way to run one.
 
 ## What this ADR does not decide
 
-- **What the second rule package covers.** The obvious candidate is the .NET-on-IIS surface that
-  sixty-four of those sixty-six sites present, and there is measured evidence available for it, but
-  choosing its rules is its own decision made against real logs rather than a threat model. This
-  project has learned that difference expensively.
+- **Which rules cover the .NET surface.** Exit condition 1 says that surface must be covered. It does
+  not say by what. The candidates are obvious enough to be dangerous — `.env`, `.git`, backups, admin
+  paths — and picking them from a threat model is how a rule set ends up scoring things nobody sends.
+  They get chosen against this server's real logs, and that is its own decision.
+- **What `WP-PATH-002` is renamed to, and when.** A published rule identifier appears in stored
+  findings and in whatever an operator has built on top of them. Changing one is a breaking change
+  and needs its own ADR, a deprecation path, or both.
 - **Whether the repository is ever renamed.** Option A stays available if the letters ever become
   more confusing than they are worth.
 

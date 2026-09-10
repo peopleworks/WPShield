@@ -4,9 +4,13 @@
 
 **WPShield — Windows Power Shield.** An open-source security gateway for Windows Server and IIS.
 
-<sub>The name states a direction. <b>Today the detection rules are WordPress rules</b>; the preflight,
-the installer, the host triage and the rate limiter are not. <a href="docs/en/adr/0004-what-wpshield-stands-for.md">ADR 0004</a>
-records the gap and what closes it.</sub>
+<sub>The name states a direction. <b>The eleven rules today read uploads and request paths</b>: one is
+WordPress-specific, five consult WordPress's own filename rewrite as a second opinion, and five are
+plain Windows, IIS, PHP and filename rules that fire on a site that has never run WordPress.
+<b>Nothing yet reads the .NET application surface</b> — no rule looks for <code>.env</code>,
+<code>.git</code>, a backup left in a web root, or an exposed admin path.
+<a href="docs/en/adr/0004-what-wpshield-stands-for.md">ADR 0004</a> records the gap, and a correction
+to what it originally claimed.</sub>
 
 **[See how it works →](https://peopleworks.github.io/WPShield/)**
 
@@ -623,6 +627,9 @@ Community contributions are welcome, especially in these areas:
 - Safe gateway validation and synthetic integration tests.
 - Bounded streaming and multipart parsing.
 - Explainable WordPress rules with benign test fixtures.
+- Rules for the .NET-on-IIS surface — `.env`, `.git`, stray backups, exposed admin paths — chosen
+  against real request logs rather than a threat model. See [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md),
+  exit condition 1.
 - False-positive research for legitimate WordPress and plugin behavior.
 - English and Spanish documentation and localization.
 - Windows Server, IIS, Elementor, and Google Site Kit compatibility testing.

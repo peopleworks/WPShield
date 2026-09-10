@@ -41,6 +41,29 @@ must complete first.
 
 ### Changed
 
+- **Corrected: ADR 0004 and the README both claimed the rule set is WordPress-only. It is not, and
+  the claim came from a grep that searched only for the prefixes it expected.** The command was
+  `grep -rhoE '"(WP|FILE|MULTIPART)-[A-Z]+-[0-9]+"'`, and it reported back the three prefixes already
+  written into it. **The measurement encoded its own conclusion** — the same defect as the preflight
+  that reported checking a rule family it could not match, committed in the analysis that produced an
+  ADR about exactly that defect.
+
+  Read rule by rule instead: of eleven shipped rules, **one** is WordPress-coupled (`WP-PATH-001`,
+  which matches `wp-content/uploads`, `upgrade` and `updraft` by name), **five** decide on the NTFS
+  view of a filename and consult WordPress's `sanitize_file_name()` result as a second view that only
+  adds findings, and **five contain no WordPress at all**. `WP-PATH-002` is the sharpest case: its
+  directory list is `dist`, `build`, `_next`, `out`, `node_modules`, `bower_components`, `static`,
+  `fonts`, `webfonts`, `img`, `images` — not one WordPress directory, `_next` is Next.js, and its
+  `WP-` prefix violates the ADR's own exit condition 3 while already shipping.
+
+  **The argument survives; the premise did not.** The gap is packaging (eleven rules in one assembly
+  named for WordPress), labelling (one identifier that lies), and coverage — **nothing in `src/`
+  outside the CLI mentions `.env`, `.git`, `.bak` or `.sql`**, which is the part that was always true
+  and is what a scan actually sends at all sixty-six sites. ADR 0004 keeps its original Context
+  wording with the error struck through and a dated correction above it, in both languages: an ADR
+  that edits its mistakes away stops being a record. Its three exit conditions are restated against
+  what is actually shipped.
+
 - **`AGENTS.md`'s IIS invariant is restated in terms of what it always meant.** It said *"never modify
   IIS, certificates, DNS, firewall rules, or Windows services automatically"*, and that was already
   not literally true: `wpshield install` creates the WPShield service, sets its identity and rewrites
@@ -55,14 +78,15 @@ must complete first.
   week — *"debí llamarle IISShield o algo más, porque los ataques van a todos los sites aunque no sean
   WordPress"* — and the project has since been re-engineered rather than merely extended: the operator
   surface, the host triage, the brute-force work and the traffic path are all about Windows and IIS.
-  Only the rule engine is about WordPress.
+  ~~Only the rule engine is about WordPress.~~ *(Corrected — see the entry above. Ten of the eleven
+  rules fire on a site that has never run WordPress.)*
 
   The measurement that decided it: the server this was built against runs **sixty-six IIS sites, and
   its own preflight detects two as WordPress.**
 
   Keeping the letters costs nothing — same URL, same namespaces, same artifact names, same service
-  identity — but a name claiming Windows-wide protection while shipping only WordPress rules would be
-  the same defect this project spent three days finding in smaller fonts: an installer that reported
+  identity — but a name claiming Windows-wide protection while the rules cover only one application
+  would be the same defect this project spent three days finding in smaller fonts: an installer that reported
   hardening a directory nothing wrote to, a preflight that reported checking a rule family it could
   not match, a gateway that reported itself healthy while writing no evidence. So the ADR names three
   exit conditions, and the first line of the README now states today's coverage rather than implying
