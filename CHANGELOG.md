@@ -14,6 +14,26 @@ must complete first.
 
 ### Added
 
+- **`wpshield watch` - a live console over the evidence log, and the first verb that only watches.**
+  It tails the JSON Lines file the gateway already writes and shows findings and verdicts as they
+  land - time, site, rule, score, and the action taken - with running counts and an
+  events-per-second sparkline. Built on Spectre.Console, the .NET counterpart of the Rich/Textual
+  console the operator already likes, so the operator surface stays a single .NET tool rather than
+  growing a second language.
+
+  It reads only: it opens the log for shared reading and never writes, never touches IIS, and never
+  starts or stops the service. `--plain` (chosen automatically when output is redirected) makes it
+  pipeable, `--host` filters to one site, `--from-start` replays the current file, and `--log-dir`
+  points it at a log pulled from a server.
+
+  **The counts are honest about what the log contains, which is the whole design.** A clean request
+  that is not a multipart upload is never logged - the request-path pass returns before logging when
+  there are no findings, and only an upload records an `Allow` - so there is no total request rate to
+  show and the console does not invent one. It shows findings, observed, blocked, and clean uploads:
+  every one a line the gateway actually wrote. The tail reader survives a half-written final line, a
+  rotation mid-stream and a torn multibyte read, because it follows a file another process is
+  appending to on a host that may be under attack.
+
 - **`wpshield enable` and `wpshield disable`, and [ADR 0005](docs/en/adr/0005-putting-wpshield-in-the-path.md)
   is Accepted.** The last manual step of a deployment was three changes in IIS and the site's own
   application, in an order where getting it wrong takes a live site down - and it did.
