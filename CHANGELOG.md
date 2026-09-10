@@ -64,6 +64,11 @@ must complete first.
   that edits its mistakes away stops being a record. Its three exit conditions are restated against
   what is actually shipped.
 
+  A figure now carries the corrected message in both ADR translations: sixty-six sites, two of them
+  WordPress; the seven requests a scan sends at every one; the four — `.env`, `.git`, a backup, an
+  admin path — that meet no rule, and the three that do. It says in one picture that the gap is
+  coverage and packaging, not the rules being WordPress-only.
+
 - **`AGENTS.md`'s IIS invariant is restated in terms of what it always meant.** It said *"never modify
   IIS, certificates, DNS, firewall rules, or Windows services automatically"*, and that was already
   not literally true: `wpshield install` creates the WPShield service, sets its identity and rewrites

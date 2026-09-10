@@ -1,0 +1,147 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="500" viewBox="0 0 900 500"
+     role="img" aria-labelledby="wps-estate-title wps-estate-desc"
+     font-family="Segoe UI, system-ui, -apple-system, Helvetica Neue, Arial, sans-serif">
+  <title id="wps-estate-title">What WPShield's rules reach on a sixty-six site Windows Server, and what they do not</title>
+  <desc id="wps-estate-desc">A figure in two panels. The left panel shows the estate this project was built against as a grid of sixty-six squares: two are drawn in purple and labelled WordPress sites, and sixty-four are drawn in blue and labelled .NET applications. The right panel lists seven requests a scan sends to every one of those sites, each with the rule that answers it. Four are unanswered and marked in red with the words no rule reads this: GET /.env, GET /.git/config, GET /db-backup.sql and GET /admin. Three are answered and marked in green: GET /dist/shell.php is met by WP-PATH-002 scoring 100, a POST uploading invoice.php.jpg is met by WP-UPLOAD-001 and 002 scoring 80, and a POST uploading web.config is met by IIS-CONFIG-001 scoring 100. A note records that WP-PATH-002 matches dist, build, _next and node_modules, and that nothing in it is about WordPress except the prefix. A closing strip states that eleven rules read uploads and request paths, that ten of them fire on a site that has never run WordPress, and that none of them reads a dotfile, a stray backup or an exposed admin path.</desc>
+
+  <rect x="0" y="0" width="900" height="500" rx="16" fill="#0D1117"/>
+  <rect x="0.75" y="0.75" width="898.5" height="498.5" rx="16" fill="none" stroke="#2A313B" stroke-width="1.5"/>
+
+  <text x="450" y="42" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="1.5" fill="#8794A4">SIXTY-SIX SITES ON ONE WINDOWS SERVER. THE SCAN GOES TO EVERY ONE.</text>
+
+  <!-- ===================== left panel: the estate ===================== -->
+  <rect x="36" y="70" width="286" height="294" rx="12" fill="#161B22" stroke="#2A313B" stroke-width="1.5"/>
+  <text x="56" y="98" font-size="10.5" font-weight="700" letter-spacing="1.3" fill="#8794A4">THE ESTATE THIS WAS BUILT AGAINST</text>
+
+  <!-- Sixty-six squares, eleven across and six down. The two WordPress sites are drawn first so
+       that the pair reads as a pair rather than as two marks lost in the field. -->
+  <g>
+    <rect x="56" y="116" width="18" height="18" rx="3" fill="#232237" stroke="#A78BFA" stroke-width="1.5"/>
+    <rect x="80" y="116" width="18" height="18" rx="3" fill="#232237" stroke="#A78BFA" stroke-width="1.5"/>
+    <rect x="104" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="128" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="152" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="176" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="200" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="224" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="248" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="272" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="296" y="116" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+
+    <rect x="56" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="80" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="104" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="128" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="152" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="176" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="200" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="224" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="248" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="272" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="296" y="140" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+
+    <rect x="56" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="80" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="104" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="128" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="152" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="176" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="200" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="224" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="248" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="272" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="296" y="164" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+
+    <rect x="56" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="80" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="104" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="128" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="152" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="176" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="200" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="224" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="248" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="272" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="296" y="188" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+
+    <rect x="56" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="80" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="104" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="128" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="152" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="176" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="200" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="224" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="248" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="272" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="296" y="212" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+
+    <rect x="56" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="80" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="104" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="128" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="152" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="176" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="200" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="224" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="248" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="272" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+    <rect x="296" y="236" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+  </g>
+
+  <rect x="56" y="274" width="18" height="18" rx="3" fill="#232237" stroke="#A78BFA" stroke-width="1.5"/>
+  <text x="84" y="289" font-size="19" font-weight="800" fill="#A78BFA">2</text>
+  <text x="102" y="289" font-size="13" fill="#E8EDF3">WordPress sites</text>
+  <text x="84" y="307" font-size="11" fill="#8794A4">what the name has described so far</text>
+
+  <rect x="56" y="322" width="18" height="18" rx="3" fill="#172636" stroke="#46505E" stroke-width="1"/>
+  <text x="84" y="337" font-size="19" font-weight="800" fill="#4FA8F7">64</text>
+  <text x="112" y="337" font-size="13" fill="#E8EDF3">.NET applications</text>
+  <text x="84" y="355" font-size="11" fill="#8794A4">an e-invoicing API, an ERP portal, a BI server</text>
+
+  <!-- ============= right panel: what a scan sends at all of them ============= -->
+  <rect x="346" y="70" width="518" height="294" rx="12" fill="#161B22" stroke="#2A313B" stroke-width="1.5"/>
+  <text x="368" y="98" font-size="10.5" font-weight="700" letter-spacing="1.3" fill="#8794A4">WHAT A SCAN SENDS, AND WHAT MEETS IT TODAY</text>
+
+  <g font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="13">
+    <text x="368" y="131" fill="#F97066">GET /.env</text>
+    <text x="368" y="163" fill="#F97066">GET /.git/config</text>
+    <text x="368" y="195" fill="#F97066">GET /db-backup.sql</text>
+    <text x="368" y="227" fill="#F97066">GET /admin</text>
+    <text x="368" y="265" fill="#E8EDF3">GET /dist/shell.php</text>
+    <text x="368" y="297" fill="#E8EDF3">POST &#8230; invoice.php.jpg</text>
+    <text x="368" y="329" fill="#E8EDF3">POST &#8230; web.config</text>
+  </g>
+
+  <g>
+    <rect x="606" y="116" width="238" height="21" rx="10.5" fill="#2E1E22" stroke="#F97066" stroke-width="1.5"/>
+    <text x="725" y="131" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="0.8" fill="#F97066">NO RULE READS THIS</text>
+
+    <rect x="606" y="148" width="238" height="21" rx="10.5" fill="#2E1E22" stroke="#F97066" stroke-width="1.5"/>
+    <text x="725" y="163" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="0.8" fill="#F97066">NO RULE READS THIS</text>
+
+    <rect x="606" y="180" width="238" height="21" rx="10.5" fill="#2E1E22" stroke="#F97066" stroke-width="1.5"/>
+    <text x="725" y="195" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="0.8" fill="#F97066">NO RULE READS THIS</text>
+
+    <rect x="606" y="212" width="238" height="21" rx="10.5" fill="#2E1E22" stroke="#F97066" stroke-width="1.5"/>
+    <text x="725" y="227" text-anchor="middle" font-size="11" font-weight="700" letter-spacing="0.8" fill="#F97066">NO RULE READS THIS</text>
+
+    <rect x="606" y="250" width="238" height="21" rx="10.5" fill="#162E26" stroke="#4ADE80" stroke-width="1.5"/>
+    <text x="725" y="265" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11" font-weight="700" fill="#4ADE80">WP-PATH-002 &#183; 100</text>
+
+    <rect x="606" y="282" width="238" height="21" rx="10.5" fill="#162E26" stroke="#4ADE80" stroke-width="1.5"/>
+    <text x="725" y="297" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11" font-weight="700" fill="#4ADE80">WP-UPLOAD-001 + 002 &#183; 80</text>
+
+    <rect x="606" y="314" width="238" height="21" rx="10.5" fill="#162E26" stroke="#4ADE80" stroke-width="1.5"/>
+    <text x="725" y="329" text-anchor="middle" font-family="Consolas, ui-monospace, Cascadia Mono, Menlo, monospace" font-size="11" font-weight="700" fill="#4ADE80">IIS-CONFIG-001 &#183; 100</text>
+  </g>
+
+  <line x1="368" y1="241" x2="844" y2="241" stroke="#3A424E" stroke-width="1" stroke-dasharray="3 3"/>
+  <text x="844" y="353" text-anchor="end" font-size="10.5" fill="#8794A4">WP-PATH-002 matches dist, build, _next, node_modules. Nothing in it is WordPress but the prefix.</text>
+
+  <!-- ============================ closing strip ============================ -->
+  <rect x="36" y="384" width="828" height="80" rx="14" fill="#232237" stroke="#A78BFA" stroke-width="1.5"/>
+  <text x="60" y="412" font-size="13.5" fill="#E8EDF3">Eleven rules read uploads and request paths. <tspan font-weight="700">Ten of them fire on a site that has never run WordPress.</tspan></text>
+  <text x="60" y="434" font-size="13.5" fill="#E8EDF3">None of them reads a dotfile, a stray backup, or an exposed admin path &#8212; the four rows in red above.</text>
+  <text x="60" y="454" font-size="11" fill="#8794A4">The gap is coverage and packaging, not the rules being WordPress-only. ADR 0004, exit condition 1.</text>
+</svg>

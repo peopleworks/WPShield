@@ -53,6 +53,11 @@ that the rules only know WordPress. It is three things:
 The exit conditions have been restated against those three. The Context section keeps its original
 wording with the error marked, because an ADR that edits its mistakes away is not a record.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/estate-dark.svg">
+  <img alt="Sixty-six sites on one Windows Server: two are WordPress, sixty-four are .NET applications. A scan sends the same seven requests to every one of them. Four — GET /.env, GET /.git/config, GET /db-backup.sql and GET /admin — meet no rule at all. Three are answered: GET /dist/shell.php by WP-PATH-002, an upload of invoice.php.jpg by WP-UPLOAD-001 and 002, and an upload of web.config by IIS-CONFIG-001. Eleven rules read uploads and request paths, ten of them fire on a site that has never run WordPress, and none of them reads a dotfile, a stray backup or an exposed admin path. The gap is coverage and packaging, not the rules being WordPress-only." src="../../assets/estate-light.svg">
+</picture>
+
 ## Context
 
 The name was chosen in the first week, for a project that inspected WordPress uploads behind IIS. It
