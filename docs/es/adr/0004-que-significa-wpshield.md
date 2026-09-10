@@ -54,6 +54,11 @@ Las condiciones de salida quedaron replanteadas contra esas tres. La sección de
 redacción original con el error marcado, porque una ADR que borra sus errores deja de ser un
 registro.
 
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../../assets/estate-dark.svg">
+  <img alt="Sesenta y seis sitios en un Windows Server: dos son WordPress, sesenta y cuatro son aplicaciones .NET. Un escaneo manda las mismas siete peticiones a cada uno. Cuatro — GET /.env, GET /.git/config, GET /db-backup.sql y GET /admin — no encuentran ninguna regla. Tres sí: GET /dist/shell.php la atiende WP-PATH-002, una subida de invoice.php.jpg la atienden WP-UPLOAD-001 y 002, y una subida de web.config la atiende IIS-CONFIG-001. Once reglas leen subidas y rutas de petición, diez de ellas disparan en un sitio que nunca corrió WordPress, y ninguna lee un dotfile, un respaldo olvidado ni una ruta de administración expuesta. La brecha es cobertura y empaquetado, no que las reglas sean solo de WordPress." src="../../assets/estate-light.svg">
+</picture>
+
 ## Contexto
 
 El nombre se eligió la primera semana, para un proyecto que inspeccionaba subidas de WordPress detrás
