@@ -62,6 +62,7 @@ internal static class ProgramMain
                 "status" => StatusCommand.Run(options, Console.Out),
                 // 'site' is the one verb with a sub-action. CliOptions skips tokens that do not start
                 // with '--', so the action word passes through the parser harmlessly.
+                "setup" => SetupCommand.Run(options, Console.Out),
                 "site" => SiteCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? "list"),
                 "watch" => WatchCommand.Run(options, Console.Out),
                 "report" => ReportCommand.Run(options, Console.Out),
@@ -128,6 +129,10 @@ internal static class ProgramMain
                 Console.WriteLine(StatusCommand.Help);
                 return 0;
 
+            case "setup":
+                Console.WriteLine(SetupCommand.Help);
+                return 0;
+
             case "site":
                 Console.WriteLine(SiteCommand.Help);
                 return 0;
@@ -155,6 +160,10 @@ internal static class ProgramMain
             Usage: wpshield <command> [options]
 
             Commands:
+              setup       Take ONE site from nothing configured to protected and verified, in five
+                          steps, stopping at the first thing that needs you. START HERE.
+                          --site <iis-site-name> [--hosts <a,b>] [--destination-port n] [--dry-run]
+
               preflight   Check whether this host is ready. Reads and reports; changes nothing.
                           [--gateway-port 10000] [--private-port 8081,8082] [--site <names>]
                           [--install-path <dir>] [--log-path <dir>] [--output report.jsonl]
