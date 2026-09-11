@@ -177,50 +177,23 @@ internal sealed class Enabler(
         }
     }
 
+    /// <summary>
+    /// Refuses unless WordPress has already been told the original request was HTTPS.
+    /// </summary>
+    /// <remarks>
+    /// The rule and its wording live in <see cref="WordPressSchemeTranslation"/>, shared with
+    /// <c>setup</c>, so the two verbs can never disagree about whether a site is ready.
+    /// </remarks>
     private void RequireWordPressIsToldTheSchemeChanged(IisSite site)
     {
-        var config = Path.Combine(site.PhysicalPath, "wp-config.php");
-
-        if (!_host.FileExists(config))
-        {
-            // Not WordPress, so there is nothing to translate. The rule still works; a non-WordPress
-            // application either reads the header itself or does not care about the scheme.
-            return;
-        }
-
-        var text = ReadWpConfig(config);
-
-        if (text.Contains("HTTP_X_FORWARDED_PROTO", StringComparison.OrdinalIgnoreCase))
+        if (WordPressSchemeTranslation.Check(_host, site.PhysicalPath) != SchemeTranslation.Missing)
         {
             return;
         }
 
         throw new CliArgumentException(
-            $"{config} does not translate X-Forwarded-Proto, and this verb will not write it: that file is the " +
-            "site's own source. Without the translation WordPress sees plain HTTP behind an HTTPS site and every " +
-            "page redirects to HTTPS forever - ERR_TOO_MANY_REDIRECTS. Add this before " +
-            "require_once ABSPATH . 'wp-settings.php'; and run this again:" + Environment.NewLine +
-            Environment.NewLine +
-            "    if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] )" + Environment.NewLine +
-            "         && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https' ) {" + Environment.NewLine +
-            "        $_SERVER['HTTPS'] = 'on';" + Environment.NewLine +
-            "    }" + Environment.NewLine +
-            Environment.NewLine +
-            "Nothing was changed.");
-    }
-
-    private static string ReadWpConfig(string path)
-    {
-        try
-        {
-            return File.ReadAllText(path);
-        }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
-        {
-            throw new CliArgumentException(
-                $"{path} could not be read, so this cannot confirm the scheme translation is present: " +
-                $"{exception.Message}. Nothing was changed.");
-        }
+            WordPressSchemeTranslation.Explain(WordPressSchemeTranslation.PathFor(site.PhysicalPath)) +
+            Environment.NewLine + "Nothing was changed.");
     }
 
     // =============================================================================================

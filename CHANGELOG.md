@@ -41,6 +41,48 @@ must complete first.
 
 ### Added
 
+- **`wpshield setup` - the five steps between an unpacked artifact and a first finding, in order.**
+  The operator took the artifact to a real server, ran `watch`, and got a blank console. Seeing
+  anything required the host to be ready, the service installed, the site configured,
+  `wp-config.php` translating the scheme, and IIS actually forwarding - five things, each with its
+  own verb or none at all, and nothing that said which one was missing. In his words: *"pense que
+  solo ibamos a tener un solo producto que instalaba servicios y monitoreaba"*. The pieces were each
+  defensible; the assembly was not.
+
+  ```
+  wpshield setup --site "peopleworks.example"
+  ```
+
+  Most of the time that is the only flag needed: the hosts and the destination port are read from the
+  IIS site's own bindings. It prints one line per step and **stops at the first blocker**, naming what
+  to fix:
+
+  ```
+    [1/5] preflight            ok
+    [2/5] gateway installed    ok    Running, answering on 127.0.0.1:10000
+    [3/5] site configuration   done  peopleworks.example -> 127.0.0.1:8081
+    [4/5] wp-config.php        STOP  MISSING the X-Forwarded-Proto translation
+
+    Stopped at step 4 of 5. Nothing after it was attempted.
+  ```
+
+  **It orchestrates; it does not reimplement.** Each step delegates to the piece that already owns
+  that question - the preflight checks, `InstallationReport`, the site table, and `enable` itself, so
+  every refusal that verb owns still fires and the revert-on-failure guarantee is the same one. A
+  second copy of any of those rules is how `setup` would start calling a site ready that `enable`
+  refuses.
+
+  **It is safe to run again.** Every step checks before it acts, so a run after a fix continues from
+  where the last one stopped rather than repeating work. `--dry-run` prints the whole plan and changes
+  nothing.
+
+  Flags first, and it asks only for what it cannot work out - but **never when the input stream is
+  redirected**, where it fails naming the missing flag instead of hanging on a question no script will
+  answer.
+
+  The `wp-config.php` rule moved into `WordPressSchemeTranslation`, shared with `enable`, so the two
+  verbs cannot drift into disagreeing about whether a site is ready.
+
 - **`wpshield site` - the verb that was missing, and the reason a first deployment produced nothing.**
   Nine verbs could check a host, install a service, put it in the traffic path, take it out, watch it
   and report on it. **None of them could tell the gateway which site to protect.** The operator had to
