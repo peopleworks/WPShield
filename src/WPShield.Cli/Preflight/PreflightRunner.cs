@@ -505,7 +505,11 @@ internal sealed class PreflightRunner(IHostFacts host, IIisFacts iis, PreflightO
             $"{what} is readable by unprivileged accounts",
             $"{path} grants: {string.Join(", ", facts.BroadAccess)}",
             blocker
-                ? "Remove inheritance on the log directory and grant only the service account and administrators. A WPShield log carries request paths, rule hits and client addresses."
+                ? "A WPShield log carries request paths, rule hits and client addresses, so this stays a " +
+                  "blocker. 'wpshield install' replaces the permissions on this directory and clears it - " +
+                  "which is usually the whole fix, because a loose directory here is normally left over " +
+                  "from an earlier run. Only do it by hand if you are not installing: remove inheritance " +
+                  "and grant the service account and administrators alone."
                 : string.Empty,
             PreflightReport.Fields(("path", path), ("exists", true), ("broadAccess", facts.BroadAccess)));
     }

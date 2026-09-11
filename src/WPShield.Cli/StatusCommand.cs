@@ -67,8 +67,8 @@ internal static class StatusCommand
         {
             output.WriteLine("  service            not installed");
             output.WriteLine();
-            output.WriteLine("Nothing to report. Install with 'wpshield install', or run");
-            output.WriteLine("Invoke-WPShieldPreflight.ps1 first to check this host is ready.");
+            output.WriteLine("Nothing to report. Check this host is ready with 'wpshield preflight',");
+            output.WriteLine("then 'wpshield setup --site <name>' takes it from here.");
             return ExitNotInstalled;
         }
 

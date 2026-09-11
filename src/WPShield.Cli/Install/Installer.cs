@@ -6,7 +6,7 @@ namespace WPShield.Cli.Install;
 internal sealed record InstallOptions
 {
     public required string SourcePath { get; init; }
-    public string InstallPath { get; init; } = @"C:\Program Files\WPShield";
+    public string InstallPath { get; init; } = Installer.DefaultInstallPath;
     public string LogPath { get; init; } = @"C:\ProgramData\WPShield\logs";
     public string? ConfigurationPath { get; init; }
     public bool AllowWebRootPaths { get; init; }
@@ -35,6 +35,9 @@ internal sealed record InstallOptions
 /// </remarks>
 internal sealed class Installer(IInstallEnvironment environment, InstallOptions options)
 {
+    /// <summary>Where an install lands unless told otherwise, and what a preview assumes.</summary>
+    public const string DefaultInstallPath = @"C:\Program Files\WPShield";
+
     public const string ServiceName = "WPShield";
     public const string ServiceDisplayName = "WPShield gateway";
     public const string VirtualAccount = @"NT SERVICE\WPShield";

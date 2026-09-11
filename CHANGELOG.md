@@ -39,6 +39,28 @@ must complete first.
     WPShield refused to own it. The status-to-verdict decision is now a pure function with its own
     tests, so what this verb reverts on can be stated rather than reproduced against a live server.
 
+### Fixed
+
+- **`wpshield setup --dry-run` refused to run until the gateway was installed, which is backwards.**
+  A preview is most wanted *before* the install, and `setup` would not print one until after it.
+  Found by pointing the verb at a real local IIS for the first time. The installer already states the
+  principle for its own preview - *"requiring administrator rights to read that makes the preview
+  harder to reach than the thing it previews"* - and `setup` violated it. With nothing installed, a
+  dry run now assumes the default install path and step 2 reports `not installed` and stops, which is
+  the true and useful answer. Only a real run needs somewhere to write, and only a real run refuses
+  without it - now pointing at `--dry-run` when it does.
+
+- **`PRE-016` told an operator to edit an ACL by hand that `wpshield install` replaces for them.**
+  On the first real-IIS run the blocker fired on a `C:\ProgramData\WPShield\logs` left over from an
+  earlier session, stopped `setup` at step 1, and offered only "remove inheritance and grant the
+  service account and administrators" - while `install` hardens that exact directory whether it
+  exists or not. It stays a blocker, because a world-readable security log is one; the remedy now
+  names the verb that performs it, and says the hand fix is only for someone who is not installing.
+
+- **`wpshield status` told an operator to run a script that was deleted.** With nothing installed it
+  printed *"run Invoke-WPShieldPreflight.ps1 first"*; ADR 0003 replaced that script with
+  `wpshield preflight` and deleted it. It now names the verbs that exist, `preflight` then `setup`.
+
 ### Added
 
 - **`wpshield setup` - the five steps between an unpacked artifact and a first finding, in order.**
