@@ -60,6 +60,9 @@ internal static class ProgramMain
                 "enable" => EnableCommand.Run(options, Console.Out),
                 "disable" => DisableCommand.Run(options, Console.Out),
                 "status" => StatusCommand.Run(options, Console.Out),
+                // 'site' is the one verb with a sub-action. CliOptions skips tokens that do not start
+                // with '--', so the action word passes through the parser harmlessly.
+                "site" => SiteCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? "list"),
                 "watch" => WatchCommand.Run(options, Console.Out),
                 "report" => ReportCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
@@ -125,6 +128,10 @@ internal static class ProgramMain
                 Console.WriteLine(StatusCommand.Help);
                 return 0;
 
+            case "site":
+                Console.WriteLine(SiteCommand.Help);
+                return 0;
+
             case "watch":
                 Console.WriteLine(WatchCommand.Help);
                 return 0;
@@ -167,6 +174,11 @@ internal static class ProgramMain
 
               disable     Take it back out. THIS IS THE ROLLBACK - stopping the service is not.
                           --site <name> [--dry-run]
+
+              site        Tell the gateway which sites to protect. Writes the configuration for
+                          you - no hand-written JSON - and restarts the service.
+                          site list | site add --id <id> --hosts <a,b> --destination-port <n>
+                                     | site remove --id <id>
 
               status      Report what is installed, which account runs it, and whether it is
                           writing a log. Reads only.
