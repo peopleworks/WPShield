@@ -92,15 +92,16 @@ internal sealed class SetupRunner(
         _output.WriteLine($"WPShield setup - {site.Name}{(_options.DryRun ? "   DRY RUN, nothing will be changed" : string.Empty)}");
         _output.WriteLine();
 
-        var steps = new List<SetupStep>();
-
+        // Each step is reported as it completes rather than collected and printed at the end. That
+        // is deliberate: a step can take a while - the preflight reads IIS, step 5 requests the live
+        // site - and an operator watching a production change needs to see how far it got while it
+        // is still getting there, not only once it has finished or failed.
         foreach (var step in new Func<IisSite, SetupStep>[]
         {
             CheckHost, CheckGatewayInstalled, ConfigureSite, CheckSchemeTranslation, PutInPath
         })
         {
             var result = step(site);
-            steps.Add(result);
             Report(result);
 
             if (result.Result == StepResult.Blocked)
