@@ -222,6 +222,27 @@ public sealed class PreflightRunnerTests
         Assert.NotEmpty(check.Remedy);
     }
 
+    /// <summary>
+    /// The remedy has to name the verb that performs it. Found on a real machine: this blocker fired
+    /// on a directory left over from an earlier run, stopped <c>setup</c> at step 1, and told the
+    /// operator to edit an ACL by hand — while <c>wpshield install</c> replaces the permissions on
+    /// that exact directory and clears the blocker on its own. Sending someone to do by hand what the
+    /// tool does for them is the same defect class as the rest of this file, in its politest form.
+    /// </summary>
+    [Fact]
+    public void ThePRE016Remedy_NamesTheInstallThatPerformsIt()
+    {
+        var host = new FakeHost
+        {
+            Directories =
+            {
+                [@"C:\ProgramData\WPShield\logs"] = new DirectoryFacts(true, [@"BUILTIN\Users (S-1-5-32-545)"])
+            }
+        };
+
+        Assert.Contains("wpshield install", Find(Run(host), "PRE-016").Remedy, StringComparison.Ordinal);
+    }
+
     /// <summary>The install directory is the same condition and only a warning: it holds no evidence.</summary>
     [Fact]
     public void AnInstallDirectoryReadableByUnprivilegedAccounts_IsOnlyAWarning()
