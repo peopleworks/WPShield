@@ -33,6 +33,7 @@ internal sealed class Enabler(
     ISiteProbe probe,
     IIisFacts iis,
     IHostFacts host,
+    IGatewayFacts gateway,
     EnableOptions options,
     TextWriter output)
 {
@@ -40,6 +41,7 @@ internal sealed class Enabler(
     private readonly ISiteProbe _probe = probe ?? throw new ArgumentNullException(nameof(probe));
     private readonly IIisFacts _iis = iis ?? throw new ArgumentNullException(nameof(iis));
     private readonly IHostFacts _host = host ?? throw new ArgumentNullException(nameof(host));
+    private readonly IGatewayFacts _gateway = gateway ?? throw new ArgumentNullException(nameof(gateway));
     private readonly EnableOptions _options = options ?? throw new ArgumentNullException(nameof(options));
     private readonly TextWriter _output = output ?? throw new ArgumentNullException(nameof(output));
 
@@ -111,6 +113,33 @@ internal sealed class Enabler(
         // reads it, and refuses without it - which enforces the ordering across the boundary and
         // means enabling the rule cannot produce the redirect loop.
         RequireWordPressIsToldTheSchemeChanged(site);
+
+        // The gateway must already know this site's public host. Without it, the gateway resolves no
+        // site for the Host header and answers 421 Misdirected Request to every visitor - the site is
+        // down the instant the rule goes live. This has to be checked here, from configuration,
+        // because there is no way to ask a running gateway the question without first pointing
+        // traffic at it, which is the thing being guarded.
+        //
+        // The probe used to read a 421 as "the site answered", so this failure would have been
+        // applied, verified, and reported as success. The probe no longer does; this refuses before
+        // anything is written at all, which is the better of the two places to stop it.
+        if (!_gateway.Knows(plan.PublicHost))
+        {
+            var known = _gateway.KnownHosts.Count == 0
+                ? "It has no sites configured at all."
+                : $"It knows: {string.Join(", ", _gateway.KnownHosts)}.";
+
+            var where = _gateway.ConfigurationDirectory is { } directory
+                ? $" Its configuration is in {directory}."
+                : " No installed gateway was found on this machine.";
+
+            throw new CliArgumentException(
+                $"The gateway does not resolve '{plan.PublicHost}'. {known}{where} Enabling the rule now would " +
+                "forward every request for this site to a gateway that answers 421 Misdirected Request, and the " +
+                $"site would be down immediately. Add the site to {Install.Installer.OverlayFileName}, restart " +
+                "the WPShield service, confirm the resolved site table names this host, and run this again. " +
+                "Nothing was changed.");
+        }
 
         // Enabling the rule while nothing answers on the loopback port takes the site down
         // instantly: IIS would forward every request to a closed port.

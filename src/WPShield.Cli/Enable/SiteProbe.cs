@@ -21,6 +21,11 @@ namespace WPShield.Cli.Enable;
 /// varies by platform; counting hops reports it as what it is.
 /// </para>
 /// <para>
+/// <b>A 421 is a failure, not an answer.</b> That is the gateway's own "I have no site for this
+/// Host", so it means the request arrived and WPShield refused to own it — the site is down. See
+/// <see cref="Classify"/>; reading it as healthy was a real hole.
+/// </para>
+/// <para>
 /// It records the status line and nothing else. No body, no headers beyond it — the same rule
 /// everything in this project that writes evidence follows.
 /// </para>
@@ -33,6 +38,48 @@ internal sealed class SiteProbe : ISiteProbe
     private const int MaximumHops = 5;
 
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(15);
+
+    /// <summary>
+    /// Turns one status code into a verdict, or <see langword="null"/> to follow a redirect.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Pure, so the decision this verb reverts on can be stated in a test rather than reproduced with
+    /// a live server.
+    /// </para>
+    /// <para>
+    /// <b>421 is a failure, and reading it as one is the whole point of this method existing.</b>
+    /// <c>421 Misdirected Request</c> is what the WPShield gateway answers for a <c>Host</c> it has no
+    /// site for. It used to fall into the "not a 5xx, not a redirect, so the site answered" branch,
+    /// which meant putting IIS in front of a gateway that did not know the site produced a 421 to
+    /// every visitor while this verb reported <i>enabled and verified</i> and reverted nothing. It is
+    /// the one status code that is strictly more suspicious after this change than before it: nothing
+    /// else returns 421 in this path, so seeing one means the request reached the gateway and the
+    /// gateway refused to own it.
+    /// </para>
+    /// </remarks>
+    internal static SiteHealth? Classify(int status, int hop, string url)
+    {
+        if (status == 421)
+        {
+            return new SiteHealth(
+                false,
+                $"HTTP 421 from {url}. That is WPShield answering for a host it has no site for, so the " +
+                "request reached the gateway and the gateway refused to own it.");
+        }
+
+        if (status >= 500)
+        {
+            return new SiteHealth(false, $"HTTP {status} from {url}");
+        }
+
+        if (status is < 300 or >= 400)
+        {
+            return new SiteHealth(true, $"HTTP {status} after {hop + 1} request(s)");
+        }
+
+        return null;
+    }
 
     public SiteHealth Check(string publicHost)
     {
@@ -63,14 +110,9 @@ internal sealed class SiteProbe : ISiteProbe
                 var status = (int)response.StatusCode;
                 seen.Add(status.ToString(CultureInfo.InvariantCulture));
 
-                if (status >= 500)
+                if (Classify(status, hop, url) is { } verdict)
                 {
-                    return new SiteHealth(false, $"HTTP {status} from {url}");
-                }
-
-                if (status is < 300 or >= 400)
-                {
-                    return new SiteHealth(true, $"HTTP {status} after {hop + 1} request(s)");
+                    return verdict;
                 }
 
                 var location = response.Headers.Location;

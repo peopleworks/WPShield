@@ -12,6 +12,33 @@ must complete first.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`wpshield enable` could take a live site down and report success. It cannot now.** The gateway
+  answers **421 Misdirected Request** for a `Host` it has no site for. Enabling the rewrite rule
+  against a gateway that had not been told about the site therefore pointed every visitor at that
+  421 - and `SiteProbe` classified a 421 as *the site answered*, because it fell into the
+  "not a 5xx, not a redirect" branch. So the verb applied the change, "verified" it, reverted
+  nothing, and printed **enabled and verified** over a site that was down.
+
+  That is the defect this project has spent a week finding in other clothes - a tool reporting a
+  state it has not achieved - sitting inside the one verb whose entire justification
+  ([ADR 0005](docs/en/adr/0005-putting-wpshield-in-the-path.md)) is *"it verifies the result and
+  reverts on failure"*. It was found by reading the code, not by hitting it: the operator's first
+  real `enable` was stopped by the unrelated `wp-config.php` guard, which is the only reason a
+  production site did not go down behind a success message.
+
+  Closed in both places, because either alone would have been enough and neither alone is trustworthy:
+
+  - **A sixth refusal, before anything is written.** `enable` now reads the installed gateway's own
+    `Sites[].Hosts[]` and refuses when the site's public host is not among them, naming the hosts the
+    gateway *does* know and where its configuration lives. It has to be a configuration check rather
+    than a request, because there is no way to ask a running gateway "would you resolve this host"
+    without first pointing traffic at it - which is the thing being guarded.
+  - **The probe no longer accepts a 421.** It is the gateway's own signature: the request arrived and
+    WPShield refused to own it. The status-to-verdict decision is now a pure function with its own
+    tests, so what this verb reverts on can be stated rather than reproduced against a live server.
+
 ### Added
 
 - **`wpshield report` - a PDF over a window of the evidence log, the durable companion to `watch`.**

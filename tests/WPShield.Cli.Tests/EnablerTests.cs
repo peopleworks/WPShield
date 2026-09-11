@@ -24,6 +24,58 @@ public sealed class EnablerTests : IDisposable
     // =============================================================================================
 
     /// <summary>
+    /// The hole this class did not cover, and the outage it allowed.
+    /// </summary>
+    /// <remarks>
+    /// The gateway answers 421 for a Host it has no site for. Enabling the rule against a gateway
+    /// that does not know the site pointed every visitor at that 421 — and the probe read a 421 as
+    /// "the site answered", so the verb applied the change, verified nothing, reverted nothing and
+    /// printed success. Two tests now close it: this one refuses before anything is written, and
+    /// <see cref="A_421_is_a_failure_because_it_is_the_gateway_refusing_to_own_the_host"/> makes the
+    /// probe catch it if it ever gets that far.
+    /// </remarks>
+    [Fact]
+    public void It_refuses_when_the_gateway_does_not_know_the_sites_host()
+    {
+        WriteWpConfig("<?php if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) ) { $_SERVER['HTTPS'] = 'on'; }");
+
+        var failure = Assert.Throws<CliArgumentException>(() =>
+            Run(gateway: GatewayFacts.ForHosts(["wordpress-one.example", "wordpress-two.example"])));
+
+        Assert.Contains("does not resolve", failure.Message);
+        Assert.Contains(PublicHost, failure.Message);
+        Assert.Contains("421", failure.Message);
+        Assert.Contains("Nothing was changed.", failure.Message);
+
+        // The refusal must happen before the first write, not after a revert.
+        Assert.Empty(LastWriter.Calls);
+    }
+
+    [Fact]
+    public void It_says_so_plainly_when_the_gateway_has_no_sites_at_all()
+    {
+        WriteWpConfig("<?php if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) ) { $_SERVER['HTTPS'] = 'on'; }");
+
+        var failure = Assert.Throws<CliArgumentException>(() =>
+            Run(gateway: GatewayFacts.ForHosts([])));
+
+        Assert.Contains("no sites configured at all", failure.Message);
+        Assert.Empty(LastWriter.Calls);
+    }
+
+    [Fact]
+    public void The_hosts_check_is_case_insensitive()
+    {
+        WriteWpConfig("<?php if ( isset( $_SERVER['HTTP_X_FORWARDED_PROTO'] ) ) { $_SERVER['HTTPS'] = 'on'; }");
+
+        // A host is a host regardless of case; refusing on casing would be a false alarm that teaches
+        // an operator to distrust the guard.
+        var result = Run(gateway: GatewayFacts.ForHosts([PublicHost.ToUpperInvariant()]));
+
+        Assert.Equal(Enabler.ExitEnabled, result.Exit);
+    }
+
+    /// <summary>
     /// The refusal that makes this verb unable to create the redirect loop it exists to prevent.
     /// <c>wp-config.php</c> is the site's own source and the verb never writes it.
     /// </summary>
@@ -237,7 +289,8 @@ public sealed class EnablerTests : IDisposable
         IHostFacts? host = null,
         ISiteProbe? probe = null,
         Func<EnableOptions, EnableOptions>? adjust = null,
-        FakeWriter? writer = null)
+        FakeWriter? writer = null,
+        IGatewayFacts? gateway = null)
     {
         var recorder = writer ?? new FakeWriter();
         var text = new StringWriter();
@@ -249,6 +302,9 @@ public sealed class EnablerTests : IDisposable
                 probe ?? new FakeProbe(new SiteHealth(true, "HTTP 200 after 1 request(s)")),
                 iis ?? Iis(),
                 host ?? Host(),
+                // By default the gateway knows the site, so the existing tests keep testing what they
+                // were written to test rather than all tripping the new guard.
+                gateway ?? GatewayFacts.ForHosts([PublicHost]),
                 Options(adjust),
                 text).Run();
 

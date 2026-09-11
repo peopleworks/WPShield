@@ -114,6 +114,9 @@ internal static class EnableCommand
             looking at the site while they happen.
           - Running while nothing answers on the gateway port, which would take the site down
             instantly.
+          - Running when the GATEWAY DOES NOT KNOW THIS SITE'S HOST. It answers 421 for a host it
+            has no site for, so the site would be down the moment the rule went live. Add the site
+            to appsettings.Local.json and restart the service first.
 
         AFTER APPLYING it requests the site through its public binding. A 5xx, or a redirect chain
         that does not settle, reverts every change before this command returns.
@@ -165,6 +168,7 @@ internal static class EnableCommand
             new SiteProbe(),
             IisFacts.Read(),
             new HostFacts(),
+            GatewayFacts.Read(),
             options,
             output).Run();
     }
