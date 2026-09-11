@@ -80,11 +80,7 @@ internal static class SetupCommand
         var host = new HostFacts();
         var iis = IisFacts.Read();
 
-        var installDirectory = InstallationReport.Gather().InstallDirectory
-            ?? throw new CliArgumentException(
-                "No installed gateway was found, so there is nowhere to write a site table. Install it first:" +
-                Environment.NewLine +
-                "    wpshield install --path <the copied artifact directory> --start");
+        var installDirectory = ResolveInstallDirectory(InstallationReport.Gather(), options.DryRun);
 
         return new SetupRunner(
             host,
@@ -99,6 +95,37 @@ internal static class SetupCommand
             InstallationReport.Gather,
             site => RunEnable(site, options, output),
             output).Run();
+    }
+
+    /// <summary>
+    /// Where the site table lives, or a refusal.
+    /// </summary>
+    /// <remarks>
+    /// <b>A dry run must work before anything is installed.</b> That is the moment an operator most
+    /// wants the plan, and refusing to print it until after the install is backwards - the same
+    /// principle <see cref="Install.Installer"/> already states for its own preview: requiring more
+    /// to read what a tool intends than to let it do it makes the preview harder to reach than the
+    /// thing it previews. With nothing installed, a dry run assumes the default path and step 2
+    /// reports "not installed" and stops, which is the true and useful answer. Only a real run needs
+    /// somewhere to write, and only a real run refuses without it.
+    /// </remarks>
+    internal static string ResolveInstallDirectory(InstallationReport report, bool dryRun)
+    {
+        ArgumentNullException.ThrowIfNull(report);
+
+        if (report.InstallDirectory is { } directory)
+        {
+            return directory;
+        }
+
+        return dryRun
+            ? Install.Installer.DefaultInstallPath
+            : throw new CliArgumentException(
+                "No installed gateway was found, so there is nowhere to write a site table. Install it first:" +
+                Environment.NewLine +
+                "    wpshield install --path <the copied artifact directory> --start" +
+                Environment.NewLine +
+                "Or run 'wpshield setup --site <name> --dry-run' to see the whole plan first.");
     }
 
     /// <summary>
