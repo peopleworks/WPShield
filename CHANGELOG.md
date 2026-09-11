@@ -41,6 +41,40 @@ must complete first.
 
 ### Added
 
+- **`wpshield site` - the verb that was missing, and the reason a first deployment produced nothing.**
+  Nine verbs could check a host, install a service, put it in the traffic path, take it out, watch it
+  and report on it. **None of them could tell the gateway which site to protect.** The operator had to
+  invent `appsettings.Local.json` from an example, and a deployment that skipped it produced a gateway
+  resolving only the shipped `.example` placeholders, a blank `watch`, and no way to tell why.
+
+  ```
+  wpshield site list
+  wpshield site add --id peopleworks.example --hosts peopleworks.example,www.peopleworks.example \
+                    --destination-port 8081 [--mode Monitor] [--no-restart]
+  wpshield site remove --id <id>
+  ```
+
+  **It empties the `Sites` array in the installed `appsettings.json`, and that is necessary rather
+  than tidy.** JSON configuration merges arrays element by element - including the nested `Hosts`
+  array - so an overlay declaring one site leaves the surplus shipped entries live and routable. The
+  gateway already refuses to start on exactly that mixture, real hostnames beside documentation
+  placeholders, so writing only the overlay would have produced a service that will not start: a
+  worse outcome than the one being fixed. Both files are backed up as `.bak` first, and a re-publish
+  restores the shipped one.
+
+  **It restarts the service by default.** Gateway configuration is read once at startup, so a saved
+  file that nothing has re-read is a change that did not happen - the same shape of defect this
+  project keeps finding. `--no-restart` is available and says plainly that the change is not live.
+
+  Every refusal fires before a file is touched: a destination on IIS's public 80 or 443 (a loop, not
+  a protected path), an unknown mode, an observe threshold above the block threshold, and a host
+  already claimed by another site - which the gateway refuses to start on, and which is better said
+  here than there.
+
+  Verified end to end rather than by inspection: the generated configuration was written into a
+  gateway's own directory and the gateway started against it, reporting
+  `resolved 1 site(s)` / `Configured site. SiteId=peopleworks... Destination=http://127.0.0.1:8081/`.
+
 - **`wpshield report` - a PDF over a window of the evidence log, the durable companion to `watch`.**
   Where `watch` is the live view, this reads the same JSON Lines files and produces the report an
   operator files or forwards: an executive summary, the findings broken down by rule and by site, the
