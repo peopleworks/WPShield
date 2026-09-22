@@ -1,7 +1,7 @@
 using System.Globalization;
 using WPShield.Abstractions;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 /// <summary>
 /// <c>FILE-TYPE-001</c> — the final extension claims one format and the leading bytes carry another.
@@ -20,8 +20,8 @@ namespace WPShield.Rules.WordPress;
 /// The one direction that fires is <b>final extension versus leading bytes</b>. The final segment is
 /// the claim the file makes about itself: it is what the IIS static handler maps to a MIME type and
 /// what WordPress stores in the attachment record. An executable segment in a non-final position is a
-/// different question, already answered by <see cref="ExecutableUploadExtensionRule"/> and
-/// <see cref="DisguisedExtensionRule"/>.
+/// different question, already answered by <c>WP-UPLOAD-001</c> and
+/// <c>WP-UPLOAD-002</c>.
 /// </para>
 /// <para>
 /// <b>The declared <c>Content-Type</c> never triggers a finding.</b> Browsers derive the part's

@@ -136,9 +136,16 @@ Before modifying code:
 - Add unit tests and appropriate integration tests.
 - Use English for code identifiers and localize user-facing messages.
 - Preserve multi-site isolation.
-- `WPShield.Abstractions`, `WPShield.Core` and `WPShield.Rules.WordPress` must stay free of ASP.NET
-  Core, YARP, IIS and Windows-only dependencies. The Linux CI leg builds and tests exactly those
-  three so the claim is falsifiable rather than asserted.
+- `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`
+  must stay free of ASP.NET Core, YARP, IIS and Windows-only dependencies. The Linux CI leg builds and
+  tests exactly those four so the claim is falsifiable rather than asserted. `Rules.Windows` names the
+  attack surface its rules understand, not a platform it depends on - which is precisely why it is
+  on this list.
+- **The rule packages layer one way: `Rules.WordPress` references `Rules.Windows`, never the reverse.**
+  A rule goes in `Rules.WordPress` only if it needs WordPress knowledge to decide; everything about
+  the Windows and IIS hosting surface goes in `Rules.Windows`. A test that measures the two
+  together - aggregate scoring, the ordinary-traffic corpus - lives in the WordPress test project,
+  the only layer that sees both. ADR 0004, exit condition 1.
 
 ## Operator scripts
 

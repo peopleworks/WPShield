@@ -1,6 +1,6 @@
 using WPShield.Abstractions;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 /// <summary>
 /// <c>IIS-PATH-001</c> — the request path carried a form no well-behaved client produces.

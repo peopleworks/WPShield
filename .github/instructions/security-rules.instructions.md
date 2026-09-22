@@ -1,5 +1,5 @@
 ---
-applyTo: "src/WPShield.Rules.WordPress/**/*.cs"
+applyTo: "src/WPShield.Rules.Windows/**/*.cs,src/WPShield.Rules.WordPress/**/*.cs"
 ---
 
 # Security rule instructions

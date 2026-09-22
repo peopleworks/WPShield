@@ -1,7 +1,7 @@
 using System.Globalization;
 using WPShield.Abstractions;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 /// <summary>
 /// <c>PHP-CONTENT-002</c> — a valid image carrying PHP source past the end of its own image data.
@@ -36,7 +36,7 @@ namespace WPShield.Rules.WordPress;
 /// instead of the score being tuned down.
 /// </para>
 /// <para>
-/// 85 rather than 100 keeps a gradation below <see cref="IisConfigurationUploadRule"/>, which is
+/// 85 rather than 100 keeps a gradation below <c>IIS-CONFIG-001</c>, which is
 /// definitional rather than structural, and it gives an operator who raises the block threshold to
 /// 90 a meaningful position: the polyglot alone would then observe, while the polyglot together
 /// with <c>PHP-CONTENT-001</c> would still block.

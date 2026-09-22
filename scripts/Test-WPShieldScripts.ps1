@@ -394,10 +394,14 @@ $triageName = 'Invoke-WPShieldTriage.ps1'
 
 if ($parsed.ContainsKey($triageName)) {
     $triageAst = $parsed[$triageName]
-    $rulesRoot = Join-Path $RepositoryRoot 'src\WPShield.Rules.WordPress'
-    $extensionsFile = Join-Path $rulesRoot 'DangerousUploadExtensions.cs'
-    $assetRuleFile = Join-Path $rulesRoot 'ExecutableRequestInAssetDirectoryRule.cs'
-    $uploadsRuleFile = Join-Path $rulesRoot 'ExecutableRequestUnderUploadsRule.cs'
+    # The vocabulary lives in two rule packages since ADR 0004 split them: what IIS and PHP
+    # execute, and the asset-directory list, are facts about Windows hosting; the uploads
+    # directory pair is WordPress.
+    $windowsRulesRoot = Join-Path $RepositoryRoot 'src\WPShield.Rules.Windows'
+    $wordPressRulesRoot = Join-Path $RepositoryRoot 'src\WPShield.Rules.WordPress'
+    $extensionsFile = Join-Path $windowsRulesRoot 'DangerousUploadExtensions.cs'
+    $assetRuleFile = Join-Path $windowsRulesRoot 'ExecutableRequestInAssetDirectoryRule.cs'
+    $uploadsRuleFile = Join-Path $wordPressRulesRoot 'ExecutableRequestUnderUploadsRule.cs'
 
     Compare-Vocabulary 'PHP executable extensions' `
         (Get-ScriptStringList $triageAst 'script:PhpExecutableExtensions') `

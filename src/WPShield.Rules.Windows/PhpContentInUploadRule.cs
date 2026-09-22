@@ -1,7 +1,7 @@
 using System.Text;
 using WPShield.Abstractions;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 public sealed class PhpContentInUploadRule : IInspectionRule
 {

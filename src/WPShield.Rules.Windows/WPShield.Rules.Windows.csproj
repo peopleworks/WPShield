@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The rules about the Windows and IIS hosting surface: what IIS and PHP-on-IIS execute, what a
+    request for a script in an asset directory means, what an upload's bytes say it is.
+
+    "Windows" names the ATTACK SURFACE these rules understand, not a platform they depend on. This
+    project references nothing Windows-only, and the Linux CI leg builds and tests it to keep that
+    claim falsifiable rather than asserted - the same guarantee WPShield.Abstractions,
+    WPShield.Core and WPShield.Rules.WordPress carry.
+
+    It is the lower layer. WPShield.Rules.WordPress references this project, never the reverse:
+    WordPress on Windows is the specialisation, and a rule in here that needed WordPress knowledge
+    would belong in that package instead. ADR 0004, exit condition 1.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- Tests assert against the rule score constants so calibration changes cannot drift silently. -->
+    <InternalsVisibleTo Include="WPShield.Rules.Windows.Tests" />
+    <!--
+      The calibration and aggregate-scoring tests live in the WordPress test project, because they
+      measure the two packages together and only that layer can see both. They assert against these
+      constants - FILE-TYPE-001's text tier plus FILE-NAME-001 reaching the block threshold, say.
+    -->
+    <InternalsVisibleTo Include="WPShield.Rules.WordPress.Tests" />
+    <InternalsVisibleTo Include="WPShield.Core.Tests" />
+  </ItemGroup>
+</Project>

@@ -545,7 +545,7 @@ Every rule ID, score, threshold, limit and extension list above is checkable aga
 one changes, this file changes in the same pull request. A threat model that has drifted from the code
 is worse than none, because it is trusted.
 
-- Rules and scores: `src/WPShield.Rules.WordPress/`
+- Rules and scores: `src/WPShield.Rules.Windows/` and `src/WPShield.Rules.WordPress/`
 - Thresholds and action calculation: `src/WPShield.Core/SiteOptions.cs`, `InspectionEngine.cs`
 - Name normalization: `src/WPShield.Abstractions/NormalizedFileName.cs`
 - Limits, startup validation, header handling: `src/WPShield.Gateway/`

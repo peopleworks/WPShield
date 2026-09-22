@@ -43,6 +43,7 @@
       MultipartReader, MediaTypeHeaderValue and HeaderUtilities are already available to this
       Microsoft.NET.Sdk.Web project and Directory.Packages.props is untouched.
     -->
+    <ProjectReference Include="../WPShield.Rules.Windows/WPShield.Rules.Windows.csproj" />
     <ProjectReference Include="../WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
   </ItemGroup>
   <ItemGroup>

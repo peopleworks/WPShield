@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
     <ProjectReference Include="../WPShield.Core/WPShield.Core.csproj" />
+    <ProjectReference Include="../WPShield.Rules.Windows/WPShield.Rules.Windows.csproj" />
     <ProjectReference Include="../WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
   </ItemGroup>
   <ItemGroup>

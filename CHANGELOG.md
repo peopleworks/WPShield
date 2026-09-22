@@ -12,6 +12,40 @@ must complete first.
 
 ## [Unreleased]
 
+### Changed
+
+- **The rules are two packages now: `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`.** This
+  is the first half of [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md)'s first exit
+  condition. Five of the eleven rules contain nothing about WordPress - `WP-PATH-002`, `IIS-PATH-001`,
+  `PHP-CONTENT-001`, `PHP-CONTENT-002`, `FILE-TYPE-001` - and they moved, with the executable-extension
+  vocabulary and the file-signature tables they share. `Rules.WordPress` references `Rules.Windows`
+  and never the reverse: WordPress on Windows is the specialisation. "Windows" names the attack
+  surface, not a platform; the package references nothing Windows-only and the Linux CI leg now
+  builds and tests it too.
+
+  **No behaviour changed.** No rule, score, threshold or identifier moved with the files -
+  `WP-PATH-002` kept its prefix because renaming a published ID is its own decision. The shared
+  extension vocabulary became `public`: it is the one API the split actually created, and hiding it
+  behind an `InternalsVisibleTo` between two production assemblies would have hidden that.
+
+  **The tests were split by method, not by file, and the count proves it.** 94 test methods and 382
+  cases before; 94 and 382 after (89 + 293), none lost, none duplicated. A test that measures the two
+  packages together - aggregate scoring, the ordinary-traffic corpus, the published calibration - stays
+  with the WordPress tests, the only layer that sees both. The synthetic byte fixtures live in one
+  file linked into both projects rather than copied, because two copies of a fixture drift the first
+  time one is corrected. Getting there took two corrections worth recording: the first cut was by
+  section, and a search for `AggregateScore` with a word boundary could not see `AggregateScoreAsync`,
+  so several aggregate tests landed on the wrong side; the second missed that a `TheoryData` source
+  follows its consumer even when it names no rule.
+
+  The Copilot scoped security instructions applied only to `src/WPShield.Rules.WordPress/**`, so the
+  moved rules would have silently lost them. They now apply to both packages.
+
+  **The layering is asserted, not documented.** `PackageBoundaryTests` checks the compiled
+  `Rules.Windows` assembly: it must never reference `Rules.WordPress`, the engine, the gateway, or any
+  host or platform assembly - with a positive control proving the reference list is real, because a
+  row of "does not contain" assertions passes just as well against an empty list.
+
 ### Fixed
 
 - **`wpshield enable` could take a live site down and report success. It cannot now.** The gateway

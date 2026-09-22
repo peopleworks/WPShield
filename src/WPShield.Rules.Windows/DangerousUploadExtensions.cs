@@ -1,12 +1,21 @@
 using System.Collections.Frozen;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 /// <summary>
 /// Extension vocabularies shared by the upload rules. Segments are stored lowercased and without a
 /// leading dot to match <see cref="Abstractions.NormalizedFileName.ExtensionSegments"/>.
 /// </summary>
-internal static class DangerousUploadExtensions
+/// <remarks>
+/// <b>Public because it is the interface between the two rule packages.</b> What IIS and PHP-on-IIS
+/// execute is a fact about Windows hosting, so it lives in this package; the WordPress rules consume
+/// it rather than keeping their own copy. It could have stayed internal behind an
+/// <c>InternalsVisibleTo</c> naming the WordPress assembly, and that would have hidden the one API
+/// the split actually created. The triage tool still carries a hand-written copy, because it runs
+/// where no .NET assembly can be loaded; <c>Test-WPShieldScripts.ps1</c> compares that copy with this
+/// file entry by entry.
+/// </remarks>
+public static class DangerousUploadExtensions
 {
     /// <summary>
     /// Extensions a PHP-FastCGI handler will execute. <c>phps</c>, <c>pht</c> and <c>phtm</c> are

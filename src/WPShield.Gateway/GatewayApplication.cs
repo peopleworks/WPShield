@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using WPShield.Abstractions;
 using WPShield.Core;
 using WPShield.Gateway.Logging;
+using WPShield.Rules.Windows;
 using WPShield.Rules.WordPress;
 using Yarp.ReverseProxy.Forwarder;
 

@@ -71,8 +71,8 @@ packages the repository references:
 Only `Yarp.ReverseProxy` ships in a runtime artifact. Everything else is a build-time or test-time
 dependency.
 
-`WPShield.Abstractions`, `WPShield.Core` and `WPShield.Rules.WordPress` reference no NuGet package at
-all. That is deliberate: those three projects are platform-independent and are verified on Linux in
+`WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`
+reference no NuGet package at all. That is deliberate: those four projects are platform-independent and are verified on Linux in
 continuous integration so the claim stays falsifiable.
 
 ## Trademarks

@@ -28,7 +28,8 @@ if you establish a new invariant, record it there.
 | --- | --- |
 | `src/WPShield.Abstractions/` | Inspection contracts. Changing one is a breaking change for every rule. |
 | `src/WPShield.Core/` | Site resolution, scoring, Monitor/Block policy. Most engine fixes belong here. |
-| `src/WPShield.Rules.WordPress/` | The rules themselves. A new detection normally starts and ends here. |
+| `src/WPShield.Rules.Windows/` | Rules about the Windows and IIS hosting surface. A detection that needs no WordPress knowledge starts and ends here. |
+| `src/WPShield.Rules.WordPress/` | Rules that need WordPress knowledge to decide. References `Rules.Windows`, never the reverse. |
 | `src/WPShield.Gateway/` | Kestrel and YARP, startup validation, forwarding. The only project allowed HTTP concerns. |
 | `src/WPShield.Service/` | The engine demonstration. It is what the worked example in the README runs. |
 | `tests/` | xUnit. 215 tests today, all of which run in about a second. |
@@ -64,9 +65,9 @@ quiet failure: a drifted copy does not break, it reports coverage WPShield does 
 `dotnet format --verify-no-changes` is a CI job, not a suggestion — a pull request that fails it is
 red before anyone reads the diff.
 
-CI additionally builds and tests `WPShield.Abstractions`, `WPShield.Core` and
-`WPShield.Rules.WordPress` on Linux. That leg is not there for portability as a goal in itself: the
-README claims those three projects are platform-independent, and the Linux job is what makes the
+CI additionally builds and tests `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows`
+and `WPShield.Rules.WordPress` on Linux. That leg is not there for portability as a goal in itself: the
+README claims those four projects are platform-independent, and the Linux job is what makes the
 claim falsifiable. Adding an ASP.NET Core, YARP, IIS or Windows-only dependency to any of them turns
 that job red, which is the intended outcome. HTTP and Windows concerns belong in
 `WPShield.Gateway`.

@@ -1,7 +1,7 @@
 using System.Collections.Frozen;
 using WPShield.Abstractions;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 /// <summary>
 /// <c>WP-PATH-002</c> — an executable file was requested from a directory that holds only static
@@ -42,6 +42,14 @@ namespace WPShield.Rules.WordPress;
 /// <c>dist</c> would be refused. No such plugin is known to the project, and the shape is itself a
 /// packaging defect — but this is the rule to look at first when a site reports something broken, and
 /// Monitor mode exists so that it is reported rather than discovered.
+/// </para>
+/// <para>
+/// <b>It lives in the Windows package and still carries a <c>WP-</c> prefix, and both are
+/// deliberate.</b> Nothing in its directory list is WordPress - <c>dist</c>, <c>_next</c>,
+/// <c>node_modules</c> - so it moved here when ADR 0004's first exit condition split the rules. The
+/// identifier did not move with it: a rule ID appears in every stored finding and in whatever an
+/// operator has built on top of them, so renaming it is a breaking change with its own decision to
+/// make, and ADR 0004 names it as one rather than letting a package move make it silently.
 /// </para>
 /// </remarks>
 public sealed class ExecutableRequestInAssetDirectoryRule : IRequestPathRule
