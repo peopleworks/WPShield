@@ -41,6 +41,11 @@ must complete first.
   The Copilot scoped security instructions applied only to `src/WPShield.Rules.WordPress/**`, so the
   moved rules would have silently lost them. They now apply to both packages.
 
+  **The layering is asserted, not documented.** `PackageBoundaryTests` checks the compiled
+  `Rules.Windows` assembly: it must never reference `Rules.WordPress`, the engine, the gateway, or any
+  host or platform assembly - with a positive control proving the reference list is real, because a
+  row of "does not contain" assertions passes just as well against an empty list.
+
 ### Fixed
 
 - **`wpshield enable` could take a live site down and report success. It cannot now.** The gateway
