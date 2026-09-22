@@ -1,4 +1,5 @@
 using WPShield.Abstractions;
+using WPShield.Rules.Windows;
 
 namespace WPShield.Rules.WordPress;
 

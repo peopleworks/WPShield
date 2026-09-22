@@ -38,6 +38,7 @@ jobs:
           for project in \
             tests/WPShield.Abstractions.Tests \
             tests/WPShield.Core.Tests \
+            tests/WPShield.Rules.Windows.Tests \
             tests/WPShield.Rules.WordPress.Tests
           do
             dotnet test "$project" --configuration Release

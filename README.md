@@ -203,7 +203,8 @@ WPShield separates reusable inspection contracts and rules from HTTP hosting con
 flowchart TB
     A["WPShield.Abstractions<br/>Stable inspection contracts"]
     C["WPShield.Core<br/>Site resolution, scoring, policies"]
-    R["WPShield.Rules.WordPress<br/>WordPress-specific rules"]
+    RW["WPShield.Rules.Windows<br/>Windows and IIS surface rules"]
+    R["WPShield.Rules.WordPress<br/>Rules that need WordPress knowledge"]
     S["WPShield.Service<br/>Engine demonstration"]
     G["WPShield.Gateway<br/>Loopback Kestrel + YARP"]
     O["WPShield.Observability<br/>Planned"]
@@ -211,7 +212,8 @@ flowchart TB
     W["WPShield Windows Service<br/>Planned"]
 
     A --> C
-    A --> R
+    A --> RW
+    RW --> R
     C --> S
     C --> G
     R --> S
@@ -530,7 +532,8 @@ WPShield/
 |-- src/
 |   |-- WPShield.Abstractions/       Stable inspection contracts
 |   |-- WPShield.Core/               Site resolution and rule evaluation
-|   |-- WPShield.Rules.WordPress/    WordPress-focused defensive rules
+|   |-- WPShield.Rules.Windows/      Windows and IIS surface rules (portable)
+|   |-- WPShield.Rules.WordPress/    Rules that need WordPress knowledge
 |   |-- WPShield.Service/            Inspection engine demonstration
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway

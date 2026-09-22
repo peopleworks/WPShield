@@ -48,8 +48,8 @@ Closes #
       synthetic markers demonstrate a detection just as well.
 - [ ] **No real hostnames, internal ports or deployment topology** anywhere in the diff, including
       test data and the commit message. Use `wordpress-one.example` and loopback destinations.
-- [ ] **`WPShield.Abstractions`, `WPShield.Core` and `WPShield.Rules.WordPress` gained no ASP.NET
-      Core, YARP, IIS or Windows-only dependency.** The Linux CI leg exists to catch exactly this.
+- [ ] **`WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`
+      gained no ASP.NET Core, YARP, IIS or Windows-only dependency.** The Linux CI leg exists to catch exactly this.
 - [ ] **`CHANGELOG.md` updated under `Unreleased`**, so an operator can tell whether they need this.
 
 ## If this adds or changes a rule

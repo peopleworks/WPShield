@@ -133,7 +133,9 @@ $ErrorActionPreference = 'Stop'
 # =====================================================================================
 #  Vocabulary shared with the gateway rules.
 #
-#  These four lists are copies of the ones in src/WPShield.Rules.WordPress. They are copies
+#  These four lists are copies of the ones in src/WPShield.Rules.Windows (the executable
+#  extensions and the asset directories) and src/WPShield.Rules.WordPress (the uploads
+#  directories). They are copies
 #  because this script has to run on a server that has no .NET 10 runtime and no build of
 #  WPShield on it - a host being triaged is not a host to install software on. The copies are
 #  compared against the C# originals by scripts/Test-WPShieldScripts.ps1, which fails the build

@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Collections.Frozen;
 
-namespace WPShield.Rules.WordPress;
+namespace WPShield.Rules.Windows;
 
 /// <summary>
 /// The format family an upload claims through its final extension, or that its leading bytes

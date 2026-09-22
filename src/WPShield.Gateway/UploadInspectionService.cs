@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Globalization;
 using WPShield.Abstractions;
 using WPShield.Core;
+using WPShield.Rules.Windows;
 
 namespace WPShield.Gateway;
 

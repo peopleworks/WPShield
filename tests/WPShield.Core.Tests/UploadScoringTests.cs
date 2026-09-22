@@ -1,5 +1,6 @@
 using WPShield.Abstractions;
 using WPShield.Core;
+using WPShield.Rules.Windows;
 using WPShield.Rules.WordPress;
 
 namespace WPShield.Core.Tests;

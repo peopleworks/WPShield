@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using WPShield.Abstractions;
 using WPShield.Core;
+using WPShield.Rules.Windows;
 using WPShield.Rules.WordPress;
 
 var configurationPath = args.FirstOrDefault();

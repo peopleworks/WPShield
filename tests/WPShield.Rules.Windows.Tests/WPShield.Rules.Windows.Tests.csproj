@@ -8,7 +8,6 @@
   <ItemGroup>
     <ProjectReference Include="../../src/WPShield.Abstractions/WPShield.Abstractions.csproj" />
     <ProjectReference Include="../../src/WPShield.Rules.Windows/WPShield.Rules.Windows.csproj" />
-    <ProjectReference Include="../../src/WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- One copy of the synthetic fixtures, linked into both rule test projects. See the file. -->

@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/WPShield.Abstractions/WPShield.Abstractions.csproj" />
     <Project Path="src/WPShield.Core/WPShield.Core.csproj" />
+    <Project Path="src/WPShield.Rules.Windows/WPShield.Rules.Windows.csproj" />
     <Project Path="src/WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
     <Project Path="src/WPShield.Service/WPShield.Service.csproj" />
     <Project Path="src/WPShield.Logging/WPShield.Logging.csproj" />
@@ -12,6 +13,7 @@
     <Project Path="tests/WPShield.Abstractions.Tests/WPShield.Abstractions.Tests.csproj" />
     <Project Path="tests/WPShield.Core.Tests/WPShield.Core.Tests.csproj" />
     <Project Path="tests/WPShield.Gateway.Tests/WPShield.Gateway.Tests.csproj" />
+    <Project Path="tests/WPShield.Rules.Windows.Tests/WPShield.Rules.Windows.Tests.csproj" />
     <Project Path="tests/WPShield.Rules.WordPress.Tests/WPShield.Rules.WordPress.Tests.csproj" />
     <Project Path="tests/WPShield.Cli.Tests/WPShield.Cli.Tests.csproj" />
   </Folder>

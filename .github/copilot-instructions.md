@@ -6,7 +6,8 @@ WPShield is an open-source, multilingual defensive gateway for WordPress sites h
 
 - `WPShield.Abstractions` contains stable, platform-independent inspection contracts.
 - `WPShield.Core` contains site resolution, configuration, policies, scoring, redaction, and action calculation. Keep it independent from ASP.NET Core and YARP where possible.
-- `WPShield.Rules.WordPress` contains WordPress-specific, explainable defensive rules.
+- `WPShield.Rules.Windows` contains explainable defensive rules about the Windows and IIS hosting surface - what IIS and PHP-on-IIS execute, what a file's bytes say it is. "Windows" names the attack surface, not a platform dependency: it is portable and tested on Linux.
+- `WPShield.Rules.WordPress` contains the rules that need WordPress knowledge to decide. It references `WPShield.Rules.Windows`, never the reverse.
 - `WPShield.Gateway` is the loopback-only Kestrel/YARP gateway responsible for explicit host routing, safe forwarding, request correlation, health checks, and future pre-forward inspection.
 - Future projects cover observability, local management, and Windows Service hosting.
 - A single instance may protect multiple sites. Preserve strict site isolation and never use a default backend.

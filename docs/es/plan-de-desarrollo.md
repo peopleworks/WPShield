@@ -241,7 +241,8 @@ WPShield.Abstractions
         ▼
 WPShield.Core
         │
-        ├── WPShield.Rules.WordPress
+        ├── WPShield.Rules.Windows
+        │       └── WPShield.Rules.WordPress
         ├── WPShield.Gateway
         ├── WPShield.Observability
         ├── WPShield.Management
@@ -280,17 +281,27 @@ Responsabilidades:
 - Redacción de datos.
 - Cálculo de acciones.
 
-### 5.3 `WPShield.Rules.WordPress`
+### 5.3 `WPShield.Rules.Windows` y `WPShield.Rules.WordPress`
 
-Responsabilidades:
+Dos paquetes de reglas desde la condición de salida 1 del ADR 0004. `WPShield.Rules.WordPress`
+referencia a `WPShield.Rules.Windows`, nunca al revés: WordPress sobre Windows es la especialización.
+"Windows" nombra la superficie de ataque, no una dependencia de plataforma; ambos paquetes son
+portables y se prueban en Linux.
 
-- Extensiones ejecutables PHP.
-- Etiquetas PHP.
-- Discrepancias de MIME.
-- Nombres peligrosos.
+`WPShield.Rules.Windows` — lo que no necesita saber de WordPress:
+
+- Extensiones que ejecutan IIS y PHP sobre IIS.
+- Etiquetas PHP y políglotas.
+- Discrepancias entre el nombre y el contenido real del archivo.
+- Rutas de solicitud inseguras y scripts en directorios de recursos estáticos.
+
+`WPShield.Rules.WordPress` — lo que necesita saber de WordPress para decidir:
+
+- Nombres peligrosos, incluida la reescritura de `sanitize_file_name()`.
 - Archivos con múltiples extensiones.
-- Rutas específicas de WordPress.
-- Reglas explicables.
+- Rutas específicas de WordPress, como `wp-content/uploads`.
+
+Ambos: reglas explicables, con identificador estable, puntuación y evidencia normalizada.
 
 ### 5.4 `WPShield.Gateway`
 

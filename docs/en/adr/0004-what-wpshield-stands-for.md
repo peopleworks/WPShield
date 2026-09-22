@@ -168,6 +168,14 @@ of this file; conditions 1 and 2 asked for something the code had partly done al
    `WPShield.Core` are free of ASP.NET Core, YARP, IIS and Windows dependencies, and a Linux CI leg
    builds and tests those two plus the rules package, which is what keeps that claim falsifiable.
 
+   **Progress, 2026-09-22: the split is done; the coverage is not.** `WPShield.Rules.Windows` now
+   holds the five rules with no WordPress in them, plus the executable-extension vocabulary and
+   the file-signature tables they share, and `WPShield.Rules.WordPress` references it. The Linux
+   leg builds and tests both. No rule, score or identifier changed - `WP-PATH-002` moved and kept
+   its name, as condition 3 requires. The second half, rules for the .NET surface, is being chosen
+   against the server's own IIS logs, which put `.env` probes alone at 93,120 requests in one week
+   and showed that a path list taken from a public scanner catalog would miss 84% of them.
+
 2. **The README and the site say what is covered today.** A reader must be able to learn, without
    scrolling, which surface the rules reach — WordPress uploads, and the Windows, IIS, PHP and
    filename surface underneath them — and which one they do not reach at all: the .NET application

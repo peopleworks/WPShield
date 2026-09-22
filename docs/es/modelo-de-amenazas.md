@@ -588,7 +588,7 @@ Cada identificador de regla, puntuación, umbral, límite y lista de extensiones
 verificable contra el código fuente. Cuando uno cambia, este archivo cambia en el mismo pull request.
 Un modelo de amenazas que se ha alejado del código es peor que ninguno, porque se le cree.
 
-- Reglas y puntuaciones: `src/WPShield.Rules.WordPress/`
+- Reglas y puntuaciones: `src/WPShield.Rules.Windows/` y `src/WPShield.Rules.WordPress/`
 - Umbrales y cálculo de la acción: `src/WPShield.Core/SiteOptions.cs`, `InspectionEngine.cs`
 - Normalización de nombres: `src/WPShield.Abstractions/NormalizedFileName.cs`
 - Límites, validación de arranque y manejo de encabezados: `src/WPShield.Gateway/`

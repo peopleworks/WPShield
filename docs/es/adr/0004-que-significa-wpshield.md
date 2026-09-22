@@ -171,6 +171,15 @@ condición 3 pedía algo que una regla publicada ya estaba violando.*
    dependencias de Windows, y un leg de CI en Linux compila y prueba esos dos más el paquete de
    reglas, que es lo que mantiene esa afirmación falsable.
 
+   **Avance, 2026-09-22: la partición está hecha; la cobertura no.** `WPShield.Rules.Windows` ya
+   contiene las cinco reglas sin nada de WordPress, más el vocabulario de extensiones ejecutables y
+   las tablas de firmas de archivo que comparten, y `WPShield.Rules.WordPress` lo referencia. El leg
+   de Linux compila y prueba ambos. Ninguna regla, puntuación ni identificador cambió - `WP-PATH-002`
+   se movió y conservó su nombre, como exige la condición 3. La segunda mitad, reglas para la
+   superficie .NET, se está eligiendo contra los propios logs de IIS del servidor, que registraron
+   93.120 sondeos de `.env` en una sola semana y mostraron que una lista de rutas tomada de un
+   catálogo público de escáneres se perdería el 84 % de ellos.
+
 2. **El README y el sitio dicen qué se cubre hoy.** Un lector debe poder enterarse, sin desplazarse,
    de qué superficie alcanzan las reglas — las subidas de WordPress, y la superficie de Windows, IIS,
    PHP y nombres de archivo debajo de ellas — y cuál no alcanzan en absoluto: la superficie de

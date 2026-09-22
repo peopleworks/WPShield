@@ -1,6 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
+    <!--
+      The Windows and IIS rules are the layer beneath these. The executable-extension vocabulary
+      lives there, because an IIS rule needs it whether or not WordPress is involved; these rules
+      consume it. The reference never runs the other way. ADR 0004, exit condition 1.
+    -->
+    <ProjectReference Include="../WPShield.Rules.Windows/WPShield.Rules.Windows.csproj" />
   </ItemGroup>
   <ItemGroup>
     <!-- Tests assert against the rule score constants so calibration changes cannot drift silently. -->
