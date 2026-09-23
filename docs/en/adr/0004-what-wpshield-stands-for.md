@@ -187,7 +187,7 @@ of this file; conditions 1 and 2 asked for something the code had partly done al
    is scored by whether the shape can have a legitimate caller rather than by how often it was
    seen: six block alone and three observe. Against the same week of logs, they and the three older
    path rules put about 110,000 requests at the block threshold, and none of the site's answers
-   among them was a real page. See [request path inspection](../m2-5-request-path-inspection.md#the-exposure-family).
+   among them was a legitimate page. See [request path inspection](../m2-5-request-path-inspection.md#the-exposure-family).
 
    **An exposed admin path is deliberately not covered.** `/admin`, `/login`, `/dashboard` and
    `/signin` were probed from hundreds of addresses, and every one of them is a real route on real

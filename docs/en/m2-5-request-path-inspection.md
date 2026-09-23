@@ -106,8 +106,9 @@ position**: a `.env` anywhere, a `.git` folder anywhere.
 | `PHP-PATH-002` | A `phpinfo` or test page: `phpinfo.php`, `info.php`, `test.php`… | 30 | ~14,000 |
 
 Together with the three rules above, about **110,000** requests in that week reach the default block
-threshold. Every one the site answered with a 2xx was a catch-all page that answers any path — none
-was a real page that a block would have broken.
+threshold, and none of them was a legitimate page a block would have broken. Every one a site
+answered with a 2xx was a catch-all page that answers any path, an empty answer to a client that had
+already disconnected, or a script the path rules exist to refuse.
 
 ### The scores, and why three of them only observe
 

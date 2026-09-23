@@ -18,7 +18,9 @@ namespace WPShield.Rules.Windows;
 /// <b>IIS already refuses <c>web.config</c> by default</b> - request filtering answers it with
 /// 404.8, and those logs show exactly that. The rule is not redundant with it: a site whose request
 /// filtering was loosened serves the file, and on every site the finding is the log line that says
-/// someone asked. <c>launchSettings.json</c> has no such default protection.
+/// someone asked. <c>launchSettings.json</c> has no such default protection. A legitimate
+/// <c>web.config</c> below the site root is refused either way: in Block mode WPShield answers 403
+/// before IIS would have answered 404.8, which changes the status code a scanner sees and nothing else.
 /// </para>
 /// <para>
 /// <b>Exact names, in any segment.</b> <c>/../../web.config</c> normalizes to <c>/web.config</c> and
