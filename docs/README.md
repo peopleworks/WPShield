@@ -26,6 +26,7 @@ the same set.
 | M2 upload rules · Reglas de carga M2 | [Upload rules](en/m2-upload-rules.md) | [Reglas de carga](es/m2-reglas-carga.md) |
 | Triage tool · Herramienta de triage | [Triage tool](en/triage-tool.md) | [Herramienta de triage](es/herramienta-de-triage.md) |
 | Preflight · Verificación previa | [Preflight](en/preflight.md) | [Verificación previa](es/verificacion-previa.md) |
+| Audit · Auditoría | [Audit](en/audit.md) | [Auditoría](es/auditoria.md) |
 | Deployment · Despliegue | [Deployment](en/deployment.md) | [Despliegue](es/despliegue.md) |
 | ADR 0001 — production traffic path · Ruta de tráfico en producción | [Production traffic path](en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](es/adr/0001-ruta-de-trafico-en-produccion.md) |
 | ADR 0002 — brute-force defence · Defensa contra fuerza bruta | [Where brute-force defence belongs](en/adr/0002-host-level-brute-force-defence.md) | [Dónde vive la defensa contra fuerza bruta](es/adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md) |
