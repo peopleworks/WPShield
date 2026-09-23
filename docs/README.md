@@ -19,6 +19,7 @@ Usa este índice para encontrar las guías del operador y las referencias técni
 | Operator experience research | [NETworkManager evaluation](en/networkmanager-evaluation.md) | [Evaluación de NETworkManager](es/evaluacion-networkmanager.md) |
 | Windows service protection | [RdpGuard comparison and benchmark plan](en/host-protection-benchmark.md) | [Comparación con RdpGuard y plan de evaluación](es/evaluacion-proteccion-servidor.md) |
 | Offline IIS login evidence | [Read a W3C log by site](en/iis-login-evidence.md) | [Verificar accesos IIS por sitio](es/evidencia-accesos-iis.md) |
+| Server posture audit · Auditoría de postura del servidor | [Audit](en/audit.md) | [Auditoría](es/auditoria.md) |
 | Host observation · Observación del servidor | [Listeners, flows, and attacks](en/network-sensor-design.md) | [Puertos, flujos y ataques](es/diseno-sensor-red.md) |
 | Gateway reference · Referencia del gateway | [Findings, architecture, inspection, rules, evidence, configuration, responses, and troubleshooting](en/gateway-reference.md) | [Hallazgos, arquitectura, inspección, reglas, evidencia, configuración, respuestas y resolución de problemas](es/referencia-gateway.md) |
 | Operator reference · Referencia del operador | [Tasks, detailed status, local evaluation, source builds, repository layout, and milestones](en/operator-reference.md) | [Tareas, estado detallado, evaluación local, compilación, estructura e hitos](es/referencia-operador.md) |
@@ -33,6 +34,7 @@ Usa este índice para encontrar las guías del operador y las referencias técni
 | M2 upload rules · Reglas de carga M2 | [Upload rules](en/m2-upload-rules.md) | [Reglas de carga](es/m2-reglas-carga.md) |
 | Triage tool · Herramienta de triage | [Triage tool](en/triage-tool.md) | [Herramienta de triage](es/herramienta-de-triage.md) |
 | Preflight · Verificación previa | [Preflight](en/preflight.md) | [Verificación previa](es/verificacion-previa.md) |
+| Audit · Auditoría | [Audit](en/audit.md) | [Auditoría](es/auditoria.md) |
 | Deployment · Despliegue | [Deployment](en/deployment.md) | [Despliegue](es/despliegue.md) |
 | Request evidence · Evidencia de solicitudes | [Traceability and completeness](en/request-evidence.md) | [Trazabilidad y completitud](es/evidencia-solicitudes.md) |
 | Offline policy preview · Vista previa offline | [Policy preview](en/policy-preview.md) | [Vista previa de políticas](es/vista-previa-politicas.md) |
