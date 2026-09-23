@@ -111,8 +111,10 @@ en cualquier sitio, una carpeta `.git` en cualquier sitio.
 | `PHP-PATH-002` | Una página `phpinfo` o de prueba: `phpinfo.php`, `info.php`, `test.php`… | 30 | ~14.000 |
 
 Junto con las tres reglas anteriores, cerca de **110.000** peticiones de esa semana alcanzan el umbral
-de bloqueo por omisión. Todas las que el sitio respondió con un 2xx eran páginas atrapa-todo que
-responden a cualquier ruta; ninguna era una página real que un bloqueo hubiera roto.
+de bloqueo por omisión, y ninguna era una página legítima que un bloqueo hubiera roto. Todas las que
+un sitio respondió con un 2xx eran páginas atrapa-todo que responden a cualquier ruta, respuestas
+vacías a un cliente que ya se había desconectado, o scripts que las reglas de ruta existen para
+rechazar.
 
 ### Los puntajes, y por qué tres solo observan
 

@@ -108,7 +108,9 @@ must complete first.
   `PHP-PATH-002` `phpinfo` pages observe at 30 and never block alone: a dataset may be published on
   purpose, a Blazor WebAssembly client loads its `appsettings.json` on every page, and real
   installations keep a `test.php`. Against the same logs the twelve path rules put about 110,000
-  requests at the block threshold, and none of the sites' answers among them was a real page. See
+  requests at the block threshold, and none of the sites' answers among them was a legitimate page -
+  each was a catch-all page, an empty answer to a departed client, or a script the path rules exist
+  to refuse. See
   [the exposure family](docs/en/m2-5-request-path-inspection.md#the-exposure-family).
 
   **The silent cases are asserted as carefully as the firing ones.** `.well-known/acme-challenge/`,

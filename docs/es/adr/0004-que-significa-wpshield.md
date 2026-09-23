@@ -192,7 +192,7 @@ condición 3 pedía algo que una regla publicada ya estaba violando.*
    rutas de un catálogo, y cada una se puntúa según si la forma puede tener un llamador legítimo, no
    según cuántas veces se vio: seis bloquean solas y tres observan. Contra la misma semana de logs,
    junto con las tres reglas de ruta anteriores, llevan cerca de 110.000 peticiones al umbral de
-   bloqueo, y ninguna de las respuestas del sitio entre ellas era una página real. Véase la
+   bloqueo, y ninguna de las respuestas del sitio entre ellas era una página legítima. Véase la
    [inspección de la ruta de la solicitud](../m2-5-inspeccion-ruta-solicitud.md#la-familia-de-exposición).
 
    **Una ruta de administración expuesta no se cubre, a propósito.** `/admin`, `/login`,

@@ -23,8 +23,9 @@ namespace WPShield.Rules.Windows;
 /// </para>
 /// <para>
 /// <b>Score 30: it observes and never blocks on its own.</b> These are real file names on real
-/// WordPress installations - a leftover <c>test.php</c> that someone still uses - and refusing one
-/// would break something that works today. The log line is what matters: a scanner reading these
+/// installations - a leftover <c>test.php</c> that someone still uses, and the shortest names,
+/// <c>i.php</c> and <c>pi.php</c>, are sometimes a real endpoint rather than a <c>phpinfo()</c> page -
+/// and refusing one would break something that works today. The log line is what matters: a scanner reading these
 /// names across every site is choosing what to try next.
 /// </para>
 /// </remarks>
