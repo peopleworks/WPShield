@@ -84,6 +84,74 @@ no rechazo: clientes descuidados y capas de caché viejas producen rutas que nec
 real es la línea de log — un operador que ve `traversal` o `doubleEncoded` está mirando
 reconocimiento, haya alcanzado algo ese intento o no.
 
+## La familia de exposición
+
+Las tres reglas anteriores responden a «¿alguien está usando un shell?». Estas nueve responden a otra
+pregunta: **¿alguien le está pidiendo a este sitio un archivo que delata al servidor?** Un escaneo
+envía las mismas peticiones a todos los sitios de un servidor —WordPress, .NET y Blazor por igual— y,
+antes de esta familia, ninguna encontraba una regla.
+
+Se eligieron con una semana de logs reales de IIS de un servidor Windows compartido, no con un modelo
+de amenazas, y esa elección decidió su forma. Una regla construida con la lista de rutas de un
+catálogo de escáneres —`/.env`, `/.env.production`, `/backend/.env`— dejaba pasar cerca del **84 %** de
+las sondas de `.env` de esos logs, porque los escáneres recorren todos los nombres de carpeta que se
+les ocurren. Por eso cada regla de aquí coincide con un **segmento, en cualquier posición**: un `.env`
+en cualquier sitio, una carpeta `.git` en cualquier sitio.
+
+| Regla | Coincide con | Puntaje | Peticiones en la semana |
+| --- | --- | --- | --- |
+| `EXPOSE-PATH-001` | Un segmento dotenv: `.env`, o `.env` seguido de `.` `-` `_` o un dígito | **100** | ~94.000 |
+| `EXPOSE-PATH-002` | Una carpeta `.git`, `.svn`, `.hg` o `.bzr` | **100** | ~4.900 |
+| `EXPOSE-PATH-003` | Un almacén de credenciales o el estado de una herramienta de despliegue: `.aws`, `.config`, `.docker`, `.kube`, `.ssh`, `.vscode`, `.terraform`, `.git-credentials`, `.npmrc`, la familia `id_rsa`… | **100** | ~7.500 |
+| `EXPOSE-PATH-004` | Una copia de respaldo de un archivo con nombre, en el último segmento: `~`, `.old`, `.orig`, `.save`, `.swp`, y `.bak`/`.backup` tras otra extensión | **100** | ~8.500 |
+| `EXPOSE-PATH-005` | Un archivo o volcado de base de datos: `.sql`, `.sqlite`, `.db`, `.mdb`, `.dump`, y un `.bak`/`.backup` solo | 30 | ~2.100 |
+| `IIS-PATH-002` | `web.config` o `launchSettings.json`, en cualquier segmento | **100** | ~130 |
+| `NET-PATH-001` | `appsettings.json` o `appsettings.<entorno>.json` | 30 | ~1.200 |
+| `PHP-PATH-001` | `vendor/phpunit`, o `eval-stdin.php`, en cualquier lugar | **100** | ~50 |
+| `PHP-PATH-002` | Una página `phpinfo` o de prueba: `phpinfo.php`, `info.php`, `test.php`… | 30 | ~14.000 |
+
+Junto con las tres reglas anteriores, cerca de **110.000** peticiones de esa semana alcanzan el umbral
+de bloqueo por omisión, y ninguna era una página legítima que un bloqueo hubiera roto. Todas las que
+un sitio respondió con un 2xx eran páginas atrapa-todo que responden a cualquier ruta, respuestas
+vacías a un cliente que ya se había desconectado, o scripts que las reglas de ruta existen para
+rechazar.
+
+### Los puntajes, y por qué tres solo observan
+
+Un puntaje de 100 afirma que la forma no tiene un llamador HTTP legítimo, la misma afirmación que
+hacen `WP-PATH-001` y `WP-PATH-002`. Tres formas no pueden hacerla, así que observan con 30 y nunca
+bloquean solas:
+
+- **`NET-PATH-001`.** Una aplicación Blazor WebAssembly carga `appsettings.json` en el navegador, en
+  cada página, por diseño. Bloquearlo rompe todas esas aplicaciones. Observarlo le dice al operador que
+  el archivo es público —intencionado en un sitio Blazor, una fuga en uno del lado del servidor— y ese
+  juicio necesita a una persona.
+- **`EXPOSE-PATH-005`.** Un archivo de base de datos puede publicarse a propósito: el esquema de
+  ejemplo de un tutorial, un conjunto de datos para descargar.
+- **`PHP-PATH-002`.** Instalaciones reales de WordPress conservan un `test.php` que alguien todavía usa.
+
+`.bak` se reparte entre dos reglas por la misma razón. `wp-config.php.bak` es la copia de un archivo
+fuente y no tiene llamador, así que bloquea. `database.bak` solo es el formato nativo de respaldo de
+SQL Server, que un sitio puede publicar, así que observa.
+
+### Lo que queda en silencio a propósito
+
+Los casos silenciosos se comprueban con el mismo cuidado que los que disparan, porque cada regla es una
+forma y no un prefijo precisamente para mantenerlos en silencio:
+
+- `.well-known/acme-challenge/`: la renovación de certificados. Una regla con forma de «cualquier
+  carpeta con punto» la rompería en todos los sitios.
+- `.gitignore`, `.github`, `.gitlab-ci.yml`, `.envrc`: vecinos de los nombres que coinciden, no la cosa.
+- `sitemap.xml.gz`, `.zip`, `.tar.gz`, `.7z`: un archivo comprimido solo es una descarga normal.
+- `foto.bak.jpg`: un sufijo de respaldo dentro de un nombre no es un respaldo.
+- `/_framework/blazor.boot.json`, `/_blazor/negotiate`, `/swagger/`, `/Error`, `/health`: tráfico
+  normal de .NET y Blazor, comprobado con puntaje cero en toda la familia.
+
+**`/admin` no es una regla, a propósito.** Se sondea desde cientos de direcciones, y es una ruta real
+en muchísimos sitios reales. Una regla que la puntuara estaría puntuando una página, no una sonda. Lo
+mismo vale para `/login`, `/dashboard` y `/signin`; las pruebas comprueban que las cuatro puntúan
+cero, así que añadir una es una decisión y no un accidente.
+
 ## Normalización
 
 Las reglas nunca comparan contra el destino crudo de la petición. Comparan contra
@@ -129,8 +197,8 @@ ruta sola.
 
 ## Costo
 
-Una normalización más tres evaluaciones de regla por petición, todo trabajo de cadenas acotado a 64
-segmentos de 255 caracteres. La segunda vista se construye solo cuando la ruta contiene un signo de
+Una normalización más doce evaluaciones de regla por petición, todo trabajo de cadenas acotado a 64
+segmentos de 255 caracteres, y cada regla una búsqueda en un conjunto por segmento. La segunda vista se construye solo cuando la ruta contiene un signo de
 porcentaje y solo cuando decodificar la cambia, así que el tráfico ordinario paga una pasada.
 
 Nada de esto bufferea, parsea un cuerpo ni toma una muestra. Un rechazo se responde desde la línea de

@@ -97,6 +97,33 @@ must complete first.
 
 ### Added
 
+- **Nine request-path rules for what a scan asks every site for - WordPress or not.** Before these,
+  none of the requests a scan sends at every site on a shared host met a rule. They were chosen against
+  a week of real IIS logs, and that decided their shape: a rule built from a scanner catalogue's list
+  of paths missed about 84% of the `.env` probes in those logs, so every rule here matches a segment
+  in any position. `EXPOSE-PATH-001` dotenv files, `002` version-control folders, `003` credential
+  stores and deploy-tool state, `004` backup copies of a named file and `IIS-PATH-002` IIS and ASP.NET
+  configuration score 100; so does `PHP-PATH-001`, PHPUnit's `eval-stdin.php` (CVE-2017-9841), still
+  asked for every day. `EXPOSE-PATH-005` database dumps, `NET-PATH-001` ASP.NET Core settings and
+  `PHP-PATH-002` `phpinfo` pages observe at 30 and never block alone: a dataset may be published on
+  purpose, a Blazor WebAssembly client loads its `appsettings.json` on every page, and real
+  installations keep a `test.php`. Against the same logs the twelve path rules put about 110,000
+  requests at the block threshold, and none of the sites' answers among them was a legitimate page -
+  each was a catch-all page, an empty answer to a departed client, or a script the path rules exist
+  to refuse. See
+  [the exposure family](docs/en/m2-5-request-path-inspection.md#the-exposure-family).
+
+  **The silent cases are asserted as carefully as the firing ones.** `.well-known/acme-challenge/`,
+  `.gitignore`, `.github`, `.envrc`, `sitemap.xml.gz`, `photo.bak.jpg`, and a corpus of ordinary .NET
+  and Blazor requests score zero. **`/admin` is deliberately not a rule**, with `/login`, `/dashboard`
+  and `/signin`: each is a real route on real sites, and a test asserts they score zero so covering
+  one later is a decision.
+
+  **Every shipped rule is now asserted to run.** `RuleRegistrationTests` compares the rules the
+  gateway resolves with the rules both packages ship, found by reflection, so a forgotten registration
+  fails a test rather than shipping a rule that never evaluates. The ordinary-traffic corpus likewise
+  runs every path rule, discovered rather than listed.
+
 - **`wpshield setup` - the five steps between an unpacked artifact and a first finding, in order.**
   The operator took the artifact to a real server, ran `watch`, and got a blank console. Seeing
   anything required the host to be ready, the service installed, the site configured,
@@ -999,6 +1026,14 @@ must complete first.
 
 ### Known limitations
 
+- **The triage tool does not know about the exposure family yet.** Its model of the gateway covers
+  `WP-PATH-001`, `WP-PATH-002` and `IIS-PATH-001`, so a request the gateway now refuses - a `.env` on
+  disk, `vendor/phpunit/.../eval-stdin.php` - reads as `not-applicable` or `not-covered` in a triage
+  report, and a `phpinfo.php` it now observes reads as `not-covered`. That is the less harmful
+  direction - the report understates coverage rather than inventing it - but it is exactly the drift
+  the vocabulary check exists for. The list-shaped parts (`vendor/phpunit`, the credential and
+  `phpinfo` names) can join that check; the shapes, such as a `.env` segment in any position, need a
+  different guarantee.
 - `PHP-CONTENT-001` searches a bounded UTF-8 sample and can be evaded by placing the tag beyond the
   sample window, encoding as UTF-16, or splitting it across the boundary. It is a supporting signal,
   never a sole reason to block.

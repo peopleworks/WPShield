@@ -1,7 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    The rules about the Windows and IIS hosting surface: what IIS and PHP-on-IIS execute, what a
-    request for a script in an asset directory means, what an upload's bytes say it is.
+    The rules about the hosting surface as seen from IIS, and everything that needs no WordPress
+    knowledge: what IIS and PHP-on-IIS execute, what a request for a script in an asset directory
+    means, what an upload's bytes say it is, and the files a web root exposes when a project folder
+    is copied up whole - .env, .git, credential stores, backups, dumps, IIS and ASP.NET settings,
+    PHPUnit and phpinfo. The last group is why this package is more than "Windows" in all but name;
+    ADR 0004's exit condition 3 weighs the name.
 
     "Windows" names the ATTACK SURFACE these rules understand, not a platform they depend on. This
     project references nothing Windows-only, and the Linux CI leg builds and tests it to keep that

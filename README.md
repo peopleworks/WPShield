@@ -4,13 +4,14 @@
 
 **WPShield — Windows Power Shield.** An open-source security gateway for Windows Server and IIS.
 
-<sub>The name states a direction. <b>The eleven rules today read uploads and request paths</b>: one is
-WordPress-specific, five consult WordPress's own filename rewrite as a second opinion, and five are
-plain Windows, IIS, PHP and filename rules that fire on a site that has never run WordPress.
-<b>Nothing yet reads the .NET application surface</b> — no rule looks for <code>.env</code>,
-<code>.git</code>, a backup left in a web root, or an exposed admin path.
-<a href="docs/en/adr/0004-what-wpshield-stands-for.md">ADR 0004</a> records the gap, and a correction
-to what it originally claimed.</sub>
+<sub>The name states a direction. <b>The twenty rules today read uploads and request paths</b>: one is
+WordPress-specific, five consult WordPress's own filename rewrite as a second opinion, and fourteen are
+plain Windows, IIS, .NET, PHP and filename rules that fire on a site that has never run WordPress.
+<b>Nine of them read what a scan asks every site for</b> — <code>.env</code>, <code>.git</code>,
+credential stores, backups, dumps, IIS and ASP.NET settings, PHPUnit and <code>phpinfo</code> — chosen
+against a week of real IIS logs. An exposed admin path is deliberately not a rule: <code>/admin</code>
+is a real route on real sites. <a href="docs/en/adr/0004-what-wpshield-stands-for.md">ADR 0004</a>
+records what the name still promises and the code does not yet deliver.</sub>
 
 **[See how it works →](https://peopleworks.github.io/WPShield/)**
 
@@ -640,9 +641,9 @@ Community contributions are welcome, especially in these areas:
 - Safe gateway validation and synthetic integration tests.
 - Bounded streaming and multipart parsing.
 - Explainable WordPress rules with benign test fixtures.
-- Rules for the .NET-on-IIS surface — `.env`, `.git`, stray backups, exposed admin paths — chosen
-  against real request logs rather than a threat model. See [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md),
-  exit condition 1.
+- Rules for the .NET-on-IIS surface, chosen against real request logs rather than a threat model —
+  the exposure family in [request path inspection](docs/en/m2-5-request-path-inspection.md#the-exposure-family)
+  is where to start, including the shapes it deliberately leaves silent.
 - False-positive research for legitimate WordPress and plugin behavior.
 - English and Spanish documentation and localization.
 - Windows Server, IIS, Elementor, and Google Site Kit compatibility testing.
