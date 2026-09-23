@@ -1086,6 +1086,28 @@ function Invoke-TriageInventory {
 
     Read-only, like everything else here. Nothing is disabled, deleted or repaired.
 #>
+<#
+    Whether a scheduled task's command line runs a binary from a place a scheduled task's binary has
+    no business living. The argument is the expanded, lowercased command line.
+
+    Microsoft Defender is the one exception, and it is exempted by exact shape rather than by
+    trusting ProgramData: its platform binary lives in
+    C:\ProgramData\Microsoft\Windows Defender\Platform\<version>\MpCmdRun.exe, and every one of
+    Defender's own maintenance tasks runs it from there. Flagging those taught the operator on a real
+    incident night to read past this section - the one section that has to be read. Only MpCmdRun.exe
+    in a versioned Platform folder is exempt; anything else under ProgramData, including another
+    binary in that same folder, still is not.
+#>
+function Test-SuspectTaskLocation {
+    param([string] $Expanded)
+
+    $suspectLocations = '\\temp\\|\\tmp\\|\\appdata\\|\\users\\public\\|\\inetpub\\|\\downloads\\|\\programdata\\'
+    $defenderPlatform = '\\programdata\\microsoft\\windows defender\\platform\\[0-9][0-9.\-]*\\mpcmdrun\.exe'
+
+    $withoutDefender = $Expanded -replace $defenderPlatform, ''
+    return ($withoutDefender -match $suspectLocations)
+}
+
 function Invoke-TriageHostScan {
     $cutoff = [datetime]::UtcNow.AddDays(-$RecentDays)
 
@@ -1111,9 +1133,6 @@ function Invoke-TriageHostScan {
     # Command lines that are trying not to be read. These are the strong ones: no legitimate
     # scheduled task hides its window and passes base64.
     $obfuscatedCommand = '-enc\b|-encodedcommand|-e\s+[A-Za-z0-9+/]{40,}|frombase64string|downloadstring|downloadfile|-w\s+hidden|-windowstyle\s+hidden|-nop\b|-noprofile\s+-w|iex\b|invoke-expression|certutil\s+.*-decode|bitsadmin\s+/transfer'
-
-    # Places a scheduled task's binary has no business living.
-    $suspectLocations = '\\temp\\|\\tmp\\|\\appdata\\|\\users\\public\\|\\inetpub\\|\\downloads\\|\\programdata\\'
 
     $windowsRoot = ($env:windir + '\').ToLowerInvariant()
 
@@ -1141,7 +1160,7 @@ function Invoke-TriageHostScan {
             if ($expanded -match $obfuscatedCommand) {
                 [void] $reasons.Add('obfuscatedCommandLine')
             }
-            if ($expanded -match $suspectLocations) {
+            if (Test-SuspectTaskLocation $expanded) {
                 [void] $reasons.Add('runsFromSuspectLocation')
             }
 
@@ -1655,6 +1674,61 @@ function Invoke-TriageLogCorrelation {
     }
 }
 
+<#
+    Turns -SitePath into the list of folders to scan, and explains itself when it cannot.
+
+    "powershell -File .\Invoke-WPShieldTriage.ps1 -SitePath 'a','b'" does not pass a list: -File
+    hands every argument over as literal text, so the script receives ONE path, "a,b", that does not
+    exist. That failed on a real incident night with "Site path does not exist" and nothing about why.
+
+    So: a path that exists is kept exactly as given - a folder name may legitimately contain a comma.
+    One that does not exist but splits on commas into paths that all do is read as that list. Anything
+    else stops, and when a comma was involved the message says what happened and how to run it.
+#>
+function Resolve-SitePathArgument {
+    param([string[]] $Candidates)
+
+    # Windows PowerShell 5.1 throws, rather than answering false, for a path holding a character a
+    # path cannot hold - a quote that survived the command line, say. Either way it does not exist.
+    function Test-Exists {
+        param([string] $Path)
+        try { return [bool] (Test-Path -LiteralPath $Path) } catch { return $false }
+    }
+
+    $paths = New-Object System.Collections.Generic.List[string]
+    $split = $false
+
+    foreach ($candidate in $Candidates) {
+        if (Test-Exists $candidate) {
+            [void] $paths.Add($candidate)
+            continue
+        }
+
+        if ($candidate.Contains(',')) {
+            $parts = @($candidate.Split(',') | ForEach-Object { $_.Trim().Trim("'").Trim('"') } |
+                Where-Object { $_.Length -gt 0 })
+            $missing = @($parts | Where-Object { -not (Test-Exists $_) })
+
+            if ($parts.Count -gt 1 -and $missing.Count -eq 0) {
+                foreach ($part in $parts) { [void] $paths.Add($part) }
+                $split = $true
+                continue
+            }
+
+            throw ("Site path does not exist: " + $candidate + ". It looks like several paths joined by commas, " +
+                "which is what 'powershell -File' does with a list. Run it from inside PowerShell instead: " +
+                "& '.\Invoke-WPShieldTriage.ps1' -SitePath 'C:\first','C:\second'")
+        }
+
+        throw ("Site path does not exist: " + $candidate)
+    }
+
+    return [pscustomobject] @{
+        Paths              = @($paths.ToArray())
+        SplitFromOneString = $split
+    }
+}
+
 # =====================================================================================
 #  Main.
 # =====================================================================================
@@ -1665,10 +1739,12 @@ Write-TriageHost ('Host: ' + $env:COMPUTERNAME + '    Started: ' + (Format-Triag
 
 $sites = @()
 if ($null -ne $SitePath -and $SitePath.Count -gt 0) {
-    foreach ($candidate in $SitePath) {
-        if (-not (Test-Path -LiteralPath $candidate)) {
-            throw ("Site path does not exist: " + $candidate)
-        }
+    $sitePathArgument = Resolve-SitePathArgument $SitePath
+    if ($sitePathArgument.SplitFromOneString) {
+        Write-TriageHost 'Note: -SitePath arrived as one comma-joined string, which is what "powershell -File" does with a list. Reading it as separate paths.' 'Yellow'
+    }
+
+    foreach ($candidate in $sitePathArgument.Paths) {
         $resolved = (Resolve-Path -LiteralPath $candidate).ProviderPath
         if (-not (Test-WordPressRoot $resolved)) {
             Write-TriageHost ('Warning: no wp-config.php or wp-includes under ' + $resolved + '. Scanning it anyway.') 'Yellow'
