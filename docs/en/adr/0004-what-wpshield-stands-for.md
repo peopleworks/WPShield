@@ -58,6 +58,11 @@ wording with the error marked, because an ADR that edits its mistakes away is no
   <img alt="Sixty-six sites on one Windows Server: two are WordPress, sixty-four are .NET applications. A scan sends the same seven requests to every one of them. Four — GET /.env, GET /.git/config, GET /db-backup.sql and GET /admin — meet no rule at all. Three are answered: GET /dist/shell.php by WP-PATH-002, an upload of invoice.php.jpg by WP-UPLOAD-001 and 002, and an upload of web.config by IIS-CONFIG-001. Eleven rules read uploads and request paths, ten of them fire on a site that has never run WordPress, and none of them reads a dotfile, a stray backup or an exposed admin path. The gap is coverage and packaging, not the rules being WordPress-only." src="../../assets/estate-light.svg">
 </picture>
 
+*The figure is the state on 2026-09-09, kept as the record this correction was made against. Three of
+its four unanswered requests are answered now: `/.env` by `EXPOSE-PATH-001`, `/.git/config` by
+`EXPOSE-PATH-002`, and `/db-backup.sql` by `EXPOSE-PATH-005`, which observes. `/admin` stays unanswered
+on purpose — see the progress note under exit condition 1.*
+
 ## Context
 
 The name was chosen in the first week, for a project that inspected WordPress uploads behind IIS. It
@@ -175,6 +180,21 @@ of this file; conditions 1 and 2 asked for something the code had partly done al
    its name, as condition 3 requires. The second half, rules for the .NET surface, is being chosen
    against the server's own IIS logs, which put `.env` probes alone at 93,120 requests in one week
    and showed that a path list taken from a public scanner catalog would miss 84% of them.
+
+   **Progress, 2026-09-23: the coverage half is in.** Nine request-path rules now read what a scan
+   asks every site for - `EXPOSE-PATH-001` to `005`, `IIS-PATH-002`, `NET-PATH-001`, `PHP-PATH-001`
+   and `002`. Each matches a shape in any segment rather than a catalogue's list of paths, and each
+   is scored by whether the shape can have a legitimate caller rather than by how often it was
+   seen: six block alone and three observe. Against the same week of logs, they and the three older
+   path rules put about 110,000 requests at the block threshold, and none of the site's answers
+   among them was a real page. See [request path inspection](../m2-5-request-path-inspection.md#the-exposure-family).
+
+   **An exposed admin path is deliberately not covered.** `/admin`, `/login`, `/dashboard` and
+   `/signin` were probed from hundreds of addresses, and every one of them is a real route on real
+   sites: a rule that scored them would score pages, not probes. The test suite asserts all four
+   score zero, so covering one later is a decision, not a drift. With that, this condition is met.
+   Condition 2 is met by the README and still owed by the site; condition 3 remains - `WP-PATH-002`'s
+   prefix, and now a package named `Rules.Windows` that holds rules about `.env` and PHPUnit.
 
 2. **The README and the site say what is covered today.** A reader must be able to learn, without
    scrolling, which surface the rules reach — WordPress uploads, and the Windows, IIS, PHP and

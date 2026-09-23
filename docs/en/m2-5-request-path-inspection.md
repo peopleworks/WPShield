@@ -80,6 +80,70 @@ refusing: sloppy clients and old caching layers produce paths that need tidying.
 log line — an operator who sees `traversal` or `doubleEncoded` is looking at reconnaissance, whether
 or not this attempt reached anything.
 
+## The exposure family
+
+The three rules above answer "is someone running a shell". These nine answer a different question:
+**is someone asking this site for a file that gives the server away?** A scan sends the same requests
+to every site on a host — WordPress, .NET, Blazor alike — and before this family, none of them met a
+rule.
+
+They were chosen against a week of real IIS logs from a shared Windows host, not from a threat model,
+and that choice decided their shape. A rule built from a scanner catalogue's list of paths — `/.env`,
+`/.env.production`, `/backend/.env` — missed about **84%** of the `.env` probes in those logs, because
+scanners walk every folder name they can guess. So every rule here matches a **segment, in any
+position**: a `.env` anywhere, a `.git` folder anywhere.
+
+| Rule | Matches | Score | Requests in the week |
+| --- | --- | --- | --- |
+| `EXPOSE-PATH-001` | A dotenv segment: `.env`, or `.env` followed by `.` `-` `_` or a digit | **100** | ~94,000 |
+| `EXPOSE-PATH-002` | A `.git`, `.svn`, `.hg` or `.bzr` folder | **100** | ~4,900 |
+| `EXPOSE-PATH-003` | A credential store or a deploy tool's state: `.aws`, `.config`, `.docker`, `.kube`, `.ssh`, `.vscode`, `.terraform`, `.git-credentials`, `.npmrc`, the `id_rsa` family… | **100** | ~7,500 |
+| `EXPOSE-PATH-004` | A backup copy of a named file, final segment: `~`, `.old`, `.orig`, `.save`, `.swp`, and `.bak`/`.backup` after another extension | **100** | ~8,500 |
+| `EXPOSE-PATH-005` | A database file or dump: `.sql`, `.sqlite`, `.db`, `.mdb`, `.dump`, and a bare `.bak`/`.backup` | 30 | ~2,100 |
+| `IIS-PATH-002` | `web.config` or `launchSettings.json`, any segment | **100** | ~130 |
+| `NET-PATH-001` | `appsettings.json` or `appsettings.<env>.json` | 30 | ~1,200 |
+| `PHP-PATH-001` | `vendor/phpunit`, or `eval-stdin.php`, anywhere | **100** | ~50 |
+| `PHP-PATH-002` | A `phpinfo` or test page: `phpinfo.php`, `info.php`, `test.php`… | 30 | ~14,000 |
+
+Together with the three rules above, about **110,000** requests in that week reach the default block
+threshold. Every one the site answered with a 2xx was a catch-all page that answers any path — none
+was a real page that a block would have broken.
+
+### The scores, and why three of them only observe
+
+A score of 100 is a claim that the shape has no legitimate HTTP caller, the same claim `WP-PATH-001`
+and `WP-PATH-002` make. Three shapes cannot make it, so they observe at 30 and never block alone:
+
+- **`NET-PATH-001`.** A Blazor WebAssembly application loads `appsettings.json` in the browser, on
+  every page, by design. Blocking it breaks every such application. Observing it tells an operator the
+  file is public — intended on a Blazor site, a leak on a server-side one — and that judgement needs a
+  person.
+- **`EXPOSE-PATH-005`.** A database file can be published on purpose: a tutorial's sample schema, a
+  dataset for download.
+- **`PHP-PATH-002`.** Real WordPress installations keep a `test.php` someone still uses.
+
+`.bak` is split between two rules for the same reason. `wp-config.php.bak` is a copy of a source file
+and has no caller, so it blocks. `database.bak` on its own is SQL Server's native backup format, which
+a site may publish, so it observes.
+
+### What is deliberately silent
+
+The silent cases are asserted as carefully as the firing ones, because each rule is a shape rather
+than a prefix precisely to keep them silent:
+
+- `.well-known/acme-challenge/` — certificate renewal. A rule shaped as "any dot-folder" would break
+  it on every site.
+- `.gitignore`, `.github`, `.gitlab-ci.yml`, `.envrc` — neighbours of the matched names, not the thing.
+- `sitemap.xml.gz`, `.zip`, `.tar.gz`, `.7z` — an archive alone is an ordinary download.
+- `photo.bak.jpg` — a backup suffix inside a name is not a backup.
+- `/_framework/blazor.boot.json`, `/_blazor/negotiate`, `/swagger/`, `/Error`, `/health` — ordinary
+  .NET and Blazor traffic, asserted to score zero across the whole family.
+
+**`/admin` is not a rule, on purpose.** It is probed from hundreds of addresses, and it is a real route
+on many real sites. A rule that scored it would be scoring a page, not a probe. The same goes for
+`/login`, `/dashboard` and `/signin`; the test suite asserts all four score zero, so adding one is a
+decision rather than an accident.
+
 ## Normalization
 
 Rules never match the raw request target. They match `InspectionContext.NormalizedPath`, which
@@ -122,8 +186,8 @@ expansion, which needs the filesystem and cannot be answered from a path alone.
 
 ## Cost
 
-One normalization plus three rule evaluations per request, all string work bounded by 64 segments of
-255 characters. The second view is built only when the path contains a percent sign and only when
+One normalization plus twelve rule evaluations per request, all string work bounded by 64 segments of
+255 characters, and each rule a set lookup per segment. The second view is built only when the path contains a percent sign and only when
 decoding changes it, so ordinary traffic pays for one pass.
 
 Nothing here buffers, parses a body, or takes a sample. A refusal is answered from the request line,
