@@ -537,6 +537,19 @@ public static class GatewayApplication
         services.AddSingleton<IRequestPathRule, ExecutableRequestInAssetDirectoryRule>();
         services.AddSingleton<IRequestPathRule, UnsafeRequestPathRule>();
 
+        // The exposure family: files a web root gives away when a project folder is copied up whole.
+        // Chosen against a week of real IIS logs rather than a threat model, and each matched by shape
+        // - a .env segment anywhere, a .git folder anywhere - never by a scanner's enumerated path list.
+        services.AddSingleton<IRequestPathRule, DotEnvRequestRule>();
+        services.AddSingleton<IRequestPathRule, VersionControlRequestRule>();
+        services.AddSingleton<IRequestPathRule, CredentialStoreRequestRule>();
+        services.AddSingleton<IRequestPathRule, BackupCopyRequestRule>();
+        services.AddSingleton<IRequestPathRule, DatabaseDumpRequestRule>();
+        services.AddSingleton<IRequestPathRule, IisConfigurationRequestRule>();
+        services.AddSingleton<IRequestPathRule, AppSettingsRequestRule>();
+        services.AddSingleton<IRequestPathRule, PhpUnitRequestRule>();
+        services.AddSingleton<IRequestPathRule, PhpInfoRequestRule>();
+
         services.AddSingleton<InspectionEngine>();
         services.AddSingleton<RequestPathEngine>();
         services.AddSingleton<RequestPathInspectionService>();
