@@ -174,8 +174,8 @@ there.
   the fix for a pool running as an administrator, a site folder anyone can write, PHP mapped for
   every site or a catch-all site over the others, and every remedy is a change made by hand, one
   pool or one site at a time. A pool that runs as a named account keeps the password beside the
-  account name in the IIS configuration; the audit reads the name and never the password, and its
-  data carries no field that could hold one. Its documentation describes these weaknesses in general
+  account name in the IIS configuration; the audit reads the name and never the password, its data
+  has no field for one, and a test scans its source for any read of the attribute. Its documentation describes these weaknesses in general
   terms and never as the state of a named server: a public repository must not publish the open
   weaknesses of a host that still has them.
 - **A preflight blocker carries a remedy, and the absence of a finding is never rendered as a

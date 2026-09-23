@@ -58,8 +58,8 @@ of being asked about it would do exactly that.
 
 A pool that runs as a named account keeps that account's password in the IIS configuration, and any
 administrator can read it back in plain text. The audit reads the account name and never the
-password: the data it carries has no field for one, and a test scans its source for any read of the
-attribute.
+password: the data it carries has no field for one, the reader never touches the attribute, and a
+test scans its source for any read of it - by property or by attribute name.
 
 ## Exit codes
 

@@ -59,8 +59,9 @@ servidor como efecto secundario de una consulta haría exactamente eso.
 
 Un pool que corre con una cuenta con nombre guarda la contraseña de esa cuenta en la configuración de
 IIS, y cualquier administrador puede recuperarla en texto claro. La auditoría lee el nombre de la
-cuenta y nunca la contraseña: sus datos no tienen un campo para ella, y un test revisa su código fuente
-buscando cualquier lectura de ese atributo.
+cuenta y nunca la contraseña: sus datos no tienen un campo para ella, el lector nunca toca ese
+atributo, y un test revisa su código fuente buscando cualquier lectura, por propiedad o por nombre de
+atributo.
 
 ## Códigos de salida
 

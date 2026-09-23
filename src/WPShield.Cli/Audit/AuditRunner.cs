@@ -174,22 +174,28 @@ internal sealed class AuditRunner(AuditFacts facts)
         var running = _facts.Sites.Where(site => site.ExecutesPhp == true).ToArray();
         var withoutWordPress = running.Where(site => !site.LooksLikeWordPress).ToArray();
 
+        // A site whose configuration could not be read may well run PHP. Unknown is listed, never
+        // dropped: leaving it out would be the optimistic direction.
+        var unknown = _facts.Sites.Where(site => site.ExecutesPhp is null).ToArray();
+
         var items = php
             .Select(handler => $"handler {handler.Name}  {handler.Path}  -> {handler.ScriptProcessor}")
             .Concat(withoutWordPress.Select(site => $"PHP runs here, and there is no WordPress: {site.Name}  ({site.PhysicalPath})"))
+            .Concat(unknown.Select(site => $"could not read this site's configuration, so whether PHP runs here is unknown: {site.Name}  ({site.PhysicalPath})"))
             .ToArray();
 
         report.Add(new AuditFinding(
             "AUDIT-004",
-            withoutWordPress.Length > 0 ? AuditSeverity.Warn : AuditSeverity.Info,
+            withoutWordPress.Length > 0 || unknown.Length > 0 ? AuditSeverity.Warn : AuditSeverity.Info,
             "PHP is mapped for the whole server",
-            $"The mapping below is inherited by every site that does not remove it. PHP runs in {running.Length} site(s), {withoutWordPress.Length} of which contain no WordPress. A .php file written into any of those folders executes there.",
+            $"The mapping below is inherited by every site that does not remove it. PHP runs in {running.Length} site(s), {withoutWordPress.Length} of which contain no WordPress, and {unknown.Length} site(s) could not be read. A .php file written into any of those folders executes there.",
             "Map PHP only on the sites that need it: add the handler to each of those sites, check each one, and then remove it from the server level. By hand, one site at a time.",
             items,
             AuditReport.Fields(
                 ("serverLevelPhp", true),
                 ("sitesRunningPhp", running.Length),
-                ("sitesRunningPhpWithoutWordPress", withoutWordPress.Select(site => site.Name).ToArray()))));
+                ("sitesRunningPhpWithoutWordPress", withoutWordPress.Select(site => site.Name).ToArray()),
+                ("sitesWithUnreadableConfiguration", unknown.Select(site => site.Name).ToArray()))));
     }
 
     // =============================================================================================
