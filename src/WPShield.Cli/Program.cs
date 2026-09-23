@@ -54,6 +54,7 @@ internal static class ProgramMain
             return command switch
             {
                 "preflight" => PreflightCommand.Run(options, Console.Out),
+                "audit" => AuditCommand.Run(options, Console.Out),
                 "install" => InstallCommand.Run(options, Console.Out),
                 "uninstall" => UninstallCommand.Run(options, Console.Out),
                 "publish" => PublishCommand.Run(options, Console.Out),
@@ -103,6 +104,10 @@ internal static class ProgramMain
         {
             case "preflight":
                 Console.WriteLine(PreflightCommand.Help);
+                return 0;
+
+            case "audit":
+                Console.WriteLine(AuditCommand.Help);
                 return 0;
 
             case "install":
@@ -168,7 +173,12 @@ internal static class ProgramMain
                           [--gateway-port 10000] [--private-port 8081,8082] [--site <names>]
                           [--install-path <dir>] [--log-path <dir>] [--output report.jsonl]
 
-              install     Install the gateway as a Windows service with a least-privilege identity
+              audit       Audit how this IIS server is put together: pools running as an
+                          administrator, PHP mapped for every site, site folders anyone can write,
+                          a catch-all site over the others. Reads and reports; changes nothing.
+                          [--output report.jsonl]
+
+              install    Install the gateway as a Windows service with a least-privilege identity
                           and restricted directories. Touches nothing in IIS.
                           --path <build> [--install-path <dir>] [--log-path <dir>]
                           [--config appsettings.Local.json] [--start] [--dry-run]
@@ -214,7 +224,7 @@ internal static class ProgramMain
             Exit codes:
               0   ready, healthy, or the command did what was asked
               1   an argument was wrong, the host is not ready, or a refusal fired
-              2   installed, and something about it is wrong
+              2   installed, and something about it is wrong; or the audit found a critical weakness
               3   nothing is installed
               4   a change was applied, the site did not answer, everything was reverted
 
