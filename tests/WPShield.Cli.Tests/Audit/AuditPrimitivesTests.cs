@@ -109,17 +109,48 @@ public sealed partial class AuditPrimitivesTests
         Assert.DoesNotContain(properties, name => name.Contains("Password", StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>
+    /// The property (<c>ProcessModel.Password</c>) and the attribute by name
+    /// (<c>element["password"]</c>, <c>GetAttributeValue("password")</c>) are the two ways to read it.
+    /// </summary>
     [Fact]
     public void TheAuditSourceNeverReadsAPasswordAttribute()
     {
-        foreach (var file in AuditSourceFiles())
-        {
-            var code = CommentLines().Replace(File.ReadAllText(file), string.Empty);
+        var code = AuditCode();
 
-            Assert.DoesNotContain(".Password", code, StringComparison.Ordinal);
-            Assert.DoesNotContain("\"password\"", code, StringComparison.OrdinalIgnoreCase);
-        }
+        // Positive control: the scan is reading the code that reads pool identities. A scan of the
+        // wrong files, or of none, would pass just as well.
+        Assert.Contains(code, text => text.Contains("ProcessModel", StringComparison.Ordinal));
+
+        Assert.All(code, text =>
+        {
+            Assert.DoesNotContain(".Password", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("\"password\"", text, StringComparison.OrdinalIgnoreCase);
+        });
     }
+
+    /// <summary>
+    /// The audit is a reader. Nothing in it may commit an IIS change or replace a folder's
+    /// permissions - the remedies it prints are for a person to apply, one site at a time.
+    /// </summary>
+    [Fact]
+    public void TheAuditSourceWritesNoIisSettingAndNoPermission()
+    {
+        var code = AuditCode();
+
+        Assert.Contains(code, text => text.Contains("new ServerManager()", StringComparison.Ordinal));
+
+        Assert.All(code, text =>
+        {
+            Assert.DoesNotContain("CommitChanges", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("SetAccessControl", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("AddAccessRule", text, StringComparison.Ordinal);
+            Assert.DoesNotContain("RemoveAccessRule", text, StringComparison.Ordinal);
+        });
+    }
+
+    private static IReadOnlyList<string> AuditCode() =>
+        [.. AuditSourceFiles().Select(file => CommentLines().Replace(File.ReadAllText(file), string.Empty))];
 
     private static IReadOnlyList<string> AuditSourceFiles()
     {

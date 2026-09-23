@@ -162,6 +162,26 @@ public sealed class AuditRunnerTests
         Assert.Equal(AuditSeverity.Info, Find(report, "AUDIT-004").Severity);
     }
 
+    /// <summary>
+    /// A site whose configuration could not be read may run PHP. It is listed as unknown and keeps the
+    /// finding a warning, rather than silently dropping out of the count.
+    /// </summary>
+    [Fact]
+    public void ServerWidePhp_WithAnUnreadableSiteConfiguration_ListsItAsUnknown()
+    {
+        var report = Run(Facts(
+            handlers: [Php()],
+            sites:
+            [
+                Site("blog", $@"{WebRoot}\blog", wordPress: true, php: true),
+                Site("broken", $@"{WebRoot}\broken", php: null)
+            ]));
+
+        var finding = Find(report, "AUDIT-004");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Contains(finding.Items!, item => item.Contains("unknown: broken", StringComparison.Ordinal));
+    }
+
     [Fact]
     public void PhpMappedOnlyPerSite_Passes()
     {

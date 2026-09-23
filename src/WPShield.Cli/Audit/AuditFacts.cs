@@ -417,7 +417,16 @@ internal static class LocalAdministrators
             for (var index = 0; index < read; index++)
             {
                 var entry = Marshal.PtrToStructure<LocalGroupMembersInfo0>(buffer + (index * size));
-                members.Add(new SecurityIdentifier(entry.Sid).Value);
+
+                try
+                {
+                    members.Add(new SecurityIdentifier(entry.Sid).Value);
+                }
+                catch (ArgumentException)
+                {
+                    // One member the runtime cannot parse must not end the audit. It is skipped: a
+                    // pool running as that account then reads as unresolved, which is a warning.
+                }
             }
 
             return members;
