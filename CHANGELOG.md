@@ -151,6 +151,16 @@ must complete first.
 - Spanish desktop views no longer show English reason codes such as `access-denied` or `not-observed`.
 - The desktop sidebar no longer truncates "Referencias de auditoría" or shows a horizontal scrollbar.
 
+- **The triage tool's two false alarms on a real incident night.** `TRIAGE-010` reported Microsoft
+  Defender's own maintenance tasks as running from a suspect location, because Defender's platform
+  binary lives under `ProgramData`; it is now exempt by exact shape - `MpCmdRun.exe` in a versioned
+  `Platform` folder - and nothing else under `ProgramData` is. And `powershell -File ... -SitePath
+  'a','b'` failed with "Site path does not exist" and nothing about why, because `-File` hands a
+  list over as one comma-joined string; the tool now recognises that shape when every part exists,
+  reads it as the list and says so, keeps a real folder whose name contains a comma, and otherwise
+  stops with a message that names `-File` and shows the form that works. Both decisions are now
+  functions with no side effects, exercised by `Test-WPShieldScripts.ps1` under PowerShell 7 and 5.1.
+
 - **Concurrent multipart capacity now stays reserved through forwarding**, until its bounded
   in-memory buffer is disposed. Previously a slow backend could retain buffers after the inspection
   slots were released. Monitor still forwards uninspected with a warning at capacity; Block returns 429.
