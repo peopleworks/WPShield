@@ -612,6 +612,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | M2.5 request path inspection | [Request path inspection](docs/en/m2-5-request-path-inspection.md) | [Inspección de la ruta de la solicitud](docs/es/m2-5-inspeccion-ruta-solicitud.md) |
 | Triage tool | [Triage tool](docs/en/triage-tool.md) | [Herramienta de triage](docs/es/herramienta-de-triage.md) |
 | Preflight | [Preflight](docs/en/preflight.md) | [Verificación previa](docs/es/verificacion-previa.md) |
+| Server posture audit | [Audit](docs/en/audit.md) | [Auditoría](docs/es/auditoria.md) |
 | Deployment | [Deployment](docs/en/deployment.md) | [Despliegue](docs/es/despliegue.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 | ADR 0002 — brute-force defence | [Where brute-force defence belongs](docs/en/adr/0002-host-level-brute-force-defence.md) | [Dónde vive la defensa contra fuerza bruta](docs/es/adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md) |

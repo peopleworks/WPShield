@@ -170,6 +170,14 @@ there.
   effect of asking a question. The only write either makes is its own report, through a single
   `StreamWriter`, and every `[System.IO.File]::Open` asks for read access only. **Preflight prints
   the suggested configuration; it does not write it.**
+- **`wpshield audit` reads and reports on the same terms, and never reads a password.** It names
+  the fix for a pool running as an administrator, a site folder anyone can write, PHP mapped for
+  every site or a catch-all site over the others, and every remedy is a change made by hand, one
+  pool or one site at a time. A pool that runs as a named account keeps the password beside the
+  account name in the IIS configuration; the audit reads the name and never the password, and its
+  data carries no field that could hold one. Its documentation describes these weaknesses in general
+  terms and never as the state of a named server: a public repository must not publish the open
+  weaknesses of a host that still has them.
 - **A preflight blocker carries a remedy, and the absence of a finding is never rendered as a
   finding.** When IIS cannot be read, say so as a blocker rather than printing an empty site list:
   on a readiness check "there are no sites" and "nobody could look" must not look alike, because the

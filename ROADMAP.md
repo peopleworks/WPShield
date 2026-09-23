@@ -225,6 +225,13 @@ not read as more than they claim:
 
 ## M5 — Local multilingual dashboard
 
+- [x] **Server posture, the dashboard's first data source.** `wpshield audit` reads, and never
+  changes, the IIS configuration that decides whether one compromised site stays one: pools running
+  as an administrator, pools sharing a built-in identity, PHP mapped for every site, site folders
+  anyone can write, and a catch-all site over the others. See [Audit](docs/en/audit.md).
+- [ ] Extend the posture audit beyond IIS: module and system binary signatures, Remote Desktop
+  sign-ins by source, WMI subscriptions, cleared event logs, firewall rules open to any address,
+  Defender history, and a web shell's signature in the IIS logs. Read-only, like the rest.
 - [ ] Bind management access to 127.0.0.1 initially.
 - [ ] Add English and Spanish views for summary, sites, events, rules, health, configuration, versions, export, and diagnostics.
 - [ ] Add CSRF protection and design Windows-authenticated administrative access before any remote use.
