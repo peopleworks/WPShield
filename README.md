@@ -178,17 +178,17 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 475 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,365 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
 | Loopback HTTP gateway | Prototype | Kestrel and YARP on `127.0.0.1:10000` |
 | Gateway hardening | Available | Strict startup validation, safe 502 failures, and real synthetic multi-site integration coverage |
 | Bounded request controls | Available | 6 MiB default, 64 MiB ceiling, early and streamed HTTP 413 enforcement |
-| **Bounded multipart inspection** | **Available** | **The rules now run on gateway traffic.** `multipart/form-data` bodies are buffered in memory within the request limit — never to disk — inspected, then forwarded or refused. Bounded file, field, part-header, boundary, file-name and read-timeout limits, each with a ceiling configuration cannot raise |
+| **Bounded multipart inspection** | **Available** | **The rules now run on gateway traffic.** `multipart/form-data` bodies are buffered in memory within the request limit — never to disk — inspected, then forwarded or refused. Bounded file, field, part-header, boundary, file-name and read-timeout limits, each with a ceiling configuration cannot raise. A concurrent-inspection limit caps how many bodies may be buffered at once; Monitor forwards and warns when the limit is reached, Block refuses with HTTP 429. |
 | Inspection of non-multipart bodies | Planned | Nothing else is inspected: urlencoded forms, JSON, XML-RPC, `application/octet-stream` PUTs and other `multipart/*` subtypes stream through untouched |
 | Inspection of archive contents | Planned | A `.zip` plugin or theme carrying a webshell is not detected, and plugin installation is a genuine upload path. No milestone assigned |
-| Bound on concurrent buffered uploads | Planned | M3. Nothing limits how many bodies may be buffered at once; loopback-only is currently what bounds that memory |
+| Bound on concurrent buffered uploads | Available | `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10, ceiling 50. Monitor forwards and warns at the limit; Block refuses with HTTP 429. |
 | Rate limiting and observability | Planned | M3 and M4 |
 | Dashboard and Windows Service | Planned | M5 and M6 |
 | Production activation | Not approved | Requires M1-M6 validation and controlled M7 rollout |
@@ -351,7 +351,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 215 tests across four projects — 59 for the abstractions, 24 for the core, 84 for the rules and 48 for the gateway — and finishes in a few seconds.
+The suite is 1,365 tests across seven projects — 251 for the abstractions, 83 for the core, 98 for the Windows rules, 293 for the WordPress rules, 198 for the CLI, 419 for the gateway and 23 for the network sensor — and finishes in a few seconds.
 
 ### Build the release to carry to the server
 
@@ -537,7 +537,8 @@ WPShield/
 |   |-- WPShield.Service/            Inspection engine demonstration
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
-|-- tests/                            xUnit test projects, 1058 tests
+|   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
+|-- tests/                            xUnit test projects, 1,365 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/

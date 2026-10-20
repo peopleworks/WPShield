@@ -84,6 +84,8 @@ public static class GatewayApplication
         builder.Services.AddSingleton<IReadOnlyList<SiteOptions>>(sites);
         builder.Services.AddSingleton(multipartOptions);
         builder.Services.AddSingleton(new RequestRateLimiter(gatewayOptions.RateLimit));
+        builder.Services.AddSingleton(
+            new ConcurrentInspectionLimiter(multipartOptions.MaximumConcurrentInspections));
         builder.Services.AddSingleton<WPShieldTransformer>();
         builder.Services.TryAddSingleton(_ => CreateProxyClient());
 
@@ -646,6 +648,12 @@ public static class GatewayApplication
                 multipartOptions.SampleBytes,
                 gatewayOptions.MaximumRequestBytes);
         }
+
+        logger.LogInformation(
+            "Concurrent multipart inspection limit. MaximumConcurrentInspections={MaximumConcurrentInspections} " +
+            "AbsoluteMaximumConcurrentInspections={AbsoluteMaximumConcurrentInspections}",
+            multipartOptions.MaximumConcurrentInspections,
+            MultipartInspectionOptions.AbsoluteMaximumConcurrentInspections);
     }
 
     /// <summary>

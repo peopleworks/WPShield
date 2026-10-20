@@ -89,6 +89,19 @@ public sealed class MultipartInspectionOptions
     public const int AbsoluteMaximumReadTimeoutSeconds = 120;
 
     /// <summary>
+    /// Hard ceiling on <see cref="MaximumConcurrentInspections"/>.
+    /// </summary>
+    /// <remarks>
+    /// Each concurrent inspection pins a pooled body buffer of up to
+    /// <see cref="GatewayOptions.MaximumRequestBytes"/> plus one sample per file, for up to
+    /// <see cref="ReadTimeoutSeconds"/>. This is the only bound on how much memory a burst of
+    /// simultaneous uploads can consume, so the ceiling is deliberately low: 50 concurrent
+    /// inspections at the 6 MiB default is 300 MiB of pinned memory before samples, which is
+    /// already a large hold on a shared host.
+    /// </remarks>
+    public const int AbsoluteMaximumConcurrentInspections = 50;
+
+    /// <summary>
     /// Whether multipart bodies are buffered and inspected at all. Default <see langword="true"/>.
     /// </summary>
     /// <remarks>
@@ -160,4 +173,25 @@ public sealed class MultipartInspectionOptions
     /// enabling Block anywhere.
     /// </remarks>
     public int ReadTimeoutSeconds { get; init; } = 30;
+
+    /// <summary>
+    /// Maximum multipart inspections held in memory at once. Default 10, ceiling
+    /// <see cref="AbsoluteMaximumConcurrentInspections"/>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Before this setting nothing bounded how many multipart bodies could be buffered at the same
+    /// time. A burst of simultaneous uploads — or an attacker opening many slow connections — could
+    /// pin roughly <c>MaximumRequestBytes</c> per inspection for up to
+    /// <see cref="ReadTimeoutSeconds"/> each, which on a shared host is memory exhaustion by
+    /// request volume. This is the M3 control that closes T9's memory exposure.
+    /// </para>
+    /// <para>
+    /// When every inspection slot is taken, the gateway's answer depends on the site's mode:
+    /// <see cref="ProtectionMode.Monitor"/> forwards the request without inspecting it and logs a
+    /// warning; <see cref="ProtectionMode.Block"/> refuses with HTTP 429. A disabled site never
+    /// reaches this limiter, because it never buffers.
+    /// </para>
+    /// </remarks>
+    public int MaximumConcurrentInspections { get; init; } = 10;
 }

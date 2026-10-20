@@ -14,5 +14,13 @@
     <PackageVersion Include="xunit" Version="2.9.3" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="4.0.0" />
     <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0" />
+    <!--
+      SharpPcap and PacketDotNet are Windows-only packet capture dependencies. They are declared
+      here for central version management but are referenced only by WPShield.NetworkSensor. The
+      four platform-independent projects (Abstractions, Core, Rules.Windows, Rules.WordPress) do
+      not reference them, so the Linux CI leg is unaffected.
+    -->
+    <PackageVersion Include="SharpPcap" Version="4.1.0" />
+    <PackageVersion Include="PacketDotNet" Version="1.4.9-pre53" />
   </ItemGroup>
 </Project>

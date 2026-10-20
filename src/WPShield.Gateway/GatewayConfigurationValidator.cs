@@ -296,6 +296,15 @@ public static class GatewayConfigurationValidator
                 "Gateway:Multipart:ReadTimeoutSeconds must be between 1 and " +
                 $"{MultipartInspectionOptions.AbsoluteMaximumReadTimeoutSeconds}.");
         }
+
+        if (options.MaximumConcurrentInspections <= 0 ||
+            options.MaximumConcurrentInspections >
+            MultipartInspectionOptions.AbsoluteMaximumConcurrentInspections)
+        {
+            throw new InvalidOperationException(
+                "Gateway:Multipart:MaximumConcurrentInspections must be between 1 and " +
+                $"{MultipartInspectionOptions.AbsoluteMaximumConcurrentInspections}.");
+        }
     }
 
     /// <summary>

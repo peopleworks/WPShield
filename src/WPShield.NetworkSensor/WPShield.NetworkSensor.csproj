@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <NoWarn>NU1701</NoWarn>
+
+    <!--
+      WPShield.NetworkSensor is Windows-only because it depends on Npcap/SharpPcap for live packet
+      capture. It is intentionally NOT referenced by WPShield.Gateway, WPShield.Core,
+      WPShield.Abstractions or either Rules project. The dependency direction is:
+
+        WPShield.NetworkSensor -> WPShield.Abstractions (optional shared types)
+
+      never the reverse. This keeps the platform-independent projects buildable and testable on
+      Linux, exactly as AGENTS.md requires.
+
+      NU1701 is suppressed because SharpPcap 4.1.0 ships .NET Framework targets and resolves
+      through compatibility shims on net10.0-windows. The package works at runtime on .NET 10;
+      the warning is a packaging metadata issue, not a runtime incompatibility.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="SharpPcap" />
+    <PackageReference Include="PacketDotNet" />
+  </ItemGroup>
+
+</Project>

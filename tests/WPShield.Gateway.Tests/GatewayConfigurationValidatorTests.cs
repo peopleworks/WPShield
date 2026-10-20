@@ -413,6 +413,60 @@ public sealed class GatewayConfigurationValidatorTests
         GatewayConfigurationValidator.Validate(options, [CreateSite("one", "example.test", 51001)]);
     }
 
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void Validate_RejectsMaximumConcurrentInspectionsOutOfRange(int value)
+    {
+        var options = new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:10000"],
+            TrustedProxies = [],
+            Multipart = new MultipartInspectionOptions { MaximumConcurrentInspections = value }
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(options, [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("MaximumConcurrentInspections", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Validate_RejectsMaximumConcurrentInspectionsAboveCeiling()
+    {
+        var options = new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:10000"],
+            TrustedProxies = [],
+            Multipart = new MultipartInspectionOptions
+            {
+                MaximumConcurrentInspections = MultipartInspectionOptions.AbsoluteMaximumConcurrentInspections + 1
+            }
+        };
+
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => GatewayConfigurationValidator.Validate(options, [CreateSite("one", "example.test", 51001)]));
+
+        Assert.Contains("MaximumConcurrentInspections", exception.Message, StringComparison.Ordinal);
+        Assert.Contains("50", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    [InlineData(50)]
+    public void Validate_AcceptsMaximumConcurrentInspectionsWithinRange(int value)
+    {
+        var options = new GatewayOptions
+        {
+            Urls = ["http://127.0.0.1:10000"],
+            TrustedProxies = [],
+            Multipart = new MultipartInspectionOptions { MaximumConcurrentInspections = value }
+        };
+
+        GatewayConfigurationValidator.Validate(options, [CreateSite("one", "example.test", 51001)]);
+    }
+
     private static GatewayOptions CreateGatewayOptions(string[]? trustedProxies = null)
     {
         return new GatewayOptions

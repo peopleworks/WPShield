@@ -44,8 +44,14 @@ namespace WPShield.Gateway;
 /// file.
 /// </para>
 /// </remarks>
-internal sealed class UploadInspectionService(InspectionEngine engine, MultipartInspectionReader reader)
+internal sealed class UploadInspectionService(
+    InspectionEngine engine,
+    MultipartInspectionReader reader,
+    ConcurrentInspectionLimiter concurrentInspectionLimiter)
 {
+    private readonly ConcurrentInspectionLimiter _limiter =
+        concurrentInspectionLimiter;
+
     /// <summary>
     /// The pseudo-rule identifier the gateway emits when inspection itself could not complete.
     /// </summary>
@@ -175,8 +181,39 @@ internal sealed class UploadInspectionService(InspectionEngine engine, Multipart
             MultipartInspectionOptions.AbsoluteMaximumReadTimeoutSeconds)));
 
         PooledRequestBuffer? buffer = null;
+        var enteredConcurrentLimiter = false;
         try
         {
+            // Before any memory is pinned, make sure a concurrent-inspection slot is free.
+            // This is the M3 bound on how many multipart bodies may be held at once. Without it a
+            // burst of simultaneous uploads could exhaust memory one buffered body at a time.
+            if (!_limiter.TryEnter())
+            {
+                logger.LogWarning(
+                    "Concurrent multipart inspection limit reached. RequestId={RequestId} SiteId={SiteId} " +
+                    "MaxConcurrentInspections={MaxConcurrentInspections} Mode={Mode} Action={Action}",
+                    context.TraceIdentifier,
+                    site.Id,
+                    _limiter.MaxConcurrentInspections,
+                    site.Mode,
+                    site.Mode == ProtectionMode.Block ? "Refused" : "ForwardedUninspected");
+
+                if (site.Mode == ProtectionMode.Block)
+                {
+                    return UploadInspectionDecision.Rejected(new GatewayRejection(
+                        StatusCodes.Status429TooManyRequests,
+                        "multipart_concurrent_limit_exceeded",
+                        null,
+                        []));
+                }
+
+                // Monitor: forward without inspecting. The request still counts against the size
+                // limit, but no buffer is rented and no rule runs.
+                return UploadInspectionDecision.NotInspected;
+            }
+
+            enteredConcurrentLimiter = true;
+
             buffer = new PooledRequestBuffer(gatewayOptions.MaximumRequestBytes);
 
             // Phase one: drain. This is the only phase that can leave a partial body, and therefore
@@ -263,6 +300,10 @@ internal sealed class UploadInspectionService(InspectionEngine engine, Multipart
         finally
         {
             buffer?.Dispose();
+            if (enteredConcurrentLimiter)
+            {
+                _limiter.Release();
+            }
         }
     }
 

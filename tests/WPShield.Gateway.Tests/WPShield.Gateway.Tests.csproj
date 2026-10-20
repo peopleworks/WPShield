@@ -3,6 +3,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.TestHost" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <!--
+      Microsoft.Web.Administration reads IIS configuration to verify that public bindings on 80/443
+      are unchanged. It is Windows-only, which is fine: this test project targets net10.0 but the
+      IIS-dependent tests skip when IIS is not available, so the Linux CI leg is unaffected.
+    -->
+    <PackageReference Include="Microsoft.Web.Administration" />
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
   </ItemGroup>

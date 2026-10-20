@@ -51,6 +51,13 @@
     -->
     <ProjectReference Include="../WPShield.Core/WPShield.Core.csproj" />
     <ProjectReference Include="../WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
+    <!--
+      The network-monitor verb starts WPShield.NetworkSensor, which is Windows-only like this
+      tool. It references the rules projects already above, and Abstractions transitively, so
+      nothing here drags ASP.NET Core or YARP into a console tool that only installs and
+      configures the gateway.
+    -->
+    <ProjectReference Include="../WPShield.NetworkSensor/WPShield.NetworkSensor.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -66,6 +66,7 @@ internal static class ProgramMain
                 "site" => SiteCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? "list"),
                 "watch" => WatchCommand.Run(options, Console.Out),
                 "report" => ReportCommand.Run(options, Console.Out),
+                "network-monitor" => NetworkMonitorCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -145,6 +146,10 @@ internal static class ProgramMain
                 Console.WriteLine(ReportCommand.Help);
                 return 0;
 
+            case "network-monitor":
+                Console.WriteLine(NetworkMonitorCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -200,6 +205,14 @@ internal static class ProgramMain
                           rule and by site, and a SHA-256 evidence appendix. Reads only.
                           [--log-dir <dir>] [--log-file <file>] [--host <names>] [--since 7d]
                           [--out report.pdf]
+
+              network-monitor
+                          Live passive capture of HTTP metadata on operator-named ports (for
+                          example 80, 443). Requires Administrator elevation and Npcap. Reads only;
+                          never touches IIS.
+                          --ports <numbers> [--interfaces <names>] [--output <file>]
+                          [--max-events-per-second <n>] [--promiscuous]
+                          [--rotation-max-size-bytes <n>] [--rotation-retention-days <n>]
 
               publish     Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.
