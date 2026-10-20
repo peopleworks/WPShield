@@ -58,6 +58,16 @@
       configures the gateway.
     -->
     <ProjectReference Include="../WPShield.NetworkSensor/WPShield.NetworkSensor.csproj" />
+
+    <!--
+      The network-filter and security-monitor verbs start WPShield.NetworkFilter and
+      WPShield.SecurityMonitor respectively. Both are Windows-only, reference only
+      WPShield.Abstractions and each other (bridge), so nothing here drags ASP.NET Core or
+      YARP into a console tool.
+    -->
+    <ProjectReference Include="../WPShield.NetworkFilter/WPShield.NetworkFilter.csproj" />
+    <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
+    <ProjectReference Include="../WPShield.Integration/WPShield.Integration.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -67,6 +67,8 @@ internal static class ProgramMain
                 "watch" => WatchCommand.Run(options, Console.Out),
                 "report" => ReportCommand.Run(options, Console.Out),
                 "network-monitor" => NetworkMonitorCommand.Run(options, Console.Out),
+                "network-filter" => NetworkFilterCommand.Run(options, Console.Out),
+                "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -150,6 +152,14 @@ internal static class ProgramMain
                 Console.WriteLine(NetworkMonitorCommand.Help);
                 return 0;
 
+            case "network-filter":
+                Console.WriteLine(NetworkFilterCommand.Help);
+                return 0;
+
+            case "security-monitor":
+                Console.WriteLine(SecurityMonitorCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -213,6 +223,24 @@ internal static class ProgramMain
                           --ports <numbers> [--interfaces <names>] [--output <file>]
                           [--max-events-per-second <n>] [--promiscuous]
                           [--rotation-max-size-bytes <n>] [--rotation-retention-days <n>]
+
+              network-filter
+                          User-mode inbound packet filter via WinDivert. Drops attack traffic
+                          before IIS. Requires Administrator elevation and WinDivert. Never runs
+                          in kernel; enforces a 5 ms per-packet inspection budget so it cannot
+                          become the watchdog violation it exists to prevent.
+                          --filter <string> [--max-inspection-time-ms <n>]
+                          [--max-connections-per-minute <n>] [--max-distinct-ports-per-minute <n>]
+                          [--block-list <ips>]
+
+              security-monitor
+                          Read-only Windows Security event log monitor. Detects RDP brute force
+                          and failed logons; prints findings as JSON Lines. Requires Administrator
+                          elevation. Pair with network-filter to block offending IPs at the packet
+                          layer.
+                          --log-name <string> [--event-ids <numbers>]
+                          [--max-failed-logons <n>] [--window-minutes <n>] [--allow-list <ips>]
+                          [--watch] [--interval-seconds <n>] [--output <file>]
 
               publish     Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.

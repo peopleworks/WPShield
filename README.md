@@ -189,6 +189,9 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Inspection of non-multipart bodies | Planned | Nothing else is inspected: urlencoded forms, JSON, XML-RPC, `application/octet-stream` PUTs and other `multipart/*` subtypes stream through untouched |
 | Inspection of archive contents | Planned | A `.zip` plugin or theme carrying a webshell is not detected, and plugin installation is a genuine upload path. No milestone assigned |
 | Bound on concurrent buffered uploads | Available | `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10, ceiling 50. Monitor forwards and warns at the limit; Block refuses with HTTP 429. |
+| **Network layer packet filtering** | **Available** | **`WPShield.NetworkFilter` inspects inbound TCP/UDP packets in user mode via WinDivert.** Rate limiting, dynamic block lists, and port-scan detection run ahead of IIS with a strict per-packet time budget so the filter can never stall the network stack or trigger a kernel watchdog. |
+| **Security event monitoring** | **Available** | **`WPShield.SecurityMonitor` reads the Windows Security event log and detects RDP brute-force and failed-logon patterns.** It publishes findings to a sink that can feed the dynamic block list of `WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication failures. |
+| **Security → Network filter bridge** | **Available** | **`WPShield.Integration` wires `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`** via `NetworkFilterBlockListSink`, so IPs caught by security event rules are dropped at the packet layer before they reach IIS. |
 | Rate limiting and observability | Planned | M3 and M4 |
 | Dashboard and Windows Service | Planned | M5 and M6 |
 | Production activation | Not approved | Requires M1-M6 validation and controlled M7 rollout |
@@ -207,17 +210,25 @@ flowchart TB
     R["WPShield.Rules.WordPress<br/>Rules that need WordPress knowledge"]
     S["WPShield.Service<br/>Engine demonstration"]
     G["WPShield.Gateway<br/>Loopback Kestrel + YARP"]
+    NF["WPShield.NetworkFilter<br/>User-mode packet filter (WinDivert)"]
+    SM["WPShield.SecurityMonitor<br/>Security event log monitor"]
+    IN["WPShield.Integration<br/>Security → Network filter bridge"]
     O["WPShield.Observability<br/>Planned"]
     M["WPShield.Management<br/>Planned"]
     W["WPShield Windows Service<br/>Planned"]
 
     A --> C
     A --> RW
+    A --> NF
+    A --> SM
     RW --> R
     C --> S
     C --> G
     R --> S
     R --> G
+    NF -.-> G
+    SM -.-> IN
+    IN -.-> NF
     G -.-> O
     G -.-> M
     G -.-> W
@@ -288,6 +299,9 @@ The following are project invariants:
 - **Privacy-safe evidence.** Logs must exclude credentials, authorization values, cookies, nonces, tokens, complete query strings, request bodies, and upload content.
 - **Explainable decisions.** Findings retain a stable rule ID, score, message key, minimal evidence, and recommended action.
 - **No automatic production changes.** WPShield does not modify IIS, DNS, certificates, firewall rules, Windows services, or public ports automatically.
+- **Network filter never runs in kernel.** `WPShield.NetworkFilter` inspects packets in user mode through WinDivert. It never acquires kernel spinlocks, never stalls the network stack, and enforces a strict per-packet inspection budget so a slow rule can never become a `DPC_WATCHDOG_VIOLATION` that reboots the server.
+- **Security monitor reads only.** `WPShield.SecurityMonitor` reads the Windows Security event log and never modifies, clears, or archives it. It requires Administrator privileges and refuses to start without them.
+- **Integration bridge is optional.** `WPShield.Integration` wires security findings into `WPShield.NetworkFilter.BlockListRule` through `NetworkFilterBlockListSink`. It is a separate, opt-in project: the core gateway, rules, sensor, and monitor projects do not depend on it.
 
 Read [THREAT_MODEL.md](THREAT_MODEL.md) for protected assets, trust boundaries, threats, and required safeguards. Report vulnerabilities according to [SECURITY.md](SECURITY.md), never through a public issue.
 

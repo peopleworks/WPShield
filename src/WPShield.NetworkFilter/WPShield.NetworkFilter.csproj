@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Library</OutputType>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <AnalysisLevel>latest</AnalysisLevel>
+
+    <!--
+      WPShield.NetworkFilter is Windows-only because it intercepts live TCP/UDP packets
+      through WinDivert (user-mode packet filtering). It references only WPShield.Abstractions,
+      never the reverse. This keeps the platform-independent projects buildable on Linux.
+
+      No NuGet package reference is taken for WinDivert: the project P/Invokes WinDivert.dll
+      directly. Operators must install the WinDivert driver on the target server before
+      running the filter (see docs/en/network-filter.md when written).
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>

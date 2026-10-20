@@ -194,6 +194,71 @@ not read as more than they claim:
   would let a command escape it. That is weaker, and the documentation says so rather than implying
   otherwise.
 
+## M2.7 — Network layer packet filtering
+
+> Pulled forward from M3 because a production host was observed crashing repeatedly with
+> `0x00000133 — DPC_WATCHDOG_VIOLATION` traced to `mwac.sys` (Malwarebytes Web Access Control)
+> blocking on a kernel spinlock while inspecting inbound connections in DPC context. M2.7 is the
+> project's own network-layer protection: user-mode packet filtering through WinDivert, with a
+> strict per-packet time budget so the filter can never become the watchdog violation it exists to
+> prevent.
+>
+> See [network filter design](docs/en/network-filter-design.md) for the complete behaviour.
+
+- [x] `src/WPShield.NetworkFilter/` — user-mode WinDivert packet filter targeting `net10.0-windows`.
+- [x] `NetworkInspectionAction`, `NetworkInspectionContext`, `NetworkInspectionResult`, and
+  `INetworkInspectionRule` contracts in `WPShield.Abstractions`.
+- [x] `WP-NET-001` — dynamic block list (source IP match, score 100, Block).
+- [x] `WP-NET-002` — rate limiting per source IP per minute (sliding 60-second window).
+- [x] `WP-NET-003` — port-scan detection (distinct destination ports per source IP per minute).
+- [x] `NetworkFilterEngine` — capture loop with 5 ms per-packet inspection budget; slow rules
+  forward the packet uninspected and log a budget warning.
+- [x] `NetworkFilterBuilder` — assembles default rule set from `NetworkFilterConfiguration`.
+- [x] Same JSON Lines log envelope as the gateway and triage tool for forensic correlation.
+- [x] Windows-only project; platform-independent projects remain buildable and testable on Linux.
+
+### What M2.7 does not cover
+
+- **Outbound traffic.** The default WinDivert filter is `tcp.Inbound`; outbound filtering is not implemented.
+- **ICMP or other IP protocols.** Only TCP and UDP headers are parsed.
+- **Deep packet inspection.** Rules see only the first 64 bytes of payload.
+- **Kernel code.** WPShield writes no kernel driver; WinDivert is an externally installed, signed dependency.
+- **TLS decryption.** Only TCP/UDP headers are visible; TLS payloads are opaque.
+
+## M2.8 — Security event log monitoring
+
+> Pulled forward from M3 because a production host was observed receiving sustained attacks on
+> Remote Desktop (TCP 3389) in addition to web traffic. `WPShield.NetworkFilter` can block packets
+> by source IP and rate, but it cannot see whether an RDP connection succeeded or failed — that
+> happens inside the authentication session, after the TCP handshake. M2.8 reads the Windows
+> Security event log and detects RDP brute-force and failed-logon patterns, publishing findings
+> that can feed the dynamic block list of `WPShield.NetworkFilter`.
+>
+> See [security monitor design](docs/en/security-monitor-design.md) for the complete behaviour.
+
+- [x] `src/WPShield.SecurityMonitor/` — Security event log reader targeting `net10.0-windows`.
+- [x] `SecurityInspectionContext`, `SecurityInspectionResult`, `ISecurityInspectionRule`, and
+  `ISecurityEventSink` contracts in `WPShield.Abstractions`.
+- [x] `WP-SEC-001` — RDP brute force detection (failed Logon Type 10 per source IP per window).
+- [x] `WP-SEC-002` — Generic failed logon detection (Event ID 4625 per source IP per window).
+- [x] `SecurityEventMonitor` — read-only Security log scanner with sliding-window failure counting.
+- [x] `SecurityEventBuilder` — assembles default rule set from `SecurityEventConfiguration`.
+- [x] Same JSON Lines log envelope as the gateway and triage tool for forensic correlation.
+- [x] Windows-only project; requires Administrator privileges to read the Security log;
+  platform-independent projects remain buildable and testable on Linux.
+- [x] `src/WPShield.Integration/` — optional bridge project targeting `net10.0-windows`.
+- [x] `NetworkFilterBlockListSink` — `ISecurityEventSink` implementation that adds
+  blocking source IPs to `WPShield.NetworkFilter.Rules.BlockListRule`.
+- [x] `SecurityToNetworkFilterBridge` — convenience class wiring `SecurityEventMonitor`,
+  `NetworkFilterEngine`, and `BlockListRule` together.
+
+### What M2.8 does not cover
+
+- **Real-time blocking.** `ScanOnce()` is polling-based; it does not subscribe to live event streams.
+- **Other event logs.** Only the Security log is read; System and Application logs are out of scope.
+- **RDP session contents.** Only authentication events (logon success/failure) are visible, not
+  session contents or credentials.
+
 ## M3 — Rate limiting and automated behavior
 
 > **M3 refuses requests. It does not touch the firewall.** [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md) records why: a brute-force blocker's job is to modify firewall rules automatically, which is the inverse of an invariant this project depends on for deployment onto shared hosts. The HTTP half belongs here, inline, where the real client address is already resolved; RDP, FTP, SMTP and SQL belong to a sibling project with its own safety contract.

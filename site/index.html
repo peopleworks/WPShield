@@ -606,6 +606,7 @@ footer p { max-width: 46rem; }
   <a href="#routing" class="nav__hideable"><span lang="en">Routing</span><span lang="es">Enrutado</span></a>
   <a href="#status" class="nav__hideable"><span lang="en">Status</span><span lang="es">Estado</span></a>
   <a href="#deploy" class="nav__hideable"><span lang="en">Deploy</span><span lang="es">Despliegue</span></a>
+  <a href="#cli" class="nav__hideable"><span lang="en">CLI</span><span lang="es">Línea de comandos</span></a>
   <a href="#docs" class="nav__hideable"><span lang="en">Docs</span><span lang="es">Documentación</span></a>
   <a href="https://github.com/peopleworks/WPShield" class="is-cta">GitHub&nbsp;&#8599;</a>
 </nav>
@@ -1491,6 +1492,25 @@ footer p { max-width: 46rem; }
                 limit — never to disk — inspected, then forwarded or refused</td>
           </tr>
           <tr>
+            <th scope="row">Network layer packet filtering</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2.7; <code>WPShield.NetworkFilter</code> inspects inbound TCP/UDP in user mode via
+                WinDivert, with a strict per-packet time budget so it cannot become a kernel
+                watchdog violation</td>
+          </tr>
+          <tr>
+            <th scope="row">Security event monitoring</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2.8; <code>WPShield.SecurityMonitor</code> reads the Windows Security event log and
+                detects RDP brute force and failed logons</td>
+          </tr>
+          <tr>
+            <th scope="row">Security → Network filter bridge</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2.8; <code>WPShield.Integration</code> feeds security findings into the dynamic
+                block list of <code>WPShield.NetworkFilter</code></td>
+          </tr>
+          <tr>
             <th scope="row">Inspection of non-multipart bodies</th>
             <td><span class="pill pill--planned">Planned</span></td>
             <td>Urlencoded forms, JSON, XML-RPC, <code>application/octet-stream</code> PUTs and
@@ -1574,6 +1594,25 @@ footer p { max-width: 46rem; }
             <td>M2; los cuerpos <code>multipart/form-data</code> se almacenan en memoria dentro del
                 límite de solicitud —nunca en disco—, se inspeccionan y luego se reenvían o se
                 rechazan</td>
+          </tr>
+          <tr>
+            <th scope="row">Filtrado de paquetes en capa de red</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2.7; <code>WPShield.NetworkFilter</code> inspecciona TCP/UDP entrante en modo
+                usuario vía WinDivert, con un presupuesto de tiempo estricto por paquete para que
+                nunca se convierta en una violación del watchdog del kernel</td>
+          </tr>
+          <tr>
+            <th scope="row">Monitoreo de eventos de seguridad</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2.8; <code>WPShield.SecurityMonitor</code> lee el registro de Seguridad de Windows
+                y detecta fuerza bruta de RDP y fallos de inicio de sesión</td>
+          </tr>
+          <tr>
+            <th scope="row">Puente de seguridad a filtro de red</th>
+            <td><span class="pill pill--ok">Available</span></td>
+            <td>M2.8; <code>WPShield.Integration</code> alimenta los hallazgos de seguridad en la
+                lista de bloqueo dinámica de <code>WPShield.NetworkFilter</code></td>
           </tr>
           <tr>
             <th scope="row">Inspección de cuerpos que no son multipart</th>
@@ -2047,6 +2086,232 @@ footer p { max-width: 46rem; }
     </div>
   </section>
 
+  <!-- ------------------------------------------------------------- cli -->
+  <section id="cli" class="reveal">
+    <p class="eyebrow">
+      <span lang="en">Command line</span>
+      <span lang="es">Línea de comandos</span>
+    </p>
+
+    <h2 lang="en">Every operator verb,<br>in one place.</h2>
+    <h2 lang="es">Cada verbo de operador,<br>en un solo lugar.</h2>
+
+    <p class="wide" lang="en">
+      All commands live in the <code>wpshield</code> console tool. Every one prints help with
+      <code>--help</code>, accepts <code>-?</code> and <code>/?</code> the way Windows tools do, and
+      returns exit codes the caller can script against. All of them read and report; none installs
+      anything unless its name says so.
+    </p>
+    <p class="wide" lang="es">
+      Todos los comandos viven en la herramienta de consola <code>wpshield</code>. Cada uno imprime
+      ayuda con <code>--help</code>, acepta <code>-?</code> y <code>/?</code> como lo hacen las
+      herramientas de Windows, y devuelve códigos de salida que el llamador puede usar en scripts.
+      Todos leen e informan; ninguno instala nada a menos que su nombre lo diga.
+    </p>
+
+    <div class="table-scroll">
+      <table lang="en">
+        <caption>CLI verbs and what they do.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Command</th>
+            <th scope="col">Purpose</th>
+            <th scope="col">Key options</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>setup</code></th>
+            <td>Take one IIS site from nothing to protected and verified, in five ordered steps.</td>
+            <td><code>--site</code>, <code>--hosts</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>preflight</code></td>
+            <td>Read-only readiness check. Nineteen checks, changes nothing.</td>
+            <td><code>--gateway-port</code>, <code>--private-port</code>, <code>--site</code>, <code>--output</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>install</code></td>
+            <td>Install the gateway as a Windows service under <code>NT SERVICE\WPShield</code>.</td>
+            <td><code>--path</code>, <code>--install-path</code>, <code>--log-path</code>, <code>--config</code>, <code>--start</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>uninstall</code></td>
+            <td>Remove the service. Refuses while an IIS rewrite rule still forwards to it.</td>
+            <td><code>--remove-files</code>, <code>--remove-logs</code>, <code>--force</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>enable</code></td>
+            <td>Put WPShield in the traffic path for one site, verify it works, revert if it does not.</td>
+            <td><code>--site</code>, <code>--gateway-port</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>disable</code></td>
+            <td>The rollback: take WPShield out of the traffic path.</td>
+            <td><code>--site</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>site</code></td>
+            <td>Tell the gateway which sites to protect; writes configuration, restarts the service.</td>
+            <td><code>list</code>, <code>add</code>, <code>remove</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>status</code></td>
+            <td>Report what is installed, which account runs it, whether it is writing a log.</td>
+            <td>(none)</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>watch</code></td>
+            <td>Live console over the evidence log: findings and verdicts as they land.</td>
+            <td><code>--log-dir</code>, <code>--host</code>, <code>--from-start</code>, <code>--plain</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report</code></td>
+            <td>PDF over a window of the evidence log: summary, findings by rule and by site.</td>
+            <td><code>--log-dir</code>, <code>--log-file</code>, <code>--host</code>, <code>--since</code>, <code>--out</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>network-monitor</code></td>
+            <td>Live passive capture of HTTP metadata on operator-named ports. Requires Npcap and elevation.</td>
+            <td><code>--ports</code>, <code>--interfaces</code>, <code>--output</code>, <code>--max-events-per-second</code>, <code>--promiscuous</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>network-filter</code></td>
+            <td>User-mode inbound packet filter via WinDivert. Drops attack traffic before IIS. Never runs in kernel; 5 ms per-packet inspection budget.</td>
+            <td><code>--filter</code>, <code>--max-inspection-time-ms</code>, <code>--max-connections-per-minute</code>, <code>--max-distinct-ports-per-minute</code>, <code>--block-list</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>security-monitor</code></td>
+            <td>Read-only Windows Security event log monitor. Detects RDP brute force and failed logons. Prints JSON Lines.</td>
+            <td><code>--log-name</code>, <code>--event-ids</code>, <code>--max-failed-logons</code>, <code>--window-minutes</code>, <code>--allow-list</code>, <code>--watch</code>, <code>--interval-seconds</code>, <code>--output</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>publish</code></td>
+            <td>Build a self-contained win-x64 deployment with checksum. Runs on a build machine, never on the server.</td>
+            <td><code>--repository</code>, <code>--output</code>, <code>--skip-archive</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>version</code></td>
+            <td>Print the version.</td>
+            <td><code>--version</code>, <code>-v</code></td>
+          </tr>
+        </tbody>
+      </table>
+
+      <table lang="es">
+        <caption>Verbos de CLI y su propósito.</caption>
+        <thead>
+          <tr>
+            <th scope="col">Comando</th>
+            <th scope="col">Propósito</th>
+            <th scope="col">Opciones principales</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row"><code>setup</code></th>
+            <td>Llevar un sitio de IIS de la nada a protegido y verificado, en cinco pasos ordenados.</td>
+            <td><code>--site</code>, <code>--hosts</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>preflight</code></td>
+            <td>Comprobación de disponibilidad de solo lectura. Diecinueve comprobaciones, no cambia nada.</td>
+            <td><code>--gateway-port</code>, <code>--private-port</code>, <code>--site</code>, <code>--output</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>install</code></td>
+            <td>Instalar el gateway como servicio de Windows bajo <code>NT SERVICE\WPShield</code>.</td>
+            <td><code>--path</code>, <code>--install-path</code>, <code>--log-path</code>, <code>--config</code>, <code>--start</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>uninstall</code></td>
+            <td>Remover el servicio. Se niega mientras una regla de reescritura de IIS aún reenvíe a él.</td>
+            <td><code>--remove-files</code>, <code>--remove-logs</code>, <code>--force</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>enable</code></td>
+            <td>Poner WPShield en la ruta de tráfico para un sitio, verificar que funcione, revertir si no.</td>
+            <td><code>--site</code>, <code>--gateway-port</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>disable</code></td>
+            <td>La vuelta atrás: sacar a WPShield de la ruta de tráfico.</td>
+            <td><code>--site</code>, <code>--dry-run</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>site</code></td>
+            <td>Decirle al gateway qué sitios proteger; escribe la configuración, reinicia el servicio.</td>
+            <td><code>list</code>, <code>add</code>, <code>remove</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>status</code></td>
+            <td>Reportar qué está instalado, bajo qué cuenta corre, si escribe un log.</td>
+            <td>(ninguna)</td>
+          </tr>
+          <tr>
+            <th scope="row"><code>watch</code></td>
+            <td>Consola en vivo sobre el log de evidencia: hallazgos y veredictos a medida que llegan.</td>
+            <td><code>--log-dir</code>, <code>--host</code>, <code>--from-start</code>, <code>--plain</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>report</code></td>
+            <td>PDF sobre una ventana del log de evidencia: resumen, hallazgos por regla y por sitio.</td>
+            <td><code>--log-dir</code>, <code>--log-file</code>, <code>--host</code>, <code>--since</code>, <code>--out</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>network-monitor</code></td>
+            <td>Captura pasiva en vivo de metadatos HTTP en los puertos que el operador nombre. Requiere Npcap y elevación.</td>
+            <td><code>--ports</code>, <code>--interfaces</code>, <code>--output</code>, <code>--max-events-per-second</code>, <code>--promiscuous</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>network-filter</code></td>
+            <td>Filtro de paquetes entrante en modo usuario vía WinDivert. Descarta tráfico de ataque antes de IIS. Nunca corre en kernel; presupuesto de 5 ms por paquete.</td>
+            <td><code>--filter</code>, <code>--max-inspection-time-ms</code>, <code>--max-connections-per-minute</code>, <code>--max-distinct-ports-per-minute</code>, <code>--block-list</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>security-monitor</code></td>
+            <td>Monitor de solo lectura del registro de Seguridad de Windows. Detecta fuerza bruta de RDP y fallos de inicio de sesión. Imprime JSON Lines.</td>
+            <td><code>--log-name</code>, <code>--event-ids</code>, <code>--max-failed-logons</code>, <code>--window-minutes</code>, <code>--allow-list</code>, <code>--watch</code>, <code>--interval-seconds</code>, <code>--output</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>publish</code></td>
+            <td>Construir un despliegue autocontenido win-x64 con checksum. Corre en una máquina de compilación, nunca en el servidor.</td>
+            <td><code>--repository</code>, <code>--output</code>, <code>--skip-archive</code></td>
+          </tr>
+          <tr>
+            <th scope="row"><code>version</code></td>
+            <td>Imprimir la versión.</td>
+            <td><code>--version</code>, <code>-v</code></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note" lang="en">
+      <strong>The two new verbs exist because of a real incident.</strong> A production host was
+      rebooting with <code>0x00000133 — DPC_WATCHDOG_VIOLATION</code> traced to
+      <code>mwac.sys</code> (Malwarebytes Web Access Control) blocking on a kernel spinlock while
+      inspecting inbound connections in DPC context. <code>network-filter</code> is the project's
+      own network-layer protection: user mode only, never a kernel spinlock, and a per-packet time
+      budget so it cannot become the watchdog violation it exists to prevent.
+      <code>security-monitor</code> sees what packets cannot: whether an RDP connection succeeded or
+      failed. Pair them through <code>WPShield.Integration</code> so an IP caught failing logons is
+      dropped at the packet layer before it tries again.
+    </div>
+    <div class="note" lang="es">
+      <strong>Los dos verbos nuevos existen por un incidente real.</strong> Un host de producción se
+      reiniciaba con <code>0x00000133 — DPC_WATCHDOG_VIOLATION</code> rastreado hasta
+      <code>mwac.sys</code> (Malwarebytes Web Access Control) bloqueado en un spinlock de kernel
+      mientras inspeccionaba conexiones entrantes en contexto DPC.
+      <code>network-filter</code> es la propia protección de capa de red del proyecto: solo modo
+      usuario, nunca un spinlock de kernel, y un presupuesto de tiempo por paquete para que nunca
+      se convierta en la violación del watchdog que existe para prevenir.
+      <code>security-monitor</code> ve lo que los paquetes no ven: si una conexión RDP tuvo éxito o
+      falló. Úselos juntos a través de <code>WPShield.Integration</code> para que una IP atrapada
+      fallando inicios de sesión sea descartada a nivel de paquete antes de que lo intente otra vez.
+    </div>
+  </section>
+
   <section id="docs" class="reveal">
     <p class="eyebrow">
       <span lang="en">Read before evaluating</span>
@@ -2095,6 +2360,18 @@ footer p { max-width: 46rem; }
           <li>
             <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/adr/0001-production-traffic-path.md"><span lang="en">ADR 0001 — production traffic path</span><span lang="es">ADR 0001 — ruta de tráfico en producción</span></a>
             <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/adr/0001-ruta-de-trafico-en-produccion.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/network-filter-design.md"><span lang="en">Network filter design</span><span lang="es">Diseño del filtro de red</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-filtro-red.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/security-monitor-design.md"><span lang="en">Security monitor design</span><span lang="es">Diseño del monitor de seguridad</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-monitor-seguridad.md" hreflang="es">español&nbsp;&#8599;</a>
+          </li>
+          <li>
+            <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/integration-design.md"><span lang="en">Security → Network filter bridge design</span><span lang="es">Diseño del puente seguridad → filtro de red</span></a>
+            <a class="alt" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-integracion.md" hreflang="es">español&nbsp;&#8599;</a>
           </li>
         </ul>
       </div>

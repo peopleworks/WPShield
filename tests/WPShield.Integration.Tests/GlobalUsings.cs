@@ -1,0 +1,9 @@
+global using System;
+global using System.Collections.Generic;
+global using Xunit;
+global using WPShield.Abstractions;
+global using WPShield.NetworkFilter;
+global using WPShield.NetworkFilter.Rules;
+global using WPShield.Integration;
+global using WPShield.SecurityMonitor;
+global using WPShield.SecurityMonitor.Rules;

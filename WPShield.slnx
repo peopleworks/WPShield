@@ -9,6 +9,9 @@
     <Project Path="src/WPShield.Logging/WPShield.Logging.csproj" />
     <Project Path="src/WPShield.Gateway/WPShield.Gateway.csproj" />
     <Project Path="src/WPShield.Cli/WPShield.Cli.csproj" />
+    <Project Path="src/WPShield.NetworkFilter/WPShield.NetworkFilter.csproj" />
+    <Project Path="src/WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
+    <Project Path="src/WPShield.Integration/WPShield.Integration.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WPShield.Abstractions.Tests/WPShield.Abstractions.Tests.csproj" />
@@ -18,5 +21,8 @@
     <Project Path="tests/WPShield.Rules.Windows.Tests/WPShield.Rules.Windows.Tests.csproj" />
     <Project Path="tests/WPShield.Rules.WordPress.Tests/WPShield.Rules.WordPress.Tests.csproj" />
     <Project Path="tests/WPShield.Cli.Tests/WPShield.Cli.Tests.csproj" />
+    <Project Path="tests/WPShield.NetworkFilter.Tests/WPShield.NetworkFilter.Tests.csproj" />
+    <Project Path="tests/WPShield.SecurityMonitor.Tests/WPShield.SecurityMonitor.Tests.csproj" />
+    <Project Path="tests/WPShield.Integration.Tests/WPShield.Integration.Tests.csproj" />
   </Folder>
 </Solution>
