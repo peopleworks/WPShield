@@ -99,6 +99,15 @@ Before modifying code:
   legitimate HTTP caller. `assets`, `css`, `js`, `media` and `vendor` are excluded from the asset
   directory list on purpose — older plugins really do serve generated CSS and JS from PHP — and adding
   a name for which that sentence stops being true makes the score wrong, not the list longer.
+- **An exposure rule matches a shape, never a scanner's list of paths.** A `.env` segment in any
+  position, a `.git` folder anywhere: measured against real logs, a list taken from a scanner
+  catalogue missed most of the probes, because scanners walk every folder name they can guess. Score
+  by whether the shape can have a legitimate caller, never by how often it was seen - which is why
+  `NET-PATH-001` (Blazor WebAssembly loads `appsettings.json` by design), `EXPOSE-PATH-005` and
+  `PHP-PATH-002` observe at 30. `/admin`, `/login`, `/dashboard` and `/signin` are deliberately not
+  rules: each is a real route on real sites, and a test asserts they score zero.
+- **Every shipped rule must be a rule the gateway runs.** `RuleRegistrationTests` compares the
+  registered rules with the ones the packages contain; a new rule fails it until it is registered.
 - **Path rules implement `IRequestPathRule`, never `IInspectionRule`.** The separation is what keeps a
   path rule out of the per-file pass, where it would be evaluated once per uploaded file and
   contribute its score several times for one path, and keeps an upload rule from being asked to decide

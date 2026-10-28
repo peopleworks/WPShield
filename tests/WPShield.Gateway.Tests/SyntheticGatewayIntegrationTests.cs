@@ -306,6 +306,49 @@ public sealed class SyntheticGatewayIntegrationTests
     }
 
     /// <summary>
+    /// The probes a scan sends at every site on a shared host, whatever runs there, refused in Block
+    /// mode from the request line alone.
+    /// </summary>
+    [Theory]
+    [InlineData("/.env", "EXPOSE-PATH-001")]
+    [InlineData("/backend/.env.production", "EXPOSE-PATH-001")]
+    [InlineData("/.git/config", "EXPOSE-PATH-002")]
+    [InlineData("/.aws/credentials", "EXPOSE-PATH-003")]
+    [InlineData("/wp-config.php.bak", "EXPOSE-PATH-004")]
+    [InlineData("/web.config", "IIS-PATH-002")]
+    [InlineData("/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php", "PHP-PATH-001")]
+    public async Task BlockMode_RefusesAnExposureProbeAndReachesNoBackend(string path, string expectedRuleId)
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(siteMode: "Block");
+
+        using var response = await harness.SendAsync("site-one.test", HttpMethod.Get, path);
+        var content = await response.Content.ReadAsStringAsync();
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        Assert.Contains(expectedRuleId, content, StringComparison.Ordinal);
+        Assert.Empty(harness.SiteOne.Requests);
+        Assert.Empty(harness.SiteTwo.Requests);
+    }
+
+    /// <summary>
+    /// The observing rules observe, even in Block mode. A Blazor WebAssembly client loads its settings
+    /// file on every page, and a database download may be published on purpose - both are forwarded.
+    /// </summary>
+    [Theory]
+    [InlineData("/appsettings.json")]
+    [InlineData("/downloads/sample-schema.sql")]
+    [InlineData("/info.php")]
+    public async Task BlockMode_ForwardsWhatTheExposureFamilyOnlyObserves(string path)
+    {
+        await using var harness = await SyntheticGatewayHarness.StartAsync(siteMode: "Block");
+
+        using var response = await harness.SendAsync("site-one.test", HttpMethod.Get, path);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Single(harness.SiteOne.Requests);
+    }
+
+    /// <summary>
     /// Monitor is the default and it forwards. The finding is recorded; the request is not refused.
     /// </summary>
     [Fact]
