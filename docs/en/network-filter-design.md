@@ -54,11 +54,14 @@ Each one is enforced in code and covered by a test.
 - **The allow-list is applied twice**, when a block is added and again when the filters are written.
   A block range containing an allow-listed address is refused.
 - **Block mode refuses to start** with an empty allow-list, when an address connected to the RDP port
-  (read from `RDP-Tcp\PortNumber`) is not on the allow-list, or when the self-test fails.
+  (read from `RDP-Tcp\PortNumber`) is not on the allow-list, or when the self-test fails. While it
+  runs, a new dynamic block is refused for any address holding an RDP connection at that moment, and
+  refused too when the connections cannot be read.
 - **SYN evidence does not block by default.** `WP-NET-002` and `WP-NET-003` see connection attempts,
   whose source anyone can forge; they block only with `--syn-rules-may-block`.
-- **The driver is never installed as a side effect.** Handles are opened with
-  `WINDIVERT_FLAG_NO_INSTALL`; `--install-driver` is the explicit exception.
+- **The driver is never loaded as a side effect.** Handles are opened with
+  `WINDIVERT_FLAG_NO_INSTALL`; `--install-driver` is the explicit exception, and what it leaves behind
+  does not survive a reboot (see *Prerequisites*).
 - **`WinDivert.dll` is loaded from the WPShield directory only**, never from `PATH` or the working
   directory.
 - **Everything is bounded**: 200 filter objects per handle (WinDivert's limit is 256), 1,000 blocks by
@@ -69,7 +72,7 @@ Each one is enforced in code and covered by a test.
 
 | ID | Signal | Score | Default effect |
 | --- | --- | --- | --- |
-| `WP-NET-001` | Address on the block list | 100 | Dropped (Block mode) |
+| `WP-NET-001` | Address on the block list. `blocked` and `expired` events carry it, with the finding that asked in `requested_by` | 100 | Dropped (Block mode) |
 | `WP-NET-002` | New connection attempts per source per minute (default threshold 60) | 60 at the threshold, 80 at 2×, 100 at 4× | Observed; blocks only with `--syn-rules-may-block` |
 | `WP-NET-003` | Distinct destination ports per source per minute (default threshold 20) | 60 at the threshold, 80 at 2×, 100 at 3× | Observed; blocks only with `--syn-rules-may-block` |
 
@@ -84,9 +87,11 @@ Expected false positives: `WP-NET-002` at a busy shared NAT address, a crawler, 
    `wpshield.exe`. WPShield does not bundle or download them; WinDivert is LGPLv3 and signed by its
    author.
 2. **Administrator elevation**, except for `--check`.
-3. **The driver installed.** The first run with `--install-driver` lets WinDivert install its
-   `WinDivert` driver service. Undo it with `sc stop WinDivert` and `sc delete WinDivert` after every
-   process using it has stopped, or delete the files and reboot.
+3. **The driver loaded.** A run with `--install-driver` lets WinDivert register and start its
+   `WinDivert` kernel driver service. WinDivert marks that service for deletion the moment it starts
+   (read from its source, `dll/windivert.c`), so it is gone after `sc stop WinDivert` or a reboot and
+   nothing stays installed. The same reason means `--install-driver` is needed again on the first run
+   after every reboot.
 
 ## Running it
 
@@ -112,19 +117,20 @@ Events go to the console and, with `--output`, to a JSON Lines file in the gatew
 (`timestamp`, `level`, `category: WPShield.NetworkFilter`, `message`, `state`). The `state.action`
 vocabulary is fixed: `started`, `stopped`, `self-test-failed`, `observed`, `would-block`,
 `not-blocked-spoofable-evidence`, `blocked`, `expired`, `refused-allow-listed`,
-`refused-block-set-full`, `refused-unblockable-address`, `enforcement-updated`,
-`enforcement-failed`, `observer-failed`.
+`refused-block-set-full`, `refused-unblockable-address`, `refused-rdp-client`,
+`enforcement-updated`, `enforcement-failed`, `observer-failed`.
 
 ## Rollback and bypass
 
 Stop the command (Ctrl+C, or end the process). Every block is lifted at that moment, because blocks
-are handles and the handles close with the process. There is nothing else to undo. To remove the
-driver as well, run `sc stop WinDivert` and `sc delete WinDivert`.
+are handles and the handles close with the process. There is nothing else to undo. To unload the
+driver as well, run `sc stop WinDivert` once no process holds a WinDivert handle; the service was
+already marked for deletion, so stopping it removes it. A reboot does the same.
 
 ## What it does not do
 
 - Touch the Windows Firewall, IIS, DNS, certificates, or any service other than the WinDivert driver
-  the operator names with `--install-driver`.
+  the operator loads with `--install-driver`.
 - Persist a block, or restore blocks after a restart.
 - Inspect payloads, decrypt TLS, or look at UDP, ICMP or outbound traffic.
 - Act on the Security log yet. `WPShield.Integration` can turn a Security-log finding into a block
