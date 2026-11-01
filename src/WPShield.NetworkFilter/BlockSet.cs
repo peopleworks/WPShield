@@ -63,6 +63,16 @@ public sealed class BlockSet
         return _allowList.Any(entry => entry.Contains(address));
     }
 
+    /// <summary>Whether an entry already blocks <paramref name="address"/>.</summary>
+    public bool IsBlocked(IPAddress address)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        lock (_gate)
+        {
+            return _entries.Keys.Any(range => range.Contains(address));
+        }
+    }
+
     /// <summary>
     /// Adds a block. <paramref name="lifetime"/> null means for the life of the process, which only an
     /// operator-named block should use.

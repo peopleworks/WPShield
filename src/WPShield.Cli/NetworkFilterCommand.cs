@@ -42,9 +42,10 @@ internal static class NetworkFilterCommand
           --output <file.jsonl>         Also append every event as JSON Lines, in the gateway's envelope.
           --check                       Run the WinDivert self-test and exit. Opens no handle; needs
                                         WinDivert.dll but neither elevation nor the driver.
-          --install-driver              Let WinDivert install its driver service if it is missing. An
-                                        explicit, reversible change to this host: undo it with
-                                        'sc stop WinDivert' and 'sc delete WinDivert'.
+          --install-driver              Let WinDivert load its kernel driver if it is not loaded. WinDivert
+                                        registers the service and marks it for deletion at once, so it
+                                        is gone after 'sc stop WinDivert' or a reboot - and needed again
+                                        on the first run after every reboot.
 
         Requires: WinDivert.dll and WinDivert64.sys from the official WinDivert 2.2.2 release, next to
         wpshield.exe. WPShield does not bundle or download them. Administrator elevation, except --check.

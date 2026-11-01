@@ -284,6 +284,50 @@ public sealed class NetworkFilterServiceTests
     }
 
     [Fact]
+    public void ABlockEvent_CarriesWpNet001AndTheFindingThatAskedForIt()
+    {
+        using var service = Create(Block());
+        service.Start();
+
+        service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated);
+
+        var blocked = Assert.Single(_sink.WithAction(NetworkFilterActions.Blocked));
+        Assert.Equal("WP-NET-001", blocked.State["rule_id"]);
+        Assert.Equal("WP-SEC-002", blocked.State["requested_by"]);
+    }
+
+    [Fact]
+    public void ADynamicBlock_ForAnAddressThatJoinedTheRdpPortMidRun_IsRefused()
+    {
+        var connections = new List<TcpConnectionSnapshot>();
+        using var service = new NetworkFilterService(Block(), _driver, _sink, _time, () => new LockoutProbe(3770, [.. connections]));
+        Assert.True(service.Start().Started);
+
+        connections.Add(new TcpConnectionSnapshot(
+            new IPEndPoint(IPAddress.Parse("192.0.2.1"), 3770),
+            new IPEndPoint(IPAddress.Parse("::ffff:198.51.100.9"), 50000)));
+        var outcome = service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated);
+
+        Assert.Null(outcome);
+        Assert.Equal(0, service.Blocks.Count);
+        Assert.Single(_sink.WithAction(NetworkFilterActions.RefusedRdpClient));
+    }
+
+    [Fact]
+    public void WhenTheConnectionsCannotBeRead_ADynamicBlockIsRefused()
+    {
+        var failing = false;
+        using var service = new NetworkFilterService(Block(), _driver, _sink, _time, () =>
+            failing ? throw new System.Net.NetworkInformation.NetworkInformationException() : new LockoutProbe(3770, []));
+        Assert.True(service.Start().Started);
+
+        failing = true;
+
+        Assert.Null(service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated));
+        Assert.Equal(0, service.Blocks.Count);
+    }
+
+    [Fact]
     public void OptionsThatOverlap_AreRefusedBeforeAnythingOpens()
     {
         using var service = Create(Block("94.0.0.0/24") with { AllowList = [Ranges.Allow("94.0.0.7")] });
