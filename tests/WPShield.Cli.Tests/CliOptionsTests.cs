@@ -25,6 +25,23 @@ public sealed class CliOptionsTests
     }
 
     [Fact]
+    public void ARepeatedOption_IsRefusedWhenTheVerbAsks()
+    {
+        var options = CliOptions.Parse(["--allow", "203.0.113.50", "--allow=198.51.100.7"]);
+
+        var exception = Assert.Throws<CliArgumentException>(() => options.RejectRepeated("--allow", "--block"));
+
+        Assert.Contains("--allow", exception.Message, StringComparison.Ordinal);
+        Assert.Equal("198.51.100.7", options.Get("--allow"));
+    }
+
+    [Fact]
+    public void AnOptionGivenOnce_IsNotRepeated()
+    {
+        CliOptions.Parse(["--allow", "203.0.113.50", "--block", "94.0.0.0/24"]).RejectRepeated("--allow", "--block");
+    }
+
+    [Fact]
     public void ABareOption_IsAFlag()
     {
         var options = CliOptions.Parse(["--dry-run"]);

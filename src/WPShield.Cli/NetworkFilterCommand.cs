@@ -1,171 +1,224 @@
+using System.Globalization;
 using System.Security.Principal;
-using System.Threading;
-using WPShield.Abstractions;
 using WPShield.NetworkFilter;
-using WPShield.NetworkFilter.Rules;
 
 namespace WPShield.Cli;
 
 /// <summary>
-/// <c>wpshield network-filter</c> — user-mode inbound packet filter built on WinDivert.
+/// <c>wpshield network-filter</c>: observes new inbound TCP connections and, in Block mode, drops
+/// packets from the addresses on its block list. See ADR 0006.
 /// </summary>
 /// <remarks>
 /// <para>
-/// This is the operator entry point for WPShield.NetworkFilter. It starts a read-write packet
-/// filter on the WinDivert handle named in <c>--filter</c> (default <c>tcp.Inbound</c>),
-/// evaluates each intercepted packet against the rate-limit, block-list and port-scan rules,
-/// drops packets that match a blocking rule, and reinjects all others.
+/// Normal traffic never passes through this process. The observer receives copies of connection
+/// attempts; blocks are WinDivert DROP filters the driver applies in the kernel. Stopping the command,
+/// or the command dying, closes the handles and lifts every block: nothing is written to the Windows
+/// Firewall, the registry or the disk, apart from the optional JSON Lines log.
 /// </para>
 /// <para>
-/// <b>Design constraint inherited from the Malwarebytes mwac.sys failure:</b> this command never
-/// runs in kernel, never acquires a kernel spinlock on the packet path, and enforces a strict
-/// per-packet inspection budget (default 5 ms). If a rule takes longer, the packet is forwarded
-/// uninspected rather than risking a DPC watchdog violation that reboots the server.
-/// </para>
-/// <para>
-/// <b>WinDivert is an external dependency.</b> The operator installs the WinDivert runtime
-/// explicitly; this command does not download or install it. <c>WinDivertOpen</c> fails with a
-/// clear message if the driver is absent.
-/// </para>
-/// <para>
-/// <b>Nothing here modifies IIS.</b> No bindings, no rewrite rules, no application pools. The
-/// command drops attack traffic before it reaches IIS.
-/// </para>
-/// <para>
-/// Stop it with Ctrl+C. Nothing on this machine is changed by running it except the packets
-/// that match a blocking rule.
+/// Monitor is the default and never opens a DROP handle. Block refuses to start without an allow-list,
+/// when an RDP client is not on it, or when the WinDivert self-test fails.
 /// </para>
 /// </remarks>
 internal static class NetworkFilterCommand
 {
     public const string Help = """
-        wpshield network-filter - user-mode inbound packet filter via WinDivert. Drops attack traffic before IIS.
+        wpshield network-filter - observe new inbound connections and, in Block mode, drop packets from
+        the addresses on the block list. Normal traffic never passes through WPShield. See ADR 0006.
 
         Usage: wpshield network-filter [options]
+          --mode <Monitor|Block>        Default Monitor: reports who would be blocked, drops nothing.
+          --allow <addresses>           Comma-separated addresses or CIDR blocks that are never blocked.
+                                        Required for Block. Include the address you administer from.
+          --block <addresses>           Comma-separated addresses or CIDR blocks (no wider than /16 or
+                                        IPv6 /48) to drop for as long as the command runs.
+          --block-ttl-minutes <n>       How long a block added by a rule lasts. Default 60.
+          --max-blocks <n>              Ceiling on the block set. Default 1000.
+          --syn-rules-may-block         Let WP-NET-002 and WP-NET-003 add blocks. Off by default: their
+                                        evidence is a SYN, whose source anyone can forge, so this lets
+                                        a third party get any address not on the allow-list blocked.
+          --max-connections-per-minute <n>    WP-NET-002 threshold per source. Default 60.
+          --max-distinct-ports-per-minute <n> WP-NET-003 threshold per source. Default 20.
+          --output <file.jsonl>         Also append every event as JSON Lines, in the gateway's envelope.
+          --check                       Run the WinDivert self-test and exit. Opens no handle; needs
+                                        WinDivert.dll but neither elevation nor the driver.
+          --install-driver              Let WinDivert install its driver service if it is missing. An
+                                        explicit, reversible change to this host: undo it with
+                                        'sc stop WinDivert' and 'sc delete WinDivert'.
 
-          --filter <string>            WinDivert filter string. Default: tcp.Inbound.
-          --max-inspection-time-ms <n> Max milliseconds to inspect one packet before forwarding
-                                       it uninspected. Default: 5.
-          --max-connections-per-minute <n> Rate-limit threshold per source IP per minute.
-                                       Default: 60.
-          --max-distinct-ports-per-minute <n> Port-scan threshold per source IP per minute.
-                                       Default: 20.
-          --block-list <ips>           Comma-separated source IPs to always block.
-                                       Default: none.
+        Requires: WinDivert.dll and WinDivert64.sys from the official WinDivert 2.2.2 release, next to
+        wpshield.exe. WPShield does not bundle or download them. Administrator elevation, except --check.
 
-        What it shows: one line per blocked packet with timestamp, source IP, destination port,
-        rule ID, score and action. All other packets are reinjected to continue to IIS.
+        What it never does: reinject or delay a packet, write a Windows Firewall rule, persist a block,
+        install a driver unless --install-driver is given, or touch IIS.
 
-        What it does NOT do: run in kernel, acquire kernel spinlocks, modify IIS, install
-        WinDivert, or capture outbound traffic. WinDivert must be installed separately by the
-        operator; this command does not download or install it.
-
-        Stop it with Ctrl+C. Blocked packets are dropped; everything else continues to IIS.
+        Stop it with Ctrl+C. Stopping lifts every block at once.
 
         Exit codes:
-          0   stopped cleanly
-          1   an argument was wrong, WinDivert is missing, or elevation is absent
+          0   stopped cleanly, or --check passed
+          1   an argument was wrong, a refusal (allow-list, RDP client, self-test), WinDivert missing,
+              or elevation absent
         """;
 
     private static readonly string[] KnownOptions =
     [
-        "--filter", "--max-inspection-time-ms", "--max-connections-per-minute",
-        "--max-distinct-ports-per-minute", "--block-list"
+        "--mode", "--allow", "--block", "--block-ttl-minutes", "--max-blocks", "--syn-rules-may-block",
+        "--max-connections-per-minute", "--max-distinct-ports-per-minute", "--output", "--check",
+        "--install-driver",
     ];
 
-    public static int Run(CliOptions arguments, TextWriter output)
+    public static int Run(CliOptions arguments, TextWriter output) =>
+        Run(arguments, output, static mayInstall => new WinDivertDriver(mayInstall), IsElevated, WaitForCtrlC);
+
+    internal static int Run(
+        CliOptions arguments,
+        TextWriter output,
+        Func<bool, IDivertDriver> createDriver,
+        Func<bool> isElevated,
+        Action waitForStop)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
+        ArgumentNullException.ThrowIfNull(createDriver);
+        ArgumentNullException.ThrowIfNull(isElevated);
+        ArgumentNullException.ThrowIfNull(waitForStop);
 
         arguments.RejectUnknown(KnownOptions);
+        arguments.RejectRepeated(KnownOptions);
+        var options = BuildOptions(arguments);
 
-        if (!IsElevated())
+        if (arguments.Flag("--check"))
         {
-            output.WriteLine("ERROR: network-filter requires an Administrator elevation.");
-            output.WriteLine("       Run the command from an elevated command prompt or PowerShell.");
+            return Check(options, createDriver(false), output);
+        }
+
+        if (!isElevated())
+        {
+            output.WriteLine("ERROR: network-filter needs Administrator elevation (only --check does not).");
             return 1;
         }
 
-        var filter = arguments.Get("--filter") ?? "tcp.Inbound";
-        var maxInspectionTimeMs = arguments.Integer("--max-inspection-time-ms", 5);
-        var maxConnectionsPerMinute = arguments.Integer("--max-connections-per-minute", 60);
-        var maxDistinctPortsPerMinute = arguments.Integer("--max-distinct-ports-per-minute", 20);
-        var blockList = arguments.List("--block-list");
-
-        var configuration = new NetworkFilterConfiguration
+        using var sink = new NetworkFilterEventWriter(output, arguments.Get("--output"));
+        using var service = new NetworkFilterService(options, createDriver(arguments.Flag("--install-driver")), sink);
+        var outcome = service.Start();
+        if (!outcome.Started)
         {
-            Filter = filter,
-            MaxInspectionTime = TimeSpan.FromMilliseconds(maxInspectionTimeMs),
-            MaxConnectionsPerMinute = maxConnectionsPerMinute,
-            MaxDistinctPortsPerMinute = maxDistinctPortsPerMinute,
-            BlockList = blockList
+            output.WriteLine($"ERROR: {outcome.Refusal}");
+            return 1;
+        }
+
+        output.WriteLine(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Network filter running in {options.Mode} mode. Allow-list: {Describe(options.AllowList)}. Operator blocks: {Describe(options.Blocks)}."));
+        output.WriteLine(options.Mode == NetworkFilterMode.Monitor
+            ? "Monitor mode drops nothing; it reports who would be blocked. Press Ctrl+C to stop."
+            : "Press Ctrl+C to stop. Stopping lifts every block.");
+
+        waitForStop();
+        service.Stop();
+        return 0;
+    }
+
+    internal static NetworkFilterOptions BuildOptions(CliOptions arguments)
+    {
+        var modeText = arguments.Get("--mode", "Monitor");
+        if (!Enum.TryParse<NetworkFilterMode>(modeText, ignoreCase: true, out var mode) || !Enum.IsDefined(mode))
+        {
+            throw new CliArgumentException($"--mode must be Monitor or Block. It was '{modeText}'.");
+        }
+
+        var options = new NetworkFilterOptions
+        {
+            Mode = mode,
+            AllowList = ParseAll(arguments.List("--allow"), "--allow", IpRange.TryParseAllow),
+            Blocks = ParseAll(arguments.List("--block"), "--block", IpRange.TryParseBlock),
+            DynamicBlockLifetime = TimeSpan.FromMinutes(arguments.Integer("--block-ttl-minutes", 60)),
+            MaximumBlocks = arguments.Integer("--max-blocks", BlockSet.DefaultCapacity),
+            SynRulesMayBlock = arguments.Flag("--syn-rules-may-block"),
+            MaxConnectionsPerMinute = arguments.Integer("--max-connections-per-minute", WPShield.NetworkFilter.Rules.RateLimitRule.DefaultThreshold),
+            MaxDistinctPortsPerMinute = arguments.Integer("--max-distinct-ports-per-minute", WPShield.NetworkFilter.Rules.PortScanRule.DefaultThreshold),
         };
 
+        var invalid = options.Validate();
+        if (invalid is not null)
+        {
+            throw new CliArgumentException(invalid);
+        }
+
+        return options;
+    }
+
+    private delegate bool RangeParser(string? text, out IpRange? range, out string? error);
+
+    private static List<IpRange> ParseAll(IReadOnlyList<string> values, string option, RangeParser parse)
+    {
+        var ranges = new List<IpRange>(values.Count);
+        foreach (var value in values)
+        {
+            if (!parse(value, out var range, out var error))
+            {
+                throw new CliArgumentException($"{option}: {error}.");
+            }
+
+            ranges.Add(range!);
+        }
+
+        return ranges;
+    }
+
+    private static int Check(NetworkFilterOptions options, IDivertDriver driver, TextWriter output)
+    {
+        SelfTestReport report;
         try
         {
-            var rules = new List<INetworkInspectionRule>
-            {
-                new BlockListRule(configuration.BlockList),
-                new RateLimitRule(configuration.MaxConnectionsPerMinute),
-                new PortScanRule(configuration.MaxDistinctPortsPerMinute)
-            };
-
-            using var engine = new NetworkFilterEngine(
-                rules,
-                configuration.Filter,
-                configuration.MaxInspectionTime);
-
-            var started = new ManualResetEventSlim();
-            var stopping = new ManualResetEventSlim();
-
-            output.WriteLine($"Network filter running. Filter: {configuration.Filter}");
-            output.WriteLine($"  Max inspection time: {configuration.MaxInspectionTime.TotalMilliseconds} ms");
-            output.WriteLine($"  Max connections/minute: {configuration.MaxConnectionsPerMinute}");
-            output.WriteLine($"  Max distinct ports/minute: {configuration.MaxDistinctPortsPerMinute}");
-            if (blockList.Count > 0)
-            {
-                output.WriteLine($"  Block list: {string.Join(", ", blockList)}");
-            }
-            output.WriteLine("Press Ctrl+C to stop. Nothing is written to IIS.");
-
-            var cts = new CancellationTokenSource();
-            Console.CancelKeyPress += (_, e) =>
-            {
-                e.Cancel = true;
-                stopping.Set();
-                cts.Cancel();
-            };
-
-            // Run the capture loop until cancelled. The engine logs blocked packets to stdout.
-            engine.Run(cts.Token);
-
-            stopping.Wait();
-            output.WriteLine("Network filter stopped.");
-            return 0;
+            report = NetworkFilterSelfTest.Run(driver, options.AllowList, options.Blocks);
         }
-        catch (Exception exception) when (exception is InvalidOperationException or
-                                          UnauthorizedAccessException or IOException)
+        catch (DivertDriverException exception)
         {
             output.WriteLine($"ERROR: {exception.Message}");
             return 1;
         }
+
+        foreach (var check in report.Checks)
+        {
+            output.WriteLine(check.Passed
+                ? $"  PASS  {check.Name}"
+                : $"  FAIL  {check.Name} - {check.Detail}");
+        }
+
+        var failed = report.Failures.Count();
+        output.WriteLine(failed == 0
+            ? string.Create(CultureInfo.InvariantCulture, $"Self-test passed: {report.Checks.Count} checks. WinDivert evaluates WPShield's filters as intended.")
+            : string.Create(CultureInfo.InvariantCulture, $"Self-test FAILED: {failed} of {report.Checks.Count} checks. Block mode will refuse to start."));
+        return failed == 0 ? 0 : 1;
     }
 
-    /// <summary>
-    /// Whether the current process is running with an Administrator token.
-    /// </summary>
+    private static string Describe(IReadOnlyList<IpRange> ranges) =>
+        ranges.Count == 0 ? "none" : string.Join(", ", ranges);
+
     private static bool IsElevated()
     {
+        using var identity = WindowsIdentity.GetCurrent();
+        return new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
+    }
+
+    private static void WaitForCtrlC()
+    {
+        using var stop = new ManualResetEventSlim();
+        void OnCancel(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+            stop.Set();
+        }
+
+        Console.CancelKeyPress += OnCancel;
         try
         {
-            var identity = WindowsIdentity.GetCurrent();
-            var principal = new WindowsPrincipal(identity);
-            return principal.IsInRole(WindowsBuiltInRole.Administrator);
+            stop.Wait();
         }
-        catch
+        finally
         {
-            return false;
+            Console.CancelKeyPress -= OnCancel;
         }
     }
 }

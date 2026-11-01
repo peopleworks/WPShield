@@ -1,73 +1,72 @@
-using System.Collections.Generic;
 using WPShield.Abstractions;
 
 namespace WPShield.NetworkFilter.Rules;
 
 /// <summary>
-/// Rate limits inbound connections per source IP. Intended to mitigate volumetric attacks
-/// (port scans, brute force, floods) before they reach IIS or WordPress.
-///
-/// The rule keeps a sliding 60-second window per IP. Scores rise with connection count,
-/// and Block is recommended once the window is saturated.
+/// <c>WP-NET-002</c>: new TCP connection attempts from one source in the last minute.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The observer feeds this rule only SYN packets (<see cref="DivertFilterBuilder.ObserverFilter"/>), so
+/// the count is connection attempts, not packets. A browser opens a handful of connections per site;
+/// the default threshold of 60 a minute is crossed by crawlers, scanners and busy shared NAT addresses.
+/// </para>
+/// <para>
+/// Score 60 (observe) at the threshold, 80 at twice it and 100 at four times it. A score of 80 or more
+/// recommends Block, but a SYN proves nothing about its source address, so the recommendation becomes a
+/// block only when the operator passed <c>--syn-rules-may-block</c> (ADR 0006, section 5).
+/// </para>
+/// </remarks>
 public sealed class RateLimitRule : INetworkInspectionRule
 {
-    private readonly int _maxConnectionsPerMinute;
-    private readonly Dictionary<string, List<DateTimeOffset>> _timestamps = new();
-    private readonly object _lock = new();
+    public const string Id = "WP-NET-002";
+    public const int DefaultThreshold = 60;
+    public const int DefaultMaximumSources = 50_000;
 
-    public string RuleId => "WP-NET-002";
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
-    public RateLimitRule(int maxConnectionsPerMinute = 60)
+    private readonly int _threshold;
+    private readonly int _retained;
+    private readonly BoundedSourceTable<Queue<DateTimeOffset>> _attempts;
+    private readonly object _gate = new();
+
+    public RateLimitRule(int maxConnectionsPerMinute = DefaultThreshold, int maximumSources = DefaultMaximumSources)
     {
-        _maxConnectionsPerMinute = maxConnectionsPerMinute;
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxConnectionsPerMinute, 1);
+        _threshold = maxConnectionsPerMinute;
+        _retained = (maxConnectionsPerMinute * 4) + 1;
+        _attempts = new BoundedSourceTable<Queue<DateTimeOffset>>(maximumSources);
     }
 
-    public NetworkInspectionResult Inspect(
-        NetworkInspectionContext context,
-        CancellationToken cancellationToken = default)
-    {
-        lock (_lock)
-        {
-            var now = context.Timestamp;
+    public string RuleId => Id;
 
-            if (!_timestamps.TryGetValue(context.SourceIp, out var times))
+    public NetworkInspectionResult Inspect(NetworkInspectionContext context, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(context);
+
+        int count;
+        lock (_gate)
+        {
+            var times = _attempts.GetOrAdd(context.SourceIp, () => new Queue<DateTimeOffset>());
+            while (times.Count > 0 && context.Timestamp - times.Peek() > Window)
             {
-                times = new List<DateTimeOffset>();
-                _timestamps[context.SourceIp] = times;
+                times.Dequeue();
             }
 
-            // Slide the 60-second window.
-            times.RemoveAll(t => now - t > TimeSpan.FromMinutes(1));
-            times.Add(now);
-
-            int count = times.Count;
-            int score = count switch
+            times.Enqueue(context.Timestamp);
+            while (times.Count > _retained)
             {
-                > 120 => 100,
-                > 90 => 70,
-                > 60 => 40,
-                _ => 0
-            };
+                times.Dequeue();
+            }
 
-            return new NetworkInspectionResult
-            {
-                RuleId = RuleId,
-                Score = score,
-                Action = score switch
-                {
-                    0 => WPShield.Abstractions.NetworkInspectionAction.Allow,
-                    >= 80 => WPShield.Abstractions.NetworkInspectionAction.Block,
-                    _ => WPShield.Abstractions.NetworkInspectionAction.Observe
-                },
-                MessageKey = "Findings.NetworkRateLimit",
-                Evidence = new Dictionary<string, object>
-                {
-                    ["connections_last_minute"] = count,
-                    ["limit_per_minute"] = _maxConnectionsPerMinute,
-                    ["source_ip"] = context.SourceIp
-                }
-            };
+            count = times.Count;
         }
+
+        var score = count >= _threshold * 4 ? 100 : count >= _threshold * 2 ? 80 : count >= _threshold ? 60 : 0;
+        return NetworkFinding.Create(Id, score, "Findings.NetworkConnectionRate", context, new Dictionary<string, object>
+        {
+            ["attempts_last_minute"] = count,
+            ["threshold"] = _threshold,
+        });
     }
 }

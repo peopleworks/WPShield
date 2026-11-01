@@ -225,13 +225,14 @@ internal static class ProgramMain
                           [--rotation-max-size-bytes <n>] [--rotation-retention-days <n>]
 
               network-filter
-                          User-mode inbound packet filter via WinDivert. Drops attack traffic
-                          before IIS. Requires Administrator elevation and WinDivert. Never runs
-                          in kernel; enforces a 5 ms per-packet inspection budget so it cannot
-                          become the watchdog violation it exists to prevent.
-                          --filter <string> [--max-inspection-time-ms <n>]
+                          Observes new inbound connections; in Block mode drops packets from the
+                          addresses on its block list. Normal traffic never passes through it, and
+                          stopping it lifts every block. Monitor by default. Needs WinDivert 2.2.2
+                          and elevation; --check needs neither elevation nor the driver.
+                          [--mode Monitor|Block] [--allow <addresses>] [--block <addresses>]
+                          [--block-ttl-minutes <n>] [--max-blocks <n>] [--syn-rules-may-block]
                           [--max-connections-per-minute <n>] [--max-distinct-ports-per-minute <n>]
-                          [--block-list <ips>]
+                          [--output <file>] [--check] [--install-driver]
 
               security-monitor
                           Read-only Windows Security event log monitor. Detects RDP brute force

@@ -1,85 +1,48 @@
-using System.Collections.Generic;
+using System.Net;
 using WPShield.Abstractions;
-using WPShield.NetworkFilter.Rules;
+using WPShield.NetworkFilter;
 
 namespace WPShield.Integration;
 
 /// <summary>
-/// <see cref="ISecurityEventSink"/> implementation that publishes security findings
-/// to a <see cref="BlockListRule"/>, so IPs detected by
-/// <see cref="WPShield.SecurityMonitor"/> (RDP brute force, failed logons, etc.) are
-/// blocked at the packet layer by <see cref="WPShield.NetworkFilter.NetworkFilterEngine"/>.
-///
-/// Use this sink when you want <see cref="WPShield.SecurityMonitor.SecurityEventMonitor"/>
-/// to feed <see cref="WPShield.NetworkFilter.Rules.BlockListRule"/> automatically.
+/// Turns a Security-log finding with a Block action into a block request on the network filter.
 /// </summary>
+/// <remarks>
+/// <para>
+/// The address comes from the event's own <c>IpAddress</c> field, not from the finding's evidence,
+/// and is handed over as <see cref="EvidenceGrade.Authenticated"/>: a logon fails after the TCP
+/// handshake completed, so the address answered packets and was not forged. Everything else - the
+/// allow-list, Monitor mode, unblockable addresses such as <c>::1</c> or <c>-</c>, the capacity of the
+/// block set - is decided by <see cref="NetworkFilterService.RequestBlock"/>, the one place blocks are
+/// created.
+/// </para>
+/// <para>
+/// Not wired to the CLI yet. The Security-log reader replays the whole log on start and holds it in
+/// memory; feeding that into a blocker would block every address that ever failed a logon. It is wired
+/// once the reader subscribes to new events only (ADR 0002's "subscribe, do not read files").
+/// </para>
+/// </remarks>
 public sealed class NetworkFilterBlockListSink : ISecurityEventSink
 {
-    private readonly BlockListRule _blockListRule;
-    private readonly HashSet<string> _pendingIps = new(StringComparer.OrdinalIgnoreCase);
-    private readonly object _lock = new();
+    private readonly NetworkFilterService _filter;
 
-    /// <summary>
-    /// Creates a sink that adds blocking source IPs to <paramref name="blockListRule"/>.
-    /// </summary>
-    public NetworkFilterBlockListSink(BlockListRule blockListRule)
+    public NetworkFilterBlockListSink(NetworkFilterService filter)
     {
-        _blockListRule = blockListRule ?? throw new System.ArgumentNullException(nameof(blockListRule));
+        ArgumentNullException.ThrowIfNull(filter);
+        _filter = filter;
     }
 
-    /// <summary>
-    /// Publishes a security finding. If the finding's action is <see cref="WPShield.Abstractions.NetworkInspectionAction.Block"/>
-    /// and the evidence contains a <c>source_ip</c>, that IP is added to the pending block list
-    /// and immediately applied to <see cref="BlockListRule"/>.
-    /// </summary>
-    public void Publish(
-        WPShield.Abstractions.SecurityInspectionResult finding,
-        WPShield.Abstractions.SecurityInspectionContext context)
+    public void Publish(SecurityInspectionResult finding, SecurityInspectionContext context)
     {
-        if (finding.Action != WPShield.Abstractions.NetworkInspectionAction.Block)
+        ArgumentNullException.ThrowIfNull(finding);
+        ArgumentNullException.ThrowIfNull(context);
+
+        if (finding.Action != NetworkInspectionAction.Block ||
+            !IPAddress.TryParse(context.SourceIp, out var address))
         {
             return;
         }
 
-        if (!finding.Evidence.TryGetValue("source_ip", out var sourceIpObj) ||
-            sourceIpObj is not string sourceIp ||
-            string.IsNullOrWhiteSpace(sourceIp))
-        {
-            return;
-        }
-
-        lock (_lock)
-        {
-            if (_pendingIps.Add(sourceIp))
-            {
-                // Apply immediately so the network filter starts dropping the IP without delay.
-                _blockListRule.AddIp(sourceIp);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Returns the IPs currently pending in this sink (not yet flushed to the rule).
-    /// </summary>
-    public IReadOnlyCollection<string> PendingIps
-    {
-        get
-        {
-            lock (_lock)
-            {
-                return new HashSet<string>(_pendingIps, StringComparer.OrdinalIgnoreCase);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Clears the pending set without touching the block list rule.
-    /// </summary>
-    public void ClearPending()
-    {
-        lock (_lock)
-        {
-            _pendingIps.Clear();
-        }
+        _ = _filter.RequestBlock(address, finding.RuleId, EvidenceGrade.Authenticated);
     }
 }

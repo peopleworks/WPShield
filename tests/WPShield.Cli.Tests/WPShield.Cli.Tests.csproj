@@ -12,4 +12,8 @@
   <ItemGroup>
     <ProjectReference Include="../../src/WPShield.Cli/WPShield.Cli.csproj" />
   </ItemGroup>
+  <!-- The network filter's fake driver, shared by link with WPShield.NetworkFilter.Tests. -->
+  <ItemGroup>
+    <Compile Include="../WPShield.NetworkFilter.Tests/Support/*.cs" Link="NetworkFilter/Support/%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

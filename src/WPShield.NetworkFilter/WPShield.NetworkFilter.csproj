@@ -10,18 +10,23 @@
     <AnalysisLevel>latest</AnalysisLevel>
 
     <!--
-      WPShield.NetworkFilter is Windows-only because it intercepts live TCP/UDP packets
-      through WinDivert (user-mode packet filtering). It references only WPShield.Abstractions,
-      never the reverse. This keeps the platform-independent projects buildable on Linux.
+      WPShield.NetworkFilter is Windows-only because it drives WinDivert. It references only
+      WPShield.Abstractions, never the reverse, so the platform-independent projects stay
+      buildable and testable on Linux.
 
-      No NuGet package reference is taken for WinDivert: the project P/Invokes WinDivert.dll
-      directly. Operators must install the WinDivert driver on the target server before
-      running the filter (see docs/en/network-filter.md when written).
+      WinDivert is not a package and is not bundled. The operator copies WinDivert.dll and
+      WinDivert64.sys from the official 2.2.2 release next to wpshield.exe; the P/Invoke
+      declarations resolve the DLL from the assembly directory only. See ADR 0006 and
+      docs/en/network-filter-design.md.
     -->
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPShield.NetworkFilter.Tests" />
   </ItemGroup>
 
 </Project>
