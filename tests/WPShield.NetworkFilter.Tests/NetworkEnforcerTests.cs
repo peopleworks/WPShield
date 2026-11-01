@@ -98,11 +98,9 @@ public sealed class NetworkEnforcerTests
     public void Dispose_LiftsEveryBlock()
     {
         var driver = new FakeDivertDriver();
-        var enforcer = new NetworkEnforcer(driver, 0);
+        using var enforcer = new NetworkEnforcer(driver, 0);
         enforcer.Apply(Plan(Enumerable.Range(0, 300).Select(i => $"198.51.{100 + (i / 200)}.{i % 200}").ToArray()));
         Assert.True(driver.Live(DivertHandleKind.Drop).Count > 1);
-
-        enforcer.Dispose();
 
         Assert.Empty(driver.Live(DivertHandleKind.Drop));
     }
