@@ -147,6 +147,42 @@ Before modifying code:
   together - aggregate scoring, the ordinary-traffic corpus - lives in the WordPress test project,
   the only layer that sees both. ADR 0004, exit condition 1.
 
+## Network filter
+
+`wpshield network-filter` is the one place WPShield acts below HTTP.
+[ADR 0006](docs/en/adr/0006-network-layer-blocking.md) (Proposed) decides it; these rules are what
+keep it from becoming the outage it exists to prevent. The first implementation broke most of them
+and could not block anything, and its tests all passed.
+
+- **Normal traffic never passes through WPShield.** Enforcement is WinDivert `DROP` handles whose
+  filter matches only the block set; observation is one `SNIFF | RECV_ONLY` handle on new inbound
+  SYNs. Never declare `WinDivertSend`, never divert-and-reinject: a hung user-mode process in the path
+  of every packet is an outage of every site on the host. A test asserts no `WinDivertSend` import
+  exists.
+- **A block is an open handle and nothing else.** No Windows Firewall rule, no registry value, no
+  file; never persist or restore blocks. Process exit lifting every block is the dead-man's switch.
+- **Monitor never constructs the enforcer.** It is not a flag checked before each drop.
+- **The allow-list is applied twice**: when a block is added and again when the filters are written.
+  Block refuses to start with an empty allow-list, or while an address connected to the RDP port
+  (read from `RDP-Tcp\PortNumber`, never assumed 3389) is not on it. The guard runs again for every
+  new dynamic block, and an unreadable connection table refuses the block rather than allowing it.
+- **SYN evidence is spoofable.** `WP-NET-002` and `WP-NET-003` block only with
+  `--syn-rules-may-block`. Any new rule whose evidence is a packet its sender could forge inherits
+  that default.
+- **Never load a driver as a side effect.** Handles open with `WINDIVERT_FLAG_NO_INSTALL` unless the
+  operator passed `--install-driver`. WinDivert marks its service for deletion as it starts it, so
+  nothing survives a reboot; do not "fix" that by registering the service permanently. Never bundle WinDivert, and resolve `WinDivert.dll` from the
+  assembly directory only: every import carries `DefaultDllImportSearchPaths(AssemblyDirectory)`.
+- **Filters are written from parsed `IpRange` values only**, never from text, at most 200 objects per
+  filter against WinDivert's 256. Block entries are canonical, no wider than `/16` or `/48`, with no
+  host bits set and no loopback, link-local, multicast, broadcast or unspecified address.
+- **Block mode does not start unless the self-test passes** against the real library's compile and
+  evaluate helpers. Do not add a way around it.
+- **Per-source state is bounded with eviction.** A flood of SYNs from forged sources must never grow
+  memory.
+- **The Security log feeds blocks only by subscription.** Do not wire `NetworkFilterBlockListSink` to a
+  reader that replays the log: it would block every address that ever failed a logon.
+
 ## Operator scripts
 
 Everything under `scripts/` is run by a person, once, on a server that is usually having a bad day.

@@ -1,171 +1,76 @@
 namespace WPShield.NetworkFilter.Tests;
 
-public class PortScanRuleTests
+public sealed class PortScanRuleTests
 {
-    [Fact]
-    public void Few_ports_returns_allow_with_zero_score()
+    private static readonly DateTimeOffset Start = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+
+    private static NetworkInspectionContext Attempt(string source, int port, DateTimeOffset at) => new()
     {
-        var rule = new PortScanRule(maxDistinctPortsPerMinute: 20);
+        SourceIp = source,
+        DestinationIp = "192.0.2.1",
+        SourcePort = 49152,
+        DestinationPort = port,
+        Protocol = "TCP",
+        Timestamp = at,
+    };
 
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = DateTimeOffset.UtcNow
-        });
-
-        Assert.Equal(0, result.Score);
-        Assert.Equal(NetworkInspectionAction.Allow, result.Action);
-        Assert.Equal("WP-NET-003", result.RuleId);
-    }
-
-    [Fact]
-    public void Many_distinct_ports_returns_block()
+    private static NetworkInspectionResult Sweep(PortScanRule rule, string source, int ports)
     {
-        var rule = new PortScanRule(maxDistinctPortsPerMinute: 20);
-        var now = DateTimeOffset.UtcNow;
-
-        // Connect to 30 distinct ports
-        for (int port = 1000; port < 1030; port++)
+        NetworkInspectionResult? last = null;
+        for (var port = 1; port <= ports; port++)
         {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = port,
-                Protocol = "TCP",
-                Timestamp = now
-            });
+            last = rule.Inspect(Attempt(source, port, Start));
         }
 
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 1030,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        Assert.Equal(80, result.Score);
-        Assert.Equal(NetworkInspectionAction.Block, result.Action);
-        Assert.True((int)result.Evidence["distinct_ports_last_minute"] >= 30);
+        return last!;
     }
 
     [Fact]
-    public void Repeated_connections_to_same_port_do_not_increase_distinct_count()
-    {
-        var rule = new PortScanRule(maxDistinctPortsPerMinute: 20);
-        var now = DateTimeOffset.UtcNow;
-
-        for (int i = 0; i < 100; i++)
-        {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = 443,
-                Protocol = "TCP",
-                Timestamp = now
-            });
-        }
-
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        Assert.Equal(0, result.Score);
-        Assert.Equal(NetworkInspectionAction.Allow, result.Action);
-    }
-
-    [Fact]
-    public void Different_ips_are_tracked_separately()
+    public void ManyAttemptsAtOnePort_AreNotAScan()
     {
         var rule = new PortScanRule(maxDistinctPortsPerMinute: 5);
-        var now = DateTimeOffset.UtcNow;
-
-        // IP1 connects to 6 distinct ports -> score 60 (Observe), crosses threshold of 5
-        for (int port = 1000; port < 1006; port++)
+        NetworkInspectionResult? last = null;
+        for (var i = 0; i < 100; i++)
         {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = port,
-                Protocol = "TCP",
-                Timestamp = now
-            });
+            last = rule.Inspect(Attempt("198.51.100.7", 443, Start));
         }
 
-        var ip1 = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 1010,
-            Protocol = "TCP",
-            Timestamp = now
-        });
+        Assert.Equal("WP-NET-003", last!.RuleId);
+        Assert.Equal(0, last.Score);
+    }
 
-        // IP2 connects to just one port -> score 0 (Allow)
-        var ip2 = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.2",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51423,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
+    [Theory]
+    [InlineData(4, 0, NetworkInspectionAction.Allow)]
+    [InlineData(5, 60, NetworkInspectionAction.Observe)]
+    [InlineData(10, 80, NetworkInspectionAction.Block)]
+    [InlineData(15, 100, NetworkInspectionAction.Block)]
+    public void DistinctPorts_RaiseTheScore(int ports, int score, NetworkInspectionAction action)
+    {
+        var result = Sweep(new PortScanRule(maxDistinctPortsPerMinute: 5), "198.51.100.7", ports);
 
-        Assert.Equal(NetworkInspectionAction.Observe, ip1.Action);
-        Assert.Equal(NetworkInspectionAction.Allow, ip2.Action);
+        Assert.Equal(score, result.Score);
+        Assert.Equal(action, result.Action);
     }
 
     [Fact]
-    public void Window_expires_old_entries()
+    public void PortsOlderThanAMinute_AreForgotten()
     {
         var rule = new PortScanRule(maxDistinctPortsPerMinute: 5);
-        var now = DateTimeOffset.UtcNow;
-        var oneMinuteAgo = now.AddMinutes(-1).AddSeconds(-1);
+        Sweep(rule, "198.51.100.7", 4);
 
-        for (int port = 1000; port < 1006; port++)
-        {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = port,
-                Protocol = "TCP",
-                Timestamp = oneMinuteAgo
-            });
-        }
+        var later = rule.Inspect(Attempt("198.51.100.7", 9999, Start.AddMinutes(2)));
 
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
+        Assert.Equal(1, later.Evidence["distinct_ports_last_minute"]);
+    }
 
-        Assert.Equal(0, result.Score);
-        Assert.Equal(NetworkInspectionAction.Allow, result.Action);
+    [Fact]
+    public void AFullSweep_KeepsPerSourceStateBounded()
+    {
+        var rule = new PortScanRule(maxDistinctPortsPerMinute: 5);
+
+        var result = Sweep(rule, "198.51.100.7", 65_535);
+
+        Assert.Equal(100, result.Score);
+        Assert.Equal(16, result.Evidence["distinct_ports_last_minute"]);
     }
 }

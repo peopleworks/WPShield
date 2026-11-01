@@ -500,6 +500,34 @@ transitivo puede llegar sin revisión. Las publicaciones no están firmadas con 
 elemento de M6. Las alertas *de seguridad* de Dependabot son una opción del repositorio que todavía no
 está habilitada.
 
+### T14 — El filtro de red como palanca contra el host
+
+**El ataque.** `wpshield network-filter` (M2.7, [ADR 0006](adr/0006-bloqueo-en-capa-de-red.md),
+Propuesto) puede descartar paquetes para todos los sitios del host, así que a un atacante le vale más
+que cualquier regla suelta. Hay cuatro maneras de volverlo contra su operador: hacer que bloquee una
+dirección legítima falsificando la evidencia; dejar al administrador fuera de la sesión con la que lo
+desharía; trabar el proceso para que el tráfico se detenga; o plantar una DLL que cargue un proceso
+elevado.
+
+**Control.**
+
+| Amenaza | Control |
+| --- | --- |
+| Evidencia falsificada bloquea a un tercero | El origen de un SYN se puede falsificar, así que `WP-NET-002` y `WP-NET-003` solo bloquean con `--syn-rules-may-block`. Los hallazgos del registro de Seguridad sí pueden bloquear: un inicio de sesión falla después de un handshake completo. |
+| El administrador queda fuera | La lista de permitidos se aplica al insertar y otra vez al escribir los filtros; Block se niega a arrancar con la lista vacía o con una dirección no listada conectada al puerto RDP leído del registro de Windows, y cada bloqueo dinámico nuevo se rechaza para una dirección que tenga en ese momento una conexión RDP. Monitor es el modo por defecto y nunca abre un handle DROP. |
+| Un proceso trabado o caído detiene el tráfico | El tráfico normal nunca pasa por el proceso: los bloqueos son filtros DROP en el kernel y la observación trabaja sobre copias. Un bloqueo es un handle, así que al terminar el proceso se levantan todos. |
+| Una `WinDivert.dll` plantada se ejecuta elevada | Cada import resuelve la DLL solo desde el directorio del ensamblado. WinDivert no se empaqueta; el operador copia la versión oficial. |
+| Un filtro significa algo distinto de lo previsto | Los filtros se escriben solo a partir de direcciones ya analizadas; una autoprueba con las funciones de compilación y evaluación de la biblioteca real condiciona el modo Block. |
+| Una inundación con orígenes falsos agota la memoria | El estado por origen tiene tope y desaloja al menos reciente; los hallazgos se registran una vez por origen y umbral. |
+
+**Sin mitigar.** Un proceso que se cuelga sin terminar conserva sus bloqueos actuales hasta que se lo
+mata, y mientras tanto no puede vencer los dinámicos; esos bloqueos solo pueden cubrir direcciones
+que no están en la lista de permitidos. El propio código de kernel de WinDivert está en la ruta de los
+paquetes con los que coinciden sus filtros, y WPShield confía en ese controlador de un tercero. Su
+firma EV se emitió a una empresa distinta del autor de WinDivert, así que el operador comprueba los
+archivos por SHA-256 contra el diseño del filtro de red, no por quién los firmó. La autoprueba ya pasó
+contra la biblioteca real; el filtro todavía no se ha ejecutado contra un controlador real.
+
 ---
 
 ## Salvaguardas requeridas

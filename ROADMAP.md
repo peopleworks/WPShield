@@ -1,6 +1,6 @@
 # Roadmap
 
-WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only, and no milestone may modify production IIS bindings, public ports, DNS, certificates, firewall rules, or Windows services automatically.
+WPShield remains a research-stage defensive gateway. M1 and M2 are loopback-only, and no milestone may modify production IIS bindings, public ports, DNS, certificates, Windows Firewall rules, or Windows services automatically. The one network-layer action WPShield takes is [ADR 0006](docs/en/adr/0006-network-layer-blocking.md)'s, and it is Proposed: in Block mode only, `network-filter` drops packets from the addresses on its own block list, through WinDivert handles that close, and lift every block, when the process ends.
 
 ## M0 — Foundation
 
@@ -194,74 +194,75 @@ not read as more than they claim:
   would let a command escape it. That is weaker, and the documentation says so rather than implying
   otherwise.
 
-## M2.7 — Network layer packet filtering
+## M2.7 — Network-layer blocking
 
-> Pulled forward from M3 because a production host was observed crashing repeatedly with
-> `0x00000133 — DPC_WATCHDOG_VIOLATION` traced to `mwac.sys` (Malwarebytes Web Access Control)
-> blocking on a kernel spinlock while inspecting inbound connections in DPC context. M2.7 is the
-> project's own network-layer protection: user-mode packet filtering through WinDivert, with a
-> strict per-packet time budget so the filter can never become the watchdog violation it exists to
-> prevent.
+> Pulled forward because a production host crashed repeatedly with `0x00000133 —
+> DPC_WATCHDOG_VIOLATION` traced to `mwac.sys` (Malwarebytes Web Access Control), and because four
+> weeks of that tool's log showed 17% of blocked inbound connections going to services the gateway
+> never sees. The first implementation (2026-10-20) could not block and was replaced; the decision to
+> block at the network layer at all is [ADR 0006](docs/en/adr/0006-network-layer-blocking.md), which
+> supersedes the network half of ADR 0002 and is **Proposed** until a maintainer accepts it.
 >
-> See [network filter design](docs/en/network-filter-design.md) for the complete behaviour.
+> See the [network filter design](docs/en/network-filter-design.md).
 
-- [x] `src/WPShield.NetworkFilter/` — user-mode WinDivert packet filter targeting `net10.0-windows`.
-- [x] `NetworkInspectionAction`, `NetworkInspectionContext`, `NetworkInspectionResult`, and
-  `INetworkInspectionRule` contracts in `WPShield.Abstractions`.
-- [x] `WP-NET-001` — dynamic block list (source IP match, score 100, Block).
-- [x] `WP-NET-002` — rate limiting per source IP per minute (sliding 60-second window).
-- [x] `WP-NET-003` — port-scan detection (distinct destination ports per source IP per minute).
-- [x] `NetworkFilterEngine` — capture loop with 5 ms per-packet inspection budget; slow rules
-  forward the packet uninspected and log a budget warning.
-- [x] `NetworkFilterBuilder` — assembles default rule set from `NetworkFilterConfiguration`.
-- [x] Same JSON Lines log envelope as the gateway and triage tool for forensic correlation.
-- [x] Windows-only project; platform-independent projects remain buildable and testable on Linux.
+Implemented and tested through a fake driver:
+
+- [x] Enforcement through WinDivert `DROP` handles whose filter matches only the block set. No
+  reinjection exists: `WinDivertSend` is not declared.
+- [x] Observation through a `SNIFF | RECV_ONLY` handle on new inbound SYNs only.
+- [x] `WP-NET-001` block list, `WP-NET-002` connection attempts per minute, `WP-NET-003` distinct
+  ports per minute, with bounded per-source state.
+- [x] Monitor by default; Monitor never constructs the enforcer.
+- [x] Allow-list applied at insertion and at filter build; lockout guard on the registry's RDP port,
+  at start and again for every new dynamic block.
+- [x] SYN evidence blocks only with `--syn-rules-may-block`.
+- [x] Dynamic blocks expire; the block set has a ceiling; nothing is persisted.
+- [x] `WINDIVERT_FLAG_NO_INSTALL` unless `--install-driver`; `WinDivert.dll` from the assembly
+  directory only.
+- [x] Self-test with the real library's compile and evaluate helpers gates Block mode; `--check`.
+
+Not yet done:
+
+- [ ] ADR 0006 accepted.
+- [x] Self-test passed against the real WinDivert 2.2.2 library: 28 of 28 checks, 2026-11-01,
+  unelevated, with no driver loaded.
+- [ ] First run against the driver on a development machine (the test plan in the design document).
+- [ ] A week of Monitor mode on a production host before any Block mode there.
 
 ### What M2.7 does not cover
 
-- **Outbound traffic.** The default WinDivert filter is `tcp.Inbound`; outbound filtering is not implemented.
-- **ICMP or other IP protocols.** Only TCP and UDP headers are parsed.
-- **Deep packet inspection.** Rules see only the first 64 bytes of payload.
-- **Kernel code.** WPShield writes no kernel driver; WinDivert is an externally installed, signed dependency.
-- **TLS decryption.** Only TCP/UDP headers are visible; TLS payloads are opaque.
+- **Outbound, UDP and ICMP traffic.** The observer sees inbound TCP connection attempts only.
+- **Payloads and TLS.** Only IP and TCP headers are read.
+- **Persistence.** Blocks do not survive a restart, by design.
+- **Kernel code.** WPShield ships none; WinDivert is an external driver the operator installs, signed
+  under an EV certificate issued to a company other than its author.
 
 ## M2.8 — Security event log monitoring
 
-> Pulled forward from M3 because a production host was observed receiving sustained attacks on
-> Remote Desktop (TCP 3389) in addition to web traffic. `WPShield.NetworkFilter` can block packets
-> by source IP and rate, but it cannot see whether an RDP connection succeeded or failed — that
-> happens inside the authentication session, after the TCP handshake. M2.8 reads the Windows
-> Security event log and detects RDP brute-force and failed-logon patterns, publishing findings
-> that can feed the dynamic block list of `WPShield.NetworkFilter`.
+> Pulled forward because a production host was observed receiving sustained attacks on Remote
+> Desktop. `wpshield security-monitor` reads the Windows Security event log and reports RDP
+> brute-force and failed-logon patterns.
 >
-> See [security monitor design](docs/en/security-monitor-design.md) for the complete behaviour.
+> See the [security monitor design](docs/en/security-monitor-design.md).
 
-- [x] `src/WPShield.SecurityMonitor/` — Security event log reader targeting `net10.0-windows`.
-- [x] `SecurityInspectionContext`, `SecurityInspectionResult`, `ISecurityInspectionRule`, and
-  `ISecurityEventSink` contracts in `WPShield.Abstractions`.
-- [x] `WP-SEC-001` — RDP brute force detection (failed Logon Type 10 per source IP per window).
-- [x] `WP-SEC-002` — Generic failed logon detection (Event ID 4625 per source IP per window).
-- [x] `SecurityEventMonitor` — read-only Security log scanner with sliding-window failure counting.
-- [x] `SecurityEventBuilder` — assembles default rule set from `SecurityEventConfiguration`.
-- [x] Same JSON Lines log envelope as the gateway and triage tool for forensic correlation.
-- [x] Windows-only project; requires Administrator privileges to read the Security log;
-  platform-independent projects remain buildable and testable on Linux.
-- [x] `src/WPShield.Integration/` — optional bridge project targeting `net10.0-windows`.
-- [x] `NetworkFilterBlockListSink` — `ISecurityEventSink` implementation that adds
-  blocking source IPs to `WPShield.NetworkFilter.Rules.BlockListRule`.
-- [x] `SecurityToNetworkFilterBridge` — convenience class wiring `SecurityEventMonitor`,
-  `NetworkFilterEngine`, and `BlockListRule` together.
+- [x] `src/WPShield.SecurityMonitor/`, read-only, Windows-only; `WP-SEC-001` and `WP-SEC-002`.
+- [x] `security-monitor` CLI verb.
+- [x] `WPShield.Integration.NetworkFilterBlockListSink` turns a Block finding into a block request on
+  the network filter, graded as non-spoofable evidence.
+- [ ] Read the Security log by subscription (`EventLogWatcher`, new events only). The current reader
+  replays the whole log into memory on its first scan.
+- [ ] `WP-SEC-001` to recognise failed RDP logons under NLA, which are recorded as `LogonType 3`.
+- [ ] Wire the sink into `network-filter` once the reader reads new events only.
 
 ### What M2.8 does not cover
 
-- **Real-time blocking.** `ScanOnce()` is polling-based; it does not subscribe to live event streams.
 - **Other event logs.** Only the Security log is read; System and Application logs are out of scope.
 - **RDP session contents.** Only authentication events (logon success/failure) are visible, not
   session contents or credentials.
 
 ## M3 — Rate limiting and automated behavior
 
-> **M3 refuses requests. It does not touch the firewall.** [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md) records why: a brute-force blocker's job is to modify firewall rules automatically, which is the inverse of an invariant this project depends on for deployment onto shared hosts. The HTTP half belongs here, inline, where the real client address is already resolved; RDP, FTP, SMTP and SQL belong to a sibling project with its own safety contract.
+> **M3 refuses requests. It does not touch the firewall.** [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md) records why HTTP brute-force defence belongs here, inline, where the real client address is already resolved. Its network half (RDP, FTP, SMTP, SQL) is superseded by [ADR 0006](docs/en/adr/0006-network-layer-blocking.md), Proposed: handle-scoped drops in `network-filter` (M2.7), never Windows Firewall rules.
 
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
 > traffic path chosen in [ADR 0001](docs/en/adr/0001-production-traffic-path.md) every request

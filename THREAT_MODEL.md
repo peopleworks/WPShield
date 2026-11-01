@@ -465,6 +465,33 @@ answer before it is opened, not after. Transitive package versions are not centr
 transitive bump can arrive unreviewed. Releases are not code-signed; that is an M6 item. Dependabot
 *security* alerts are a repository setting that is not yet enabled.
 
+### T14 — The network filter as a lever against the host
+
+**The attack.** `wpshield network-filter` (M2.7, [ADR 0006](docs/en/adr/0006-network-layer-blocking.md),
+Proposed) can drop packets for every site on the host, so it is worth more to an attacker than any
+single rule. Four ways to turn it against its operator: get a legitimate address blocked by forging
+the evidence; get the administrator blocked out of the session that would undo it; stall the
+process so traffic stops; or plant a DLL that an elevated process will load.
+
+**Control.**
+
+| Threat | Control |
+| --- | --- |
+| Forged evidence blocks a third party | A SYN's source can be forged, so `WP-NET-002` and `WP-NET-003` block only with `--syn-rules-may-block`. Security-log findings may block: a logon fails after a completed handshake. |
+| The administrator is locked out | Allow-list applied at insertion and again at filter build; Block refuses with an empty allow-list or an unlisted address on the RDP port read from the registry, and every new dynamic block is refused for an address holding an RDP connection at that moment. Monitor is the default and never opens a DROP handle. |
+| A stalled or crashed process stops traffic | Normal traffic never passes through the process: blocks are kernel DROP filters, observation is on copies. A block is a handle, so process exit lifts every block. |
+| A planted `WinDivert.dll` runs elevated | Every import resolves the DLL from the assembly directory only. WinDivert is not bundled; the operator copies the official release. |
+| A filter means something other than intended | Filters are written from parsed addresses only; a self-test against the real library's compile and evaluate helpers gates Block mode. |
+| A forged-source flood exhausts memory | Per-source state is capped with least-recently-seen eviction; findings are logged once per source and threshold. |
+
+**Unmitigated.** A process that hangs without exiting keeps its current blocks until it is killed,
+and cannot expire dynamic ones meanwhile; those blocks can only cover non-allow-listed addresses.
+WinDivert's own kernel code is on the packet path for the traffic its filters match, and WPShield
+trusts that third-party driver. Its EV signature was issued to a company other than WinDivert's
+author, so the operator checks the files by SHA-256 against the network filter design rather than by
+signer. The self-test has passed against the real library; the filter has not yet run against a real
+driver.
+
 ---
 
 ## Required safeguards
