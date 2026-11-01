@@ -1,6 +1,8 @@
 # ADR 0002 — Dónde vive la defensa contra fuerza bruta
 
-- **Estado:** Propuesta
+- **Estado:** Propuesta. Su mitad de red (RDP, FTP, SMTP, SQL y SMB, para un proyecto hermano) queda
+  sustituida por la [ADR 0006](0006-bloqueo-en-capa-de-red.md), también propuesta. La mitad HTTP se
+  mantiene.
 - **Deciden:** Mantenedores de WPShield
 - **Afecta a:** M3 (limitación de tasa y comportamiento automatizado), y a un posible proyecto hermano
 
