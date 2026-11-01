@@ -514,7 +514,7 @@ elevado.
 | Amenaza | Control |
 | --- | --- |
 | Evidencia falsificada bloquea a un tercero | El origen de un SYN se puede falsificar, así que `WP-NET-002` y `WP-NET-003` solo bloquean con `--syn-rules-may-block`. Los hallazgos del registro de Seguridad sí pueden bloquear: un inicio de sesión falla después de un handshake completo. |
-| El administrador queda fuera | La lista de permitidos se aplica al insertar y otra vez al escribir los filtros; Block se niega a arrancar con la lista vacía o con una dirección no listada conectada al puerto RDP leído del registro. Monitor es el modo por defecto y nunca abre un handle DROP. |
+| El administrador queda fuera | La lista de permitidos se aplica al insertar y otra vez al escribir los filtros; Block se niega a arrancar con la lista vacía o con una dirección no listada conectada al puerto RDP leído del registro de Windows, y cada bloqueo dinámico nuevo se rechaza para una dirección que tenga en ese momento una conexión RDP. Monitor es el modo por defecto y nunca abre un handle DROP. |
 | Un proceso trabado o caído detiene el tráfico | El tráfico normal nunca pasa por el proceso: los bloqueos son filtros DROP en el kernel y la observación trabaja sobre copias. Un bloqueo es un handle, así que al terminar el proceso se levantan todos. |
 | Una `WinDivert.dll` plantada se ejecuta elevada | Cada import resuelve la DLL solo desde el directorio del ensamblado. WinDivert no se empaqueta; el operador copia la versión oficial. |
 | Un filtro significa algo distinto de lo previsto | Los filtros se escriben solo a partir de direcciones ya analizadas; una autoprueba con las funciones de compilación y evaluación de la biblioteca real condiciona el modo Block. |
@@ -523,8 +523,8 @@ elevado.
 **Sin mitigar.** Un proceso que se cuelga sin terminar conserva sus bloqueos actuales hasta que se lo
 mata, y mientras tanto no puede vencer los dinámicos; esos bloqueos solo pueden cubrir direcciones
 que no están en la lista de permitidos. El propio código de kernel de WinDivert está en la ruta de los
-paquetes que sus filtros coinciden, y WPShield confía en ese driver firmado de un tercero. El filtro
-todavía no se ha ejecutado contra un driver real.
+paquetes con los que coinciden sus filtros, y WPShield confía en ese controlador firmado de un
+tercero. El filtro todavía no se ha ejecutado contra un controlador real.
 
 ---
 

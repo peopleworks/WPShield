@@ -1,102 +1,56 @@
 # WPShield.Integration — Diseño (Español)
 
-WPShield.Integration es un **proyecto de puente opcional, de adhesión voluntaria**, que
-conecta los hallazgos de `WPShield.SecurityMonitor` con `WPShield.NetworkFilter.BlockListRule`,
-de modo que las IPs detectadas por reglas de seguridad (fuerza bruta de RDP, fallos de
-inicio de sesión, etc.) se bloqueen a nivel de paquete mediante
-`WPShield.NetworkFilter.NetworkFilterEngine` antes de que lleguen a IIS.
+`WPShield.Integration` conecta `WPShield.SecurityMonitor` con `WPShield.NetworkFilter`. Contiene un
+solo tipo, `NetworkFilterBlockListSink`, un `ISecurityEventSink` que convierte un hallazgo del registro
+de Seguridad con acción Block en una solicitud de bloqueo al filtro de red.
 
-## Por qué existe
+> **Estado: todavía no está conectado a ningún comando.** Véase *Por qué no está conectado* más abajo.
 
-`WPShield.NetworkFilter` inspecciona encabezados TCP/UDP pero no puede ver si una conexión
-RDP tuvo éxito o falló — eso ocurre dentro de la sesión de autenticación, después del
-handshake TCP. `WPShield.SecurityMonitor` lee el registro de eventos de Seguridad de Windows
-y ve los resultados de autenticación, pero no puede bloquear paquetes directamente.
+## Qué hace
 
-`WPShield.Integration` cierra el bucle: los hallazgos de seguridad con `Action == Block`
-(por ejemplo, `WP-SEC-001` fuerza bruta de RDP) agregan la IP de origen ofensiva a la lista
-de bloqueo dinámica usada por `WPShield.NetworkFilter`, por lo que la IP del atacante se
-descarta a nivel de paquete en el siguiente intento de conexión.
-
-## Posición en la arquitectura
-
-```
-Registro de eventos de Seguridad (falla 4625 RDP)
-        │
-        ▼
-WPShield.SecurityMonitor (WP-SEC-001 detecta fuerza bruta)
-        │
-        ▼
-WPShield.Integration → NetworkFilterBlockListSink
-        │
-        ▼
-WPShield.NetworkFilter.BlockListRule (lista de bloqueo dinámica)
-        │
-        ▼
-WPShield.NetworkFilter.NetworkFilterEngine (descarta paquetes)
+```text
+Registro de Seguridad 4625 ─► SecurityEventMonitor ─► WP-SEC-001 / WP-SEC-002, hallazgo (Block)
+                                                         │
+                                                         ▼
+                                        NetworkFilterBlockListSink.Publish
+                                                         │  dirección tomada del campo IpAddress del evento
+                                                         ▼
+                          NetworkFilterService.RequestBlock(address, rule, EvidenceGrade.Authenticated)
 ```
 
-## Componentes
+El receptor no decide nada. Si una solicitud se convierte en bloqueo lo decide
+`NetworkFilterService.RequestBlock`, el único lugar donde se crean bloqueos ([ADR 0006](adr/0006-bloqueo-en-capa-de-red.md)):
 
-| Componente | Responsabilidad |
-|------------|-----------------|
-| `NetworkFilterBlockListSink` | Implementa `ISecurityEventSink`. Recibe hallazgos de seguridad; si `Action == Block`, extrae `source_ip` de la evidencia y lo agrega a la `BlockListRule`. |
-| `SecurityToNetworkFilterBridge` | Clase de conveniencia que conecta `SecurityEventMonitor`, `NetworkFilterEngine` y `BlockListRule` en un solo objeto. |
+- El modo Monitor registra `would-block` y no bloquea nada.
+- Una dirección de la lista de permitidos se rechaza, diga lo que diga el hallazgo.
+- Se rechazan el loopback, las direcciones no especificadas y las demás que no pueden bloquearse
+  (`127.0.0.1`, `::1`, `-`).
+- La evidencia del registro de Seguridad se clasifica como `Authenticated`: el inicio de sesión falló
+  después de completarse el handshake TCP, así que la dirección respondió a paquetes y no estaba
+  falsificada. Por eso puede añadir un bloqueo en modo Block sin `--syn-rules-may-block`. El bloqueo
+  lleva el TTL dinámico (60 minutos por omisión).
 
-## Ejemplo de uso
+## Por qué no está conectado
 
-```csharp
-using WPShield.Integration;
-using WPShield.SecurityMonitor;
-using WPShield.NetworkFilter;
+`SecurityEventMonitor` lee el registro de Seguridad con un `EventLogReader` que empieza en el evento
+más antiguo y lo reúne todo en una lista en el primer escaneo. En un host con un registro de Seguridad
+de 2 GB eso es una lectura a memoria sin límite, y cada dirección que alguna vez acumuló suficientes
+inicios de sesión fallidos en una ventana de cinco minutos quedaría bloqueada al arrancar. El ADR 0002
+ya dijo cómo debe consumirse el registro de Seguridad: suscribirse a los eventos nuevos
+(`EventLogWatcher` con `readExistingEvents: false`), no leer el archivo. El receptor se conectará a
+`network-filter` cuando el lector haga eso.
 
-// Construir el puente con configuraciones predeterminadas.
-using var bridge = new SecurityToNetworkFilterBridge();
+Hay otros dos límites del monitor que importan a quien vaya a conectarlo:
 
-// Escanear el registro de Seguridad según tu propio calendario (por ejemplo, cada 30 segundos).
-using var cts = new CancellationTokenSource();
-while (!cts.Token.IsCancellationRequested)
-{
-    int processed = bridge.ScanSecurityLogOnce();
-    await Task.Delay(TimeSpan.FromSeconds(30), cts.Token);
-}
-
-// bridge.BlockListRule se comparte con bridge.NetworkFilterEngine,
-// por lo que las IPs bloqueadas se aplican inmediatamente al filtro de paquetes.
-```
-
-### Cableado manual (sin el puente)
-
-Si prefieres conectar los componentes tú mismo:
-
-```csharp
-var blockListRule = new BlockListRule(new List<string>());
-var sink = new NetworkFilterBlockListSink(blockListRule);
-
-var monitor = SecurityEventBuilder.Build(
-    new SecurityEventConfiguration { PublishingEnabled = true },
-    sink: sink);
-
-var filterEngine = NetworkFilterBuilder.Build(new NetworkFilterConfiguration
-{
-    BlockList = new List<string>() // poblada por el sink
-});
-```
+- `WP-SEC-001` cuenta solo `LogonType 10`. Con Network Level Authentication, que es lo predeterminado
+  en RDP, los inicios de sesión RDP fallidos se registran como `LogonType 3`. `WP-SEC-002`, que cuenta
+  cada 4625 por dirección, es la regla que los ve.
+- La `AllowList` propia del monitor es una comparación exacta de cadenas. La autoridad es la lista de
+  permitidos del filtro de red; el receptor no depende de la del monitor.
 
 ## Requisitos de seguridad
 
-- **Solo adhesión voluntaria.** El proyecto de integración no es referenciado por el núcleo del gateway ni por los proyectos de reglas. Los operadores deben agregarlo explícitamente a su despliegue.
-- **Sin cambios silenciosos.** El sink solo agrega IPs que produjeron un hallazgo de `Block`. Nunca elimina IPs a menos que el operador llame a `RemoveIp` o `UpdateBlockList` en la `BlockListRule`.
-- **Seguro para subprocesos.** Tanto `NetworkFilterBlockListSink` como `BlockListRule` usan bloqueos para que el sink pueda publicar desde cualquier subproceso sin bloquear el camino de los paquetes por más tiempo que una copia de diccionario.
-- **Seguro para la privacidad.** El sink solo almacena direcciones IP de origen e IDs de regla — nunca contraseñas, tokens de sesión ni cargas completas de eventos.
-
-## Fuera del alcance
-
-- Bloqueo en tiempo real. `SecurityEventMonitor.ScanOnce()` es de sondeo; el puente no se suscribe a flujos de eventos en vivo.
-- Expiración de IPs. Las IPs bloqueadas permanecen en la lista hasta que el operador las elimine. Considera combinar con la limitación de velocidad y bloques temporales de M3 cuando ese hito llegue.
-
-## Pasos siguientes
-
-1. Confirmar que `src/WPShield.Integration/` tiene como destino `net10.0-windows` y referencia tanto a `WPShield.SecurityMonitor` como a `WPShield.NetworkFilter`.
-2. Agregar pruebas unitarias para `NetworkFilterBlockListSink` y `SecurityToNetworkFilterBridge`.
-3. Escribir `docs/en/integration-design.md` como espejo de este documento.
+- La dirección se lee del campo `IpAddress` del evento y se analiza; nada de lo que haya tecleado un
+  atacante (el nombre de usuario, el nombre de la estación de trabajo) llega a un filtro, a una línea
+  de log ni a un mensaje de error.
+- El receptor nunca bloquea directamente y no guarda estado propio.
