@@ -88,6 +88,11 @@ allow-list. The port is read from the registry (`RDP-Tcp\PortNumber`), never ass
 operator who starts Block mode over RDP has to name the address they are connected from, and the tool
 names it for them when they have not.
 
+The start-time check is not enough on its own, because an administrator can reconnect from a new
+address mid-run. So the guard runs again for every new dynamic block: an address that holds a
+connection to the RDP port at that moment is refused, and when the connections cannot be read the
+block is refused too, because "nobody could look" is not "nobody is there".
+
 ### 4. Monitor is the default
 
 **Monitor never opens a DROP handle.** It is not a flag checked before each drop; the enforcer is not
@@ -115,13 +120,18 @@ Dynamic blocks expire after a TTL (default 60 minutes; a repeat finding extends 
 blocks last for the life of the process. The set holds at most 1,000 entries by default; when it is
 full, new dynamic blocks are refused and logged, and an operator entry is never evicted to make room.
 
-### 7. WPShield never installs a kernel driver as a side effect
+### 7. WPShield never loads a kernel driver as a side effect
 
-Every handle is opened with **`WINDIVERT_FLAG_NO_INSTALL`**. If the driver is not installed, the
-command says so and stops. Installing it is an operator action named on the command line
-(`--install-driver`), because the WinDivert driver is a service other than WPShield and `AGENTS.md`
-keeps those manual unless the operator names the change. It is reversible: stop every process using
-it, then `sc stop WinDivert` and `sc delete WinDivert`, or delete the files and reboot.
+Every handle is opened with **`WINDIVERT_FLAG_NO_INSTALL`**. If the driver is not loaded, the command
+says so and stops. Loading it is an operator action named on the command line (`--install-driver`),
+because the WinDivert driver is a service other than WPShield and `AGENTS.md` keeps those manual
+unless the operator names the change.
+
+What WinDivert then does is read from its source (`dll/windivert.c`), not assumed: it registers a
+demand-start kernel driver service named `WinDivert`, starts it, and **marks it for deletion at
+once**. The registration does not survive `sc stop WinDivert` or a reboot, so nothing stays
+installed on the host. The price is that `--install-driver` is needed again on the first run after
+every reboot, and a future boot-time service will have to pass it knowingly.
 
 WinDivert is **not bundled**. It is LGPLv3, signed by its author, and the operator downloads 2.2.2
 from the upstream release. `WinDivert.dll` is loaded from the WPShield assembly directory only, never
@@ -145,8 +155,8 @@ comparison orders: the real library is asked, on the machine that will run it, b
 
 A DROP filter holds at most 200 of the 256 objects WinDivert allows (`WINDIVERT_FILTER_MAXLEN`); a
 larger block set is split across handles. The observer's per-source state is capped and evicts the
-oldest source, because a flood of SYNs with random forged sources must not grow a dictionary without
-limit. Findings are logged once per source and threshold, not once per packet.
+least recently seen source, because a flood of SYNs with random forged sources must not grow a
+dictionary without limit. Findings are logged once per source and threshold, not once per packet.
 
 ## What changes in the invariants
 
@@ -168,7 +178,8 @@ limit. Findings are logged once per source and threshold, not once per packet.
   by 256 objects per handle. DROP handles exist only while there are blocks; the observer filter is
   four tests.
 - **Network blocks are host-wide.** The gateway's per-site isolation does not extend to them, which
-  is why section 5 exists.
+  is why section 5 exists. A block event names `WP-NET-001`, the block list, and records the finding
+  that asked for it in `requested_by`, so the log says both what was done and why.
 - **Not yet validated against the driver.** Everything above is built against the documented 2.2.2
   API and tested through a fake driver. The first run against a real driver is the operator's, on a
   development machine first, never on the production host first.

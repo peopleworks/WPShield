@@ -1,6 +1,7 @@
 # ADR 0002 — Where brute-force defence belongs
 
-- **Status:** Proposed
+- **Status:** Proposed. Its network half (RDP, FTP, SMTP, SQL, SMB to a sibling project) is
+  superseded by [ADR 0006](0006-network-layer-blocking.md), itself Proposed. The HTTP half stands.
 - **Deciders:** WPShield maintainers
 - **Affects:** M3 (rate limiting and automated behaviour), and a possible sibling project
 

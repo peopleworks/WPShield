@@ -9,30 +9,31 @@ failures that packets alone cannot reveal.
 ## Why it exists
 
 A production WordPress host on Windows Server was observed receiving sustained attacks on
-both web ports (80/443) and Remote Desktop (TCP 3389). `WPShield.NetworkFilter` can block
-packets by source IP and rate, but it cannot see whether an RDP connection succeeded or
-failed — that happens inside the authentication session, after the TCP handshake.
+both web ports (80/443) and Remote Desktop (TCP 3389). `WPShield.NetworkFilter` can drop
+packets from the addresses on its block list and observe connection rates, but it cannot see
+whether an RDP connection succeeded or failed — that happens inside the authentication session,
+after the TCP handshake.
 
 `WPShield.SecurityMonitor` reads Event ID `4625` (failed logon) and `4624` (logon success)
 from the Security log, identifies Logon Type `10` (RemoteInteractive = RDP), and raises
-findings when a source IP exceeds a configurable failure threshold. Those findings can be
-published to a block list that `NetworkFilter` consumes, so the attacker's IP is dropped at
-the packet layer before it can even attempt another logon.
+findings when a source IP exceeds a configurable failure threshold. Once the monitor reads
+new events only (see *Known limitations*), those findings can be published to the network
+filter's block list, so the attacker's address is dropped at the packet layer before it can
+attempt another logon.
 
 ## Position in the architecture
 
 | Layer | Component | What it sees | Blocks? |
 |---|---|---|---|
 | 1 | Windows Firewall | Static IP rules | Yes |
-| 2 | `WPShield.NetworkFilter` | TCP/UDP packet headers | Yes |
+| 2 | `WPShield.NetworkFilter` | New inbound TCP connection attempts (IP and TCP headers) | Yes, in Block mode |
 | 3 | **`WPShield.SecurityMonitor`** | **Security event log (auth results)** | **Indirectly** |
 | 4 | `WPShield.Gateway` | HTTP request bodies | Yes (uploads) |
 | 5 | IIS + WordPress | Application layer | No |
 
 The monitor does not block traffic directly. It emits findings (score, action, evidence) to
 an `ISecurityEventSink`. An operator-provided sink implementation decides what to do:
-write to the JSON Lines log, publish IPs to the `NetworkFilter` dynamic block list, alert,
-etc.
+write to the JSON Lines log, request blocks from the network filter, alert, etc.
 
 ## Responsibilities
 
@@ -188,7 +189,7 @@ while (!cts.Token.IsCancellationRequested)
 
 | Milestone | Relationship |
 |---|---|
-| M2.7 Network filter | SecurityMonitor findings feed the dynamic block list of `WPShield.NetworkFilter`. |
+| M2.7 Network filter | `WPShield.Integration` turns SecurityMonitor findings into block requests; not wired to `network-filter` until the reader reads new events only. |
 | M3 Rate limiting | `WP-SEC-001` and `WP-SEC-002` are the authentication half of rate limiting; M3 adds the HTTP half. |
 | M4 Observability | SecurityMonitor findings use the same JSON Lines log envelope as the gateway. |
 | M6 Windows Service | `SecurityEventMonitor` can run as part of the WPShield Windows service under `NT SERVICE\WPShield`. |
@@ -211,7 +212,7 @@ Found while wiring the monitor to the network filter (ADR 0006). They are why
 
 ## Out of scope
 
-- Real-time blocking (the monitor is polling-based via `ScanOnce`; it does not subscribe to live event streams).
+- Real-time blocking. Today the monitor polls with `ScanOnce`; reading by subscription is next step 3.
 - Reading other event logs (System, Application) — only Security.
 - Decrypting or inspecting RDP session contents.
 
@@ -222,4 +223,3 @@ Found while wiring the monitor to the network filter (ADR 0006). They are why
 3. Replace the replaying reader with an `EventLogWatcher` subscription, then wire
    `WPShield.Integration.NetworkFilterBlockListSink` (which already requests blocks through
    `NetworkFilterService.RequestBlock`) into `wpshield network-filter`.
-4. Write `docs/es/diseno-monitor-seguridad.md` mirroring this document.

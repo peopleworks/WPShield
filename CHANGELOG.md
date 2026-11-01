@@ -30,7 +30,10 @@ must complete first.
   a DROP handle. Block refuses to start without an allow-list, while an unlisted address holds the RDP
   session, or when a self-test against the real WinDivert library fails; `--check` runs that self-test
   without elevation or the driver. SYN-based findings block only with `--syn-rules-may-block`, because
-  a SYN's source can be forged. The driver is never installed unless `--install-driver` is given.
+  a SYN's source can be forged. The driver is never loaded unless `--install-driver` is given, and
+  WinDivert marks its service for deletion as it starts it, so nothing stays installed after a
+  reboot. A new dynamic block is refused for any address holding an RDP connection at that moment.
+  Block events name `WP-NET-001` and record the finding that asked in `requested_by`.
 
   `appsettings.NetworkFilter.example.json` is removed: nothing read it, and its sample block list
   carried addresses taken from a production log, which this repository does not publish.

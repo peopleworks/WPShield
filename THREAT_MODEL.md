@@ -478,7 +478,7 @@ process so traffic stops; or plant a DLL that an elevated process will load.
 | Threat | Control |
 | --- | --- |
 | Forged evidence blocks a third party | A SYN's source can be forged, so `WP-NET-002` and `WP-NET-003` block only with `--syn-rules-may-block`. Security-log findings may block: a logon fails after a completed handshake. |
-| The administrator is locked out | Allow-list applied at insertion and again at filter build; Block refuses with an empty allow-list or an unlisted address on the RDP port read from the registry. Monitor is the default and never opens a DROP handle. |
+| The administrator is locked out | Allow-list applied at insertion and again at filter build; Block refuses with an empty allow-list or an unlisted address on the RDP port read from the registry, and every new dynamic block is refused for an address holding an RDP connection at that moment. Monitor is the default and never opens a DROP handle. |
 | A stalled or crashed process stops traffic | Normal traffic never passes through the process: blocks are kernel DROP filters, observation is on copies. A block is a handle, so process exit lifts every block. |
 | A planted `WinDivert.dll` runs elevated | Every import resolves the DLL from the assembly directory only. WinDivert is not bundled; the operator copies the official release. |
 | A filter means something other than intended | Filters are written from parsed addresses only; a self-test against the real library's compile and evaluate helpers gates Block mode. |

@@ -164,12 +164,14 @@ and could not block anything, and its tests all passed.
 - **Monitor never constructs the enforcer.** It is not a flag checked before each drop.
 - **The allow-list is applied twice**: when a block is added and again when the filters are written.
   Block refuses to start with an empty allow-list, or while an address connected to the RDP port
-  (read from `RDP-Tcp\PortNumber`, never assumed 3389) is not on it.
+  (read from `RDP-Tcp\PortNumber`, never assumed 3389) is not on it. The guard runs again for every
+  new dynamic block, and an unreadable connection table refuses the block rather than allowing it.
 - **SYN evidence is spoofable.** `WP-NET-002` and `WP-NET-003` block only with
   `--syn-rules-may-block`. Any new rule whose evidence is a packet its sender could forge inherits
   that default.
-- **Never install a driver as a side effect.** Handles open with `WINDIVERT_FLAG_NO_INSTALL` unless the
-  operator passed `--install-driver`. Never bundle WinDivert, and resolve `WinDivert.dll` from the
+- **Never load a driver as a side effect.** Handles open with `WINDIVERT_FLAG_NO_INSTALL` unless the
+  operator passed `--install-driver`. WinDivert marks its service for deletion as it starts it, so
+  nothing survives a reboot; do not "fix" that by registering the service permanently. Never bundle WinDivert, and resolve `WinDivert.dll` from the
   assembly directory only: every import carries `DefaultDllImportSearchPaths(AssemblyDirectory)`.
 - **Filters are written from parsed `IpRange` values only**, never from text, at most 200 objects per
   filter against WinDivert's 256. Block entries are canonical, no wider than `/16` or `/48`, with no

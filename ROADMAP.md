@@ -213,7 +213,8 @@ Implemented and tested through a fake driver:
 - [x] `WP-NET-001` block list, `WP-NET-002` connection attempts per minute, `WP-NET-003` distinct
   ports per minute, with bounded per-source state.
 - [x] Monitor by default; Monitor never constructs the enforcer.
-- [x] Allow-list applied at insertion and at filter build; lockout guard on the registry's RDP port.
+- [x] Allow-list applied at insertion and at filter build; lockout guard on the registry's RDP port,
+  at start and again for every new dynamic block.
 - [x] SYN evidence blocks only with `--syn-rules-may-block`.
 - [x] Dynamic blocks expire; the block set has a ceiling; nothing is persisted.
 - [x] `WINDIVERT_FLAG_NO_INSTALL` unless `--install-driver`; `WinDivert.dll` from the assembly
