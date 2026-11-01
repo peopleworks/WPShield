@@ -164,7 +164,7 @@ public sealed class NetworkFilterService : IDisposable
                     EnforcementResult applied;
                     try
                     {
-                        applied = ApplyBlocks();
+                        applied = ApplyBlocks(enforcer);
                     }
                     catch
                     {
@@ -321,7 +321,7 @@ public sealed class NetworkFilterService : IDisposable
 
             if (_enforcer is not null && Blocks.Version != _appliedVersion)
             {
-                _ = ApplyBlocks();
+                _ = ApplyBlocks(_enforcer);
             }
         }
     }
@@ -439,7 +439,11 @@ public sealed class NetworkFilterService : IDisposable
         }
     }
 
-    private EnforcementResult ApplyBlocks()
+    /// <summary>
+    /// Writes the current block set to <paramref name="enforcer"/>. Start passes the enforcer it has
+    /// not published yet, so a failed first apply never leaves a half-built one in <c>_enforcer</c>.
+    /// </summary>
+    private EnforcementResult ApplyBlocks(NetworkEnforcer enforcer)
     {
         var version = Blocks.Version;
         var snapshot = Blocks.Snapshot();
@@ -453,7 +457,7 @@ public sealed class NetworkFilterService : IDisposable
             });
         }
 
-        var result = _enforcer!.Apply(plan);
+        var result = enforcer.Apply(plan);
         switch (result.Status)
         {
             case EnforcementStatus.Applied:

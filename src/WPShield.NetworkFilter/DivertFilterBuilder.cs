@@ -22,18 +22,16 @@ public static class DivertFilterBuilder
     /// miscount here is not a failure there.
     /// </summary>
     public const int ObjectBudget = 200;
-    private static readonly int RuntimeObjectBudget = ObjectBudget;
+
+    /// <summary>
+    /// The headroom below <c>WINDIVERT_FILTER_MAXLEN</c>. It is a <c>uint</c> constant so that a
+    /// budget at or above the limit fails the build (CS0031) instead of being a runtime comparison of
+    /// two constants that can never be false once it compiles.
+    /// </summary>
+    internal const uint HeadroomBelowFilterMaximum = WinDivertNative.FilterMaxObjects - ObjectBudget - 1;
 
     private const string Prefix = "inbound and !loopback and (";
     private const int PrefixObjects = 2;
-
-    static DivertFilterBuilder()
-    {
-        if (RuntimeObjectBudget >= WinDivertNative.FilterMaxObjects)
-        {
-            throw new InvalidOperationException("The DROP filter budget must stay below WINDIVERT_FILTER_MAXLEN.");
-        }
-    }
 
     /// <summary>
     /// Builds the DROP filters for <paramref name="blocked"/>, skipping anything that overlaps the
