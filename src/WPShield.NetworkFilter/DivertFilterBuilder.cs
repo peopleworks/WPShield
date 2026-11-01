@@ -22,13 +22,14 @@ public static class DivertFilterBuilder
     /// miscount here is not a failure there.
     /// </summary>
     public const int ObjectBudget = 200;
+    private static readonly int RuntimeObjectBudget = ObjectBudget;
 
     private const string Prefix = "inbound and !loopback and (";
     private const int PrefixObjects = 2;
 
     static DivertFilterBuilder()
     {
-        if (ObjectBudget >= WinDivertNative.FilterMaxObjects)
+        if (RuntimeObjectBudget >= WinDivertNative.FilterMaxObjects)
         {
             throw new InvalidOperationException("The DROP filter budget must stay below WINDIVERT_FILTER_MAXLEN.");
         }
