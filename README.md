@@ -189,9 +189,9 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Inspection of non-multipart bodies | Planned | Nothing else is inspected: urlencoded forms, JSON, XML-RPC, `application/octet-stream` PUTs and other `multipart/*` subtypes stream through untouched |
 | Inspection of archive contents | Planned | A `.zip` plugin or theme carrying a webshell is not detected, and plugin installation is a genuine upload path. No milestone assigned |
 | Bound on concurrent buffered uploads | Available | `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10, ceiling 50. Monitor forwards and warns at the limit; Block refuses with HTTP 429. |
-| **Network layer packet filtering** | **Available** | **`WPShield.NetworkFilter` inspects inbound TCP/UDP packets in user mode via WinDivert.** Rate limiting, dynamic block lists, and port-scan detection run ahead of IIS with a strict per-packet time budget so the filter can never stall the network stack or trigger a kernel watchdog. |
-| **Security event monitoring** | **Available** | **`WPShield.SecurityMonitor` reads the Windows Security event log and detects RDP brute-force and failed-logon patterns.** It publishes findings to a sink that can feed the dynamic block list of `WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication failures. |
-| **Security → Network filter bridge** | **Available** | **`WPShield.Integration` wires `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`** via `NetworkFilterBlockListSink`, so IPs caught by security event rules are dropped at the packet layer before they reach IIS. |
+| Network-layer blocking | Built, not yet run against a driver; ADR 0006 is Proposed | `wpshield network-filter` observes new inbound connections and, in Block mode, drops packets from the addresses on its block list through WinDivert DROP handles. Normal traffic never passes through WPShield, blocks end when the process ends, and Block refuses to start without an allow-list, with an unlisted RDP client, or when the WinDivert self-test fails. Monitor by default. See [ADR 0006](docs/en/adr/0006-network-layer-blocking.md) |
+| Security event monitoring | Experimental | `wpshield security-monitor` reads the Security log and reports failed-logon patterns. It replays the whole log on its first scan, and `WP-SEC-001` misses RDP failures under NLA; see the [design](docs/en/security-monitor-design.md#known-limitations) |
+| Security log → network filter | Not wired | `WPShield.Integration` turns a Security-log finding into a block request, but is connected to no command until the monitor reads new events only |
 | Rate limiting and observability | Planned | M3 and M4 |
 | Dashboard and Windows Service | Planned | M5 and M6 |
 | Production activation | Not approved | Requires M1-M6 validation and controlled M7 rollout |
@@ -210,7 +210,7 @@ flowchart TB
     R["WPShield.Rules.WordPress<br/>Rules that need WordPress knowledge"]
     S["WPShield.Service<br/>Engine demonstration"]
     G["WPShield.Gateway<br/>Loopback Kestrel + YARP"]
-    NF["WPShield.NetworkFilter<br/>User-mode packet filter (WinDivert)"]
+    NF["WPShield.NetworkFilter<br/>Connection observer + WinDivert DROP handles"]
     SM["WPShield.SecurityMonitor<br/>Security event log monitor"]
     IN["WPShield.Integration<br/>Security → Network filter bridge"]
     O["WPShield.Observability<br/>Planned"]
@@ -298,10 +298,10 @@ The following are project invariants:
 - **No suspicious upload persistence.** Upload inspection must not create temporary malware collections on disk.
 - **Privacy-safe evidence.** Logs must exclude credentials, authorization values, cookies, nonces, tokens, complete query strings, request bodies, and upload content.
 - **Explainable decisions.** Findings retain a stable rule ID, score, message key, minimal evidence, and recommended action.
-- **No automatic production changes.** WPShield does not modify IIS, DNS, certificates, firewall rules, Windows services, or public ports automatically.
-- **Network filter never runs in kernel.** `WPShield.NetworkFilter` inspects packets in user mode through WinDivert. It never acquires kernel spinlocks, never stalls the network stack, and enforces a strict per-packet inspection budget so a slow rule can never become a `DPC_WATCHDOG_VIOLATION` that reboots the server.
+- **No automatic production changes.** WPShield does not modify IIS, DNS, certificates, Windows Firewall rules, Windows services, or public ports automatically. The one network-layer action it takes is ADR 0006's: in Block mode only, it drops packets from the addresses on its own block list, through handles that close when the process ends.
+- **Normal traffic never passes through the network filter.** Blocks are WinDivert DROP filters the driver applies in the kernel; the observer receives copies of new connection attempts. Nothing is reinjected, nothing is persisted, and stopping the command lifts every block.
 - **Security monitor reads only.** `WPShield.SecurityMonitor` reads the Windows Security event log and never modifies, clears, or archives it. It requires Administrator privileges and refuses to start without them.
-- **Integration bridge is optional.** `WPShield.Integration` wires security findings into `WPShield.NetworkFilter.BlockListRule` through `NetworkFilterBlockListSink`. It is a separate, opt-in project: the core gateway, rules, sensor, and monitor projects do not depend on it.
+- **Integration bridge is optional.** `WPShield.Integration` turns security findings into block requests through `NetworkFilterBlockListSink`. It is a separate, opt-in project that no command uses yet: the core gateway, rules, sensor, and monitor projects do not depend on it.
 
 Read [THREAT_MODEL.md](THREAT_MODEL.md) for protected assets, trust boundaries, threats, and required safeguards. Report vulnerabilities according to [SECURITY.md](SECURITY.md), never through a public issue.
 
@@ -633,6 +633,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | ADR 0003 — operator tooling | [Operator tooling moves to a .NET CLI](docs/en/adr/0003-operator-tooling-in-dotnet.md) | [Las herramientas de operador pasan a una CLI de .NET](docs/es/adr/0003-herramientas-de-operador-en-dotnet.md) |
 | ADR 0004 — name and scope | [What WPShield stands for](docs/en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](docs/es/adr/0004-que-significa-wpshield.md) |
 | ADR 0005 — putting it in the path | [Putting WPShield in the path](docs/en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](docs/es/adr/0005-poner-wpshield-en-la-ruta.md) |
+| ADR 0006 — network-layer blocking (Proposed) | [Network-layer blocking inside WPShield](docs/en/adr/0006-network-layer-blocking.md) | [Bloqueo en la capa de red dentro de WPShield](docs/es/adr/0006-bloqueo-en-capa-de-red.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.
 

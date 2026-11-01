@@ -14,6 +14,31 @@ must complete first.
 
 ### Changed
 
+- **`wpshield network-filter` was rebuilt, because the version merged on 2026-10-20 could not block
+  anything and would have been dangerous if it had.** It opened WinDivert in `SNIFF` mode, which
+  copies packets, so "dropping" did nothing; its `WinDivertRecv`/`WinDivertSend` declarations did not
+  match the API and gave the driver an 8-byte buffer for an 80-byte address; its default filter
+  `tcp.Inbound` is not a WinDivert field; it read ports little-endian; and its rate rule counted
+  packets, which one WordPress page load exceeds, with no allow-list anywhere. Every test passed,
+  because none of them touched the engine.
+
+  The new design is [ADR 0006](docs/en/adr/0006-network-layer-blocking.md), **Proposed**, which
+  supersedes the network half of ADR 0002 deliberately rather than as a side effect. Normal traffic
+  never passes through WPShield: blocks are WinDivert `DROP` handles the driver applies in the kernel,
+  and the observer receives copies of new connection attempts. A block is an open handle and nothing
+  else, so stopping or killing the process lifts every block. Monitor is the default and never opens
+  a DROP handle. Block refuses to start without an allow-list, while an unlisted address holds the RDP
+  session, or when a self-test against the real WinDivert library fails; `--check` runs that self-test
+  without elevation or the driver. SYN-based findings block only with `--syn-rules-may-block`, because
+  a SYN's source can be forged. The driver is never installed unless `--install-driver` is given.
+
+  `appsettings.NetworkFilter.example.json` is removed: nothing read it, and its sample block list
+  carried addresses taken from a production log, which this repository does not publish.
+
+  **Known limitations:** it has not run against a real driver yet; the Security-log bridge is not
+  wired, because the Security-log reader replays the whole log into memory on its first scan; and
+  `WP-SEC-001` misses failed RDP logons under NLA, which are recorded as `LogonType 3`.
+
 - **The rules are two packages now: `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`.** This
   is the first half of [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md)'s first exit
   condition. Five of the eleven rules contain nothing about WordPress - `WP-PATH-002`, `IIS-PATH-001`,

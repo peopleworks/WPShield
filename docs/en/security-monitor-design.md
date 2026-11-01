@@ -193,6 +193,22 @@ while (!cts.Token.IsCancellationRequested)
 | M4 Observability | SecurityMonitor findings use the same JSON Lines log envelope as the gateway. |
 | M6 Windows Service | `SecurityEventMonitor` can run as part of the WPShield Windows service under `NT SERVICE\WPShield`. |
 
+## Known limitations
+
+Found while wiring the monitor to the network filter (ADR 0006). They are why
+`WPShield.Integration` is not connected to `wpshield network-filter` yet.
+
+- **The first scan reads the whole Security log into memory.** `WinEventLogReader` queries from the
+  oldest event and collects every match into a list. On a host with a 2 GB Security log that is an
+  unbounded read, and every address that ever failed enough logons in one window produces a finding
+  at once. The fix is ADR 0002's: subscribe to new events with `EventLogWatcher` and
+  `readExistingEvents: false`.
+- **`WP-SEC-001` misses RDP brute force under Network Level Authentication.** It counts only
+  `LogonType 10`. With NLA, the RDP default, failed logons are recorded as `LogonType 3`, so this rule
+  never fires for them. `WP-SEC-002`, which counts every 4625 per address, does.
+- **The allow-list is an exact string match**, so a CIDR range or an IPv4-mapped IPv6 form of an
+  allow-listed address does not match. The network filter's allow-list is the authority for blocking.
+
 ## Out of scope
 
 - Real-time blocking (the monitor is polling-based via `ScanOnce`; it does not subscribe to live event streams).
@@ -203,5 +219,7 @@ while (!cts.Token.IsCancellationRequested)
 
 1. Confirm `src/WPShield.SecurityMonitor/` targets `net10.0-windows` and references only `WPShield.Abstractions`.
 2. Add unit tests for `RdpBruteForceRule` and `FailedLogonRule`.
-3. Add an example `ISecurityEventSink` implementation that publishes to `WPShield.NetworkFilter.BlockListRule`.
+3. Replace the replaying reader with an `EventLogWatcher` subscription, then wire
+   `WPShield.Integration.NetworkFilterBlockListSink` (which already requests blocks through
+   `NetworkFilterService.RequestBlock`) into `wpshield network-filter`.
 4. Write `docs/es/diseno-monitor-seguridad.md` mirroring this document.
