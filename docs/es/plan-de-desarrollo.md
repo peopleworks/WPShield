@@ -778,6 +778,14 @@ Rate-limit events
 
 ## M5 — Dashboard multidioma
 
+### Primera fuente de datos: la postura del servidor
+
+`wpshield audit` ya existe (véase [Auditoría](auditoria.md)): lee, sin cambiar nada, la configuración
+de IIS que decide si un sitio comprometido se queda en uno solo. El panel de postura del dashboard la
+mostrará, y se ampliará más allá de IIS (firmas, inicios de sesión RDP, WMI, registros borrados,
+firewall, Defender y la firma de un web shell en los logs de IIS) con las mismas condiciones de solo
+lectura. El `ROADMAP.md` manda si este plan difiere.
+
 ### Acceso inicial
 
 ```text
