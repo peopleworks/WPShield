@@ -133,8 +133,11 @@ once**. The registration does not survive `sc stop WinDivert` or a reboot, so no
 installed on the host. The price is that `--install-driver` is needed again on the first run after
 every reboot, and a future boot-time service will have to pass it knowingly.
 
-WinDivert is **not bundled**. It is LGPLv3, signed by its author, and the operator downloads 2.2.2
-from the upstream release. `WinDivert.dll` is loaded from the WPShield assembly directory only, never
+WinDivert is **not bundled**. It is LGPLv3, and the operator downloads 2.2.2 from the upstream
+release and checks it against the SHA-256 values in the network filter design. Its user-mode
+`WinDivert.dll` is unsigned; its kernel driver carries an EV code-signing certificate that Sectigo
+issued to a company, not to WinDivert's author. Every copy of the official 2.2.2 release carries that
+same driver, so the check that matters is that the operator's file is that file. `WinDivert.dll` is loaded from the WPShield assembly directory only, never
 from `PATH` or the working directory: the process runs elevated, and a DLL search that reaches a
 writable directory is a privilege escalation.
 
