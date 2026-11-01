@@ -224,7 +224,8 @@ Implemented and tested through a fake driver:
 Not yet done:
 
 - [ ] ADR 0006 accepted.
-- [ ] Self-test passed against the real WinDivert 2.2.2 library.
+- [x] Self-test passed against the real WinDivert 2.2.2 library: 28 of 28 checks, 2026-11-01,
+  unelevated, with no driver loaded.
 - [ ] First run against the driver on a development machine (the test plan in the design document).
 - [ ] A week of Monitor mode on a production host before any Block mode there.
 
@@ -233,7 +234,8 @@ Not yet done:
 - **Outbound, UDP and ICMP traffic.** The observer sees inbound TCP connection attempts only.
 - **Payloads and TLS.** Only IP and TCP headers are read.
 - **Persistence.** Blocks do not survive a restart, by design.
-- **Kernel code.** WPShield ships none; WinDivert is an external, signed driver the operator installs.
+- **Kernel code.** WPShield ships none; WinDivert is an external driver the operator installs, signed
+  under an EV certificate issued to a company other than its author.
 
 ## M2.8 — Security event log monitoring
 

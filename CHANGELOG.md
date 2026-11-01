@@ -38,6 +38,12 @@ must complete first.
   `appsettings.NetworkFilter.example.json` is removed: nothing read it, and its sample block list
   carried addresses taken from a production log, which this repository does not publish.
 
+  `--check` passed all 28 checks against the official WinDivert 2.2.2 x64 library on 2026-11-01,
+  unelevated and with no driver loaded. The design document now lists the SHA-256 of each file to
+  copy, and says who signed them: `WinDivert.dll` is unsigned, and `WinDivert64.sys` carries an EV
+  signature issued to a company other than WinDivert's author, where the documents said "signed by
+  its author".
+
   **Known limitations:** it has not run against a real driver yet; the Security-log bridge is not
   wired, because the Security-log reader replays the whole log into memory on its first scan; and
   `WP-SEC-001` misses failed RDP logons under NLA, which are recorded as `LogonType 3`.

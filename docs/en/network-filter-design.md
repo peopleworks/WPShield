@@ -84,8 +84,23 @@ Expected false positives: `WP-NET-002` at a busy shared NAT address, a crawler, 
 1. **WinDivert 2.2.2**, downloaded by the operator from the official release
    (`github.com/basil00/WinDivert/releases`, `WinDivert-2.2.2-A.zip`). Copy `WinDivert.dll` and
    `WinDivert64.sys` from its `x64` folder into the WPShield program directory, next to
-   `wpshield.exe`. WPShield does not bundle or download them; WinDivert is LGPLv3 and signed by its
-   author.
+   `wpshield.exe`. WPShield does not bundle or download them; WinDivert is LGPLv3.
+
+   Check the files before copying them. `WinDivert.dll` is unsigned, and `WinDivert64.sys` carries an
+   EV signature that Sectigo issued to `成都密思听科技有限公司` (Sichuan, CN), not to WinDivert's
+   author; the driver's own metadata reads `Copyright © Basil 2011-2022`. Every copy of the official
+   release carries that same driver, so what matters is that yours is the same file.
+   `Get-FileHash <file> -Algorithm SHA256` must print exactly:
+
+   | File | SHA-256 |
+   | --- | --- |
+   | `WinDivert-2.2.2-A.zip` (405,137 bytes) | `63CB41763BB4B20F600B6DE04E991A9C2BE73279E317D4D82F237B150C5F3F15` |
+   | `x64\WinDivert.dll` | `C1E060EE19444A259B2162F8AF0F3FE8C4428A1C6F694DCE20DE194AC8D7D9A2` |
+   | `x64\WinDivert64.sys` | `8DA085332782708D8767BCACE5327A6EC7283C17CFB85E40B03CD2323A90DDC2` |
+
+   These are from the official release, downloaded on 2026-11-01; the driver's value also matches an
+   independent public scanner's record of the same file. Some antivirus products flag WinDivert as a
+   hacking tool, because cheats and malware use it too; expect that before copying it to a host.
 2. **Administrator elevation**, except for `--check`.
 3. **The driver loaded.** A run with `--install-driver` lets WinDivert register and start its
    `WinDivert` kernel driver service. WinDivert marks that service for deletion the moment it starts
@@ -141,7 +156,13 @@ already marked for deletion, so stopping it removes it. A reboot does the same.
 ## First run on a development machine
 
 1. Copy the WinDivert 2.2.2 x64 files next to `wpshield.exe`. Run `--check` unelevated. Every line must
-   read `PASS`.
+   read `PASS`. **Done on 2026-11-01 on a development machine: 28 of 28 checks passed** against the
+   official x64 `WinDivert.dll`, with no elevation and no driver. Steps 2 to 5 have not been run.
+
+   `RealWinDivertSelfTest` runs the same check from the test suite when `WinDivert.dll` sits in
+   `tests/WPShield.NetworkFilter.Tests/bin/Release/net10.0-windows/` (the test project targets
+   `net10.0-windows`, not `net10.0`). Without the file it returns early and reports *passed*, so a pass
+   in CI says nothing about the library.
 2. Elevated: `wpshield network-filter --install-driver --allow <your address>` (Monitor). From another
    machine, connect to a few ports on this one. `observed` lines must appear; nothing is dropped.
 3. Elevated: `--mode Block --allow <your address> --block <a second machine's address>`. From the

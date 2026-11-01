@@ -487,7 +487,10 @@ process so traffic stops; or plant a DLL that an elevated process will load.
 **Unmitigated.** A process that hangs without exiting keeps its current blocks until it is killed,
 and cannot expire dynamic ones meanwhile; those blocks can only cover non-allow-listed addresses.
 WinDivert's own kernel code is on the packet path for the traffic its filters match, and WPShield
-trusts that third-party, signed driver. The filter has not yet run against a real driver.
+trusts that third-party driver. Its EV signature was issued to a company other than WinDivert's
+author, so the operator checks the files by SHA-256 against the network filter design rather than by
+signer. The self-test has passed against the real library; the filter has not yet run against a real
+driver.
 
 ---
 
