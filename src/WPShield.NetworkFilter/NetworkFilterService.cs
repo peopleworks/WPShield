@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Net;
+using System.Net.NetworkInformation;
 using WPShield.Abstractions;
 using WPShield.NetworkFilter.Native;
 using WPShield.NetworkFilter.Rules;
@@ -260,11 +261,24 @@ public sealed class NetworkFilterService : IDisposable
             return null;
         }
 
+        if (grade != EvidenceGrade.Operator && !Blocks.IsBlocked(address) && MayBeTheOperatorsSession(address))
+        {
+            if (report)
+            {
+                Emit(
+                    NetworkFilterEventLevel.Warning,
+                    "Not blocked: the address holds a connection to the RDP port right now. Add it to --allow if it is yours.",
+                    Describe(NetworkFilterActions.RefusedRdpClient, ruleId, source));
+            }
+
+            return null;
+        }
+
         var outcome = Blocks.TryAdd(range!, ruleId, grade == EvidenceGrade.Operator ? null : _options.DynamicBlockLifetime);
         switch (outcome)
         {
             case BlockAddOutcome.Added:
-                var state = Describe(NetworkFilterActions.Blocked, ruleId, source);
+                var state = DescribeBlock(NetworkFilterActions.Blocked, ruleId, source);
                 state["lifetime_minutes"] = grade == EvidenceGrade.Operator ? 0 : (int)_options.DynamicBlockLifetime.TotalMinutes;
                 Emit(NetworkFilterEventLevel.Warning, "Blocked.", state);
                 break;
@@ -291,7 +305,7 @@ public sealed class NetworkFilterService : IDisposable
 
             foreach (var expired in Blocks.RemoveExpired())
             {
-                Emit(NetworkFilterEventLevel.Information, "Block expired.", Describe(NetworkFilterActions.Expired, expired.Source, expired.Range.ToString()));
+                Emit(NetworkFilterEventLevel.Information, "Block expired.", DescribeBlock(NetworkFilterActions.Expired, expired.Source, expired.Range.ToString()));
             }
 
             if (_enforcer is not null && Blocks.Version != _appliedVersion)
@@ -472,6 +486,36 @@ public sealed class NetworkFilterService : IDisposable
         ["rule_id"] = ruleId,
         ["source_ip"] = source,
     };
+
+    /// <summary>A block-list event: the rule is WP-NET-001, and the finding that asked is named separately.</summary>
+    private static Dictionary<string, object> DescribeBlock(string action, string requestedBy, string source) => new()
+    {
+        ["action"] = action,
+        ["rule_id"] = NetworkFilterRuleIds.BlockList,
+        ["requested_by"] = requestedBy,
+        ["source_ip"] = source,
+    };
+
+    /// <summary>
+    /// The lockout guard runs at start; this is its live half. The operator may reconnect from a new
+    /// address mid-run, so a dynamic block for an address that holds an RDP connection right now is
+    /// refused. When the connections cannot be read, the answer is "maybe", which refuses: "nobody
+    /// could look" is not "nobody is there".
+    /// </summary>
+    private bool MayBeTheOperatorsSession(IPAddress address)
+    {
+        try
+        {
+            var probe = _lockoutProbe();
+            return probe.Connections.Any(connection =>
+                connection.Local.Port == probe.RdpPort &&
+                (connection.Remote.Address.IsIPv4MappedToIPv6 ? connection.Remote.Address.MapToIPv4() : connection.Remote.Address).Equals(address));
+        }
+        catch (Exception exception) when (exception is NetworkInformationException or UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            return true;
+        }
+    }
 
     private void Emit(NetworkFilterEventLevel level, string message, Dictionary<string, object> state)
     {

@@ -31,6 +31,16 @@ public interface INetworkFilterEventSink
     void Write(NetworkFilterEvent networkFilterEvent);
 }
 
+/// <summary>Rule identifiers the network filter emits itself.</summary>
+public static class NetworkFilterRuleIds
+{
+    /// <summary>
+    /// <c>WP-NET-001</c>: an address on the block list. Carried by <c>blocked</c> and <c>expired</c>
+    /// events, with the finding that asked for the block in <c>requested_by</c>.
+    /// </summary>
+    public const string BlockList = "WP-NET-001";
+}
+
 /// <summary>The fixed vocabulary of the <c>action</c> state field.</summary>
 public static class NetworkFilterActions
 {
@@ -45,6 +55,7 @@ public static class NetworkFilterActions
     public const string RefusedAllowListed = "refused-allow-listed";
     public const string RefusedFull = "refused-block-set-full";
     public const string RefusedUnblockable = "refused-unblockable-address";
+    public const string RefusedRdpClient = "refused-rdp-client";
     public const string EnforcementUpdated = "enforcement-updated";
     public const string EnforcementFailed = "enforcement-failed";
     public const string ObserverFailed = "observer-failed";

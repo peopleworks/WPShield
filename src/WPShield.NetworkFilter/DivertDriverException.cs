@@ -42,9 +42,10 @@ public sealed class DivertDriverException : Exception
         win32Error switch
         {
             ErrorServiceDoesNotExist =>
-                "The WinDivert driver is not installed, and WPShield does not install drivers as a side " +
-                "effect. Re-run with --install-driver to let WinDivert install its driver service, or " +
-                "install it yourself. Undo it later with 'sc stop WinDivert' and 'sc delete WinDivert'.",
+                "The WinDivert driver is not loaded, and WPShield does not load kernel drivers as a side " +
+                "effect. Re-run with --install-driver: WinDivert then registers its driver service, starts " +
+                "it and marks it for deletion at once, so it is gone after 'sc stop WinDivert' or a reboot. " +
+                "That is also why it is needed again on the first run after every reboot.",
             ErrorAccessDenied =>
                 "WinDivert refused: the process is not elevated. Run the command as Administrator.",
             ErrorFileNotFound =>
