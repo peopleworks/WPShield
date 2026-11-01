@@ -39,9 +39,15 @@ public sealed class WinDivertDriver : IDivertDriver
         var handle = InvokeLibrary(() => WinDivertNative.WinDivertOpen(filter, WinDivertNative.LayerNetwork, priority, flags));
         if (handle.IsInvalid)
         {
-            var error = Marshal.GetLastPInvokeError();
-            handle.Dispose();
-            throw DivertDriverException.FromOpenFailure(error);
+            try
+            {
+                var error = Marshal.GetLastPInvokeError();
+                throw DivertDriverException.FromOpenFailure(error);
+            }
+            finally
+            {
+                handle.Dispose();
+            }
         }
 
         return new WinDivertHandle(handle);
