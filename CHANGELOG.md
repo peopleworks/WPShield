@@ -48,6 +48,13 @@ must complete first.
 
 ### Fixed
 
+- **`main` built on one machine only.** `WPShield.SecurityMonitor` referenced
+  `System.Diagnostics.EventLog` through a `HintPath` into
+  `dotnet\packs\Microsoft.AspNetCore.App.Ref\10.0.10`, a targeting pack that exists on the machine
+  that wrote it and nowhere else. Every local build passed and every CI build since 2026-10-20 failed
+  with `CS1069`, CodeQL included. It is a central `PackageReference` now, and the three new test
+  projects' `GlobalUsings.cs` are in the order `dotnet format` enforces.
+
 - **`wpshield enable` could take a live site down and report success. It cannot now.** The gateway
   answers **421 Misdirected Request** for a `Host` it has no site for. Enabling the rewrite rule
   against a gateway that had not been told about the site therefore pointed every visitor at that
