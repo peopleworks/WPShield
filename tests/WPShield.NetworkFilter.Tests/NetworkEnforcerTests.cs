@@ -98,9 +98,18 @@ public sealed class NetworkEnforcerTests
     public void Dispose_LiftsEveryBlock()
     {
         var driver = new FakeDivertDriver();
-        using var enforcer = new NetworkEnforcer(driver, 0);
-        enforcer.Apply(Plan(Enumerable.Range(0, 300).Select(i => $"198.51.{100 + (i / 200)}.{i % 200}").ToArray()));
-        Assert.True(driver.Live(DivertHandleKind.Drop).Count > 1);
+        var enforcer = new NetworkEnforcer(driver, 0);
+        try
+        {
+            enforcer.Apply(Plan(Enumerable.Range(0, 300).Select(i => $"198.51.{100 + (i / 200)}.{i % 200}").ToArray()));
+            Assert.True(driver.Live(DivertHandleKind.Drop).Count > 1);
+        }
+        finally
+        {
+            // The assertion below is about what Dispose does, so it has to run after it: a
+            // `using` declaration would dispose at the end of the method, after the check.
+            enforcer.Dispose();
+        }
 
         Assert.Empty(driver.Live(DivertHandleKind.Drop));
     }
