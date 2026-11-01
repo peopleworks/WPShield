@@ -24,10 +24,8 @@
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(TargetFramework)' == 'net10.0-windows'">
-    <Reference Include="System.Diagnostics.EventLog">
-      <HintPath>$(ProgramFiles)\dotnet\packs\Microsoft.AspNetCore.App.Ref\10.0.10\ref\net10.0\System.Diagnostics.EventLog.dll</HintPath>
-    </Reference>
+  <ItemGroup>
+    <PackageReference Include="System.Diagnostics.EventLog" />
   </ItemGroup>
 
 </Project>
