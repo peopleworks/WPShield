@@ -160,14 +160,25 @@ public sealed class NetworkFilterService : IDisposable
             {
                 lock (_maintenanceGate)
                 {
-                    _enforcer = new NetworkEnforcer(_driver, _options.EnforcerPriority);
-                    var applied = ApplyBlocks();
+                    var enforcer = new NetworkEnforcer(_driver, _options.EnforcerPriority);
+                    EnforcementResult applied;
+                    try
+                    {
+                        applied = ApplyBlocks();
+                    }
+                    catch
+                    {
+                        enforcer.Dispose();
+                        throw;
+                    }
+
                     if (applied.Status == EnforcementStatus.Failed)
                     {
-                        _enforcer.Dispose();
-                        _enforcer = null;
+                        enforcer.Dispose();
                         return Refuse(applied.Error ?? "The DROP filters could not be applied.", report);
                     }
+
+                    _enforcer = enforcer;
                 }
             }
 
