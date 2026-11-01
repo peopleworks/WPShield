@@ -523,8 +523,10 @@ elevado.
 **Sin mitigar.** Un proceso que se cuelga sin terminar conserva sus bloqueos actuales hasta que se lo
 mata, y mientras tanto no puede vencer los dinámicos; esos bloqueos solo pueden cubrir direcciones
 que no están en la lista de permitidos. El propio código de kernel de WinDivert está en la ruta de los
-paquetes con los que coinciden sus filtros, y WPShield confía en ese controlador firmado de un
-tercero. El filtro todavía no se ha ejecutado contra un controlador real.
+paquetes con los que coinciden sus filtros, y WPShield confía en ese controlador de un tercero. Su
+firma EV se emitió a una empresa distinta del autor de WinDivert, así que el operador comprueba los
+archivos por SHA-256 contra el diseño del filtro de red, no por quién los firmó. La autoprueba ya pasó
+contra la biblioteca real; el filtro todavía no se ha ejecutado contra un controlador real.
 
 ---
 

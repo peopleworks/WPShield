@@ -91,8 +91,24 @@ operador ejecuta a propósito. Añádalos a la lista de permitidos.
 1. **WinDivert 2.2.2**, descargado por el operador desde la publicación oficial
    (`github.com/basil00/WinDivert/releases`, `WinDivert-2.2.2-A.zip`). Copie `WinDivert.dll` y
    `WinDivert64.sys` de su carpeta `x64` al directorio de programa de WPShield, junto a
-   `wpshield.exe`. WPShield no los incluye ni los descarga; WinDivert es LGPLv3 y está firmado por su
-   autor.
+   `wpshield.exe`. WPShield no los incluye ni los descarga; WinDivert es LGPLv3.
+
+   Compruebe los archivos antes de copiarlos. `WinDivert.dll` no tiene firma, y `WinDivert64.sys`
+   lleva una firma EV que Sectigo emitió a `成都密思听科技有限公司` (Sichuan, CN), no al autor de
+   WinDivert; los metadatos del propio controlador dicen `Copyright © Basil 2011-2022`. Toda copia de
+   la publicación oficial trae ese mismo controlador, así que lo que importa es que el suyo sea ese
+   archivo. `Get-FileHash <archivo> -Algorithm SHA256` debe imprimir exactamente:
+
+   | Archivo | SHA-256 |
+   | --- | --- |
+   | `WinDivert-2.2.2-A.zip` (405.137 bytes) | `63CB41763BB4B20F600B6DE04E991A9C2BE73279E317D4D82F237B150C5F3F15` |
+   | `x64\WinDivert.dll` | `C1E060EE19444A259B2162F8AF0F3FE8C4428A1C6F694DCE20DE194AC8D7D9A2` |
+   | `x64\WinDivert64.sys` | `8DA085332782708D8767BCACE5327A6EC7283C17CFB85E40B03CD2323A90DDC2` |
+
+   Son de la publicación oficial, descargada el 2026-11-01; el valor del controlador coincide además
+   con el registro público de ese mismo archivo en un escáner independiente. Algunos antivirus marcan
+   WinDivert como herramienta de hacking, porque también lo usan trampas de juegos y malware; cuente
+   con ello antes de copiarlo a un host.
 2. **Elevación de administrador**, salvo para `--check`.
 3. **El controlador cargado.** Una ejecución con `--install-driver` permite que WinDivert registre e
    inicie su servicio de controlador de kernel `WinDivert`. WinDivert marca ese servicio para su
@@ -150,7 +166,15 @@ elimina. Un reinicio hace lo mismo.
 ## Primera ejecución en una máquina de desarrollo
 
 1. Copie los archivos x64 de WinDivert 2.2.2 junto a `wpshield.exe`. Ejecute `--check` sin
-   elevación. Todas las líneas deben decir `PASS`.
+   elevación. Todas las líneas deben decir `PASS`. **Hecho el 2026-11-01 en una máquina de
+   desarrollo: pasaron las 28 comprobaciones** contra la `WinDivert.dll` x64 oficial, sin elevación y
+   sin controlador. Los pasos 2 a 5 no se han ejecutado.
+
+   `RealWinDivertSelfTest` ejecuta la misma comprobación desde la suite de pruebas cuando
+   `WinDivert.dll` está en `tests/WPShield.NetworkFilter.Tests/bin/Release/net10.0-windows/` (el
+   proyecto de pruebas apunta a `net10.0-windows`, no a `net10.0`). Sin el archivo, la prueba sale
+   antes de tiempo y se reporta como *aprobada*, así que una aprobación en CI no dice nada sobre la
+   biblioteca.
 2. Elevado: `wpshield network-filter --install-driver --allow <su dirección>` (Monitor). Desde otra
    máquina, conéctese a unos cuantos puertos de esta. Deben aparecer líneas `observed`; no se descarta
    nada.
