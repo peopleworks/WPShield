@@ -9,7 +9,7 @@ namespace WPShield.NetworkFilter.Tests;
 public sealed class RealWinDivertSelfTest
 {
     private static bool LibraryIsPresent =>
-        File.Exists(Path.Combine(AppContext.BaseDirectory, "WinDivert.dll"));
+        File.Exists(Path.Join(AppContext.BaseDirectory, "WinDivert.dll"));
 
     [Fact]
     public void TheRealLibrary_EvaluatesWPShieldFiltersAsIntended()
