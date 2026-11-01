@@ -146,8 +146,12 @@ ni a un reinicio, así que nada queda instalado en el host. El precio es que `--
 hacer falta en la primera ejecución después de cada reinicio, y un futuro servicio que arranque con el
 sistema tendrá que pasarlo a sabiendas.
 
-WinDivert **no viene incluido**. Es LGPLv3, está firmado por su autor, y el operador descarga la 2.2.2
-de la publicación oficial del proyecto. `WinDivert.dll` se carga únicamente desde el directorio del
+WinDivert **no viene incluido**. Es LGPLv3, y el operador descarga la 2.2.2 de la publicación oficial
+del proyecto y la comprueba contra los valores SHA-256 del diseño del filtro de red. Su
+`WinDivert.dll` de modo usuario no tiene firma; su controlador de kernel lleva un certificado EV de
+firma de código que Sectigo emitió a una empresa, no al autor de WinDivert. Toda copia de la
+publicación oficial 2.2.2 trae ese mismo controlador, así que lo que importa comprobar es que el
+archivo del operador sea ese archivo. `WinDivert.dll` se carga únicamente desde el directorio del
 ensamblado de WPShield, nunca desde `PATH` ni desde el directorio de trabajo: el proceso corre
 elevado, y una búsqueda de DLL que alcance un directorio con permiso de escritura es una escalada de
 privilegios.
