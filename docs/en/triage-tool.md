@@ -47,8 +47,8 @@ one directory below it. Nothing about the host is assumed or hard-coded.
 
 | Parameter | What it is for |
 | --- | --- |
-| `-SitePath` | One or more WordPress roots. Skips discovery. |
-| `-IisLogPath` | IIS log root. Defaults to `C:\inetpub\logs\LogFiles`. Pass `''` to skip log correlation. |
+| `-SitePath` | One or more WordPress roots. Skips discovery. Under `powershell -File`, a list such as `'C:\a','C:\b'` arrives as the single string `C:\a,C:\b`; the tool recognises that shape, reads it as the list, and says so. A folder whose own name contains a comma is kept as given. |
+| `-IisLogPath` | IIS log root. Defaults to `C:\inetpub\logs\LogFiles`. Pass `''` to skip log correlation - from inside PowerShell (`& .\Invoke-WPShieldTriage.ps1 -IisLogPath ''`), because Windows PowerShell 5.1 drops an empty argument given to `-File`. |
 | `-OutputPath` | Where the JSON Lines report goes. |
 | `-RecentDays` | How far back the timestamp checks and the log scan reach. Default 30. |
 | `-MaximumFileBytes` | Bytes read per PHP file, split between its head and its tail. Default 65536. |
@@ -141,6 +141,13 @@ everywhere. What an intruder's task looks like is an encoded or hidden command l
 somewhere a binary should not be, or an interpreter running something that is not part of Windows.
 Those are the reasons now, and the same host reports six instead of sixteen, each with a named
 reason.
+
+It still had one false alarm, found on a compromised host where it mattered most: the `ProgramData`
+location matched Microsoft Defender's own maintenance tasks, which run
+`C:\ProgramData\Microsoft\Windows Defender\Platform\<version>\MpCmdRun.exe`. Defender is now exempt
+**by exact shape** - that binary, in a versioned `Platform` folder - and nothing else under
+`ProgramData` is, including another binary in that same folder. A task running from under a web root
+is still reported: a folder the web tier can write is a place a privileged binary must not live.
 
 **`TRIAGE-011` reported nothing at all** — no accounts, no group, no error. An empty `catch` had
 turned a failure into silence, which reads exactly like a clean result. It now reports the failure

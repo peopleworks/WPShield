@@ -50,8 +50,8 @@ uno y un directorio más abajo. Nada del servidor se supone ni se codifica de an
 
 | Parámetro | Para qué sirve |
 | --- | --- |
-| `-SitePath` | Una o más raíces de WordPress. Omite el descubrimiento. |
-| `-IisLogPath` | Raíz de los registros de IIS. Por omisión `C:\inetpub\logs\LogFiles`. Pase `''` para omitir la correlación. |
+| `-SitePath` | Una o más raíces de WordPress. Omite el descubrimiento. Con `powershell -File`, una lista como `'C:\a','C:\b'` llega como el texto único `C:\a,C:\b`; la herramienta reconoce esa forma, la lee como lista y lo avisa. Una carpeta cuyo propio nombre contiene una coma se conserva tal cual. |
+| `-IisLogPath` | Raíz de los registros de IIS. Por omisión `C:\inetpub\logs\LogFiles`. Pase `''` para omitir la correlación, desde dentro de PowerShell (`& .\Invoke-WPShieldTriage.ps1 -IisLogPath ''`), porque Windows PowerShell 5.1 descarta un argumento vacío pasado a `-File`. |
 | `-OutputPath` | Dónde va el informe JSON Lines. |
 | `-RecentDays` | Hasta dónde llegan las comprobaciones de fechas y el barrido de registros. Por omisión 30. |
 | `-MaximumFileBytes` | Bytes leídos por archivo PHP, repartidos entre su inicio y su final. Por omisión 65536. |
@@ -148,6 +148,14 @@ porque enseña al operador a saltarse la sección. El error fue describir un *me
 línea de comandos codificada u oculta, un binario donde un binario no debería estar, o un intérprete
 ejecutando algo que no forma parte de Windows. Esas son ahora las razones, y el mismo servidor
 reporta seis en vez de dieciséis, cada una con su motivo.
+
+Aún le quedaba una falsa alarma, encontrada en un servidor comprometido, donde más importaba: la
+ubicación `ProgramData` coincidía con las tareas de mantenimiento del propio Microsoft Defender, que
+ejecutan `C:\ProgramData\Microsoft\Windows Defender\Platform\<versión>\MpCmdRun.exe`. Defender queda
+ahora exento **por su forma exacta** —ese binario, en una carpeta `Platform` con versión— y nada más
+bajo `ProgramData` lo está, ni siquiera otro binario en esa misma carpeta. Una tarea que se ejecuta
+desde debajo de una raíz web se sigue reportando: una carpeta en la que puede escribir la capa web no
+es sitio para un binario con privilegios.
 
 **`TRIAGE-011` no reportó absolutamente nada** — ni cuentas, ni grupo, ni error. Un `catch` vacío
 había convertido un fallo en silencio, y eso se lee exactamente igual que un resultado limpio. Ahora

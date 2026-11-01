@@ -538,6 +538,120 @@ foreach ($escaper in $escapers) {
 }
 
 # =====================================================================================
+#  5b. Two small decisions the triage tool got wrong on a real incident night.
+#
+#  Both were false alarms on the night the tool mattered most. Defender's own maintenance tasks
+#  were reported as running from a suspect location, which teaches an operator to read past the one
+#  section that has to be read. And "powershell -File ... -SitePath 'a','b'" failed with "Site path
+#  does not exist" and nothing about why, because -File passes a list as one comma-joined string.
+#  Each is now a function with no side effects, extracted from the script and exercised here.
+# =====================================================================================
+
+Write-Host ''
+Write-Host 'Triage decisions' -ForegroundColor Cyan
+
+$triageAst = $parsed['Invoke-WPShieldTriage.ps1']
+foreach ($functionName in @('Test-SuspectTaskLocation', 'Resolve-SitePathArgument')) {
+    $definition = @($triageAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and $node.Name -eq $functionName
+    }, $true)) | Select-Object -First 1
+
+    $checks++
+    if ($null -eq $definition) {
+        Add-Failure ('the triage tool no longer defines ' + $functionName + '.')
+        continue
+    }
+
+    . ([scriptblock]::Create($definition.Extent.Text))
+    Add-Pass ('the triage tool defines ' + $functionName)
+}
+
+$locationCases = @(
+    # Defender's own maintenance: its versioned platform binary, and nothing else, is exempt.
+    @{ Line = 'c:\programdata\microsoft\windows defender\platform\4.18.26080.4-0\mpcmdrun.exe -idletask -taskname wdcachemaintenance'; Expect = $false },
+    @{ Line = 'c:\programdata\microsoft\windows defender\platform\4.18.26080.4-0\mpcmdrun.exe scan -schedulejob'; Expect = $false },
+    @{ Line = 'c:\programdata\microsoft\windows defender\platform\4.18.26080.4-0\notdefender.exe'; Expect = $true },
+    @{ Line = 'c:\programdata\updater\svc.exe'; Expect = $true },
+    # A binary under a web root is still exactly what this check exists for.
+    @{ Line = 'c:\inetpub\wwwroot\tools\renew.exe --quiet'; Expect = $true },
+    @{ Line = 'c:\users\public\x.exe'; Expect = $true },
+    @{ Line = 'c:\windows\system32\defrag.exe -c'; Expect = $false }
+)
+
+$failuresBefore = $failures.Count
+foreach ($case in $locationCases) {
+    $checks++
+    $actual = Test-SuspectTaskLocation $case.Line
+    if ($actual -ne $case.Expect) {
+        Add-Failure ('Test-SuspectTaskLocation: expected ' + $case.Expect + ' for ' + $case.Line)
+    }
+}
+if ($failures.Count -eq $failuresBefore) {
+    Add-Pass ('Test-SuspectTaskLocation: all ' + $locationCases.Count + ' cases, Defender exempt only by exact shape')
+}
+
+$sitePathRoot = Join-Path ([System.IO.Path]::GetTempPath()) ('wpshield-sitepath-' + [guid]::NewGuid().ToString('n'))
+try {
+    $first = Join-Path $sitePathRoot 'first'
+    $second = Join-Path $sitePathRoot 'second'
+    $comma = Join-Path $sitePathRoot 'with,comma'
+    foreach ($folder in @($first, $second, $comma)) {
+        New-Item -ItemType Directory -Path $folder -Force | Out-Null
+    }
+
+    $failuresBefore = $failures.Count
+
+    # What 'powershell -File' delivers for -SitePath 'first','second'.
+    $checks++
+    $joined = Resolve-SitePathArgument @($first + ',' + $second)
+    if ($joined.Paths.Count -ne 2 -or -not $joined.SplitFromOneString) {
+        Add-Failure 'Resolve-SitePathArgument: a comma-joined list of existing folders was not read as a list.'
+    }
+
+    # A real list, from inside PowerShell, passes through untouched.
+    $checks++
+    $list = Resolve-SitePathArgument @($first, $second)
+    if ($list.Paths.Count -ne 2 -or $list.SplitFromOneString) {
+        Add-Failure 'Resolve-SitePathArgument: a real list was altered.'
+    }
+
+    # A folder whose name contains a comma is a folder, not a list.
+    $checks++
+    $literal = Resolve-SitePathArgument @($comma)
+    if ($literal.Paths.Count -ne 1 -or $literal.Paths[0] -ne $comma) {
+        Add-Failure 'Resolve-SitePathArgument: an existing folder with a comma in its name was split.'
+    }
+
+    # A comma-joined string with a missing part stops, and says how to run it.
+    $checks++
+    $message = $null
+    try { Resolve-SitePathArgument @($first + ',' + (Join-Path $sitePathRoot 'missing')) | Out-Null }
+    catch { $message = $_.Exception.Message }
+    if ($null -eq $message -or $message -notmatch 'powershell -File') {
+        Add-Failure 'Resolve-SitePathArgument: a comma-joined string with a missing folder did not explain -File.'
+    }
+
+    # A plain missing folder still stops.
+    $checks++
+    $message = $null
+    try { Resolve-SitePathArgument @(Join-Path $sitePathRoot 'missing') | Out-Null }
+    catch { $message = $_.Exception.Message }
+    if ($null -eq $message -or $message -notmatch 'does not exist') {
+        Add-Failure 'Resolve-SitePathArgument: a missing folder did not stop the run.'
+    }
+
+    if ($failures.Count -eq $failuresBefore) {
+        Add-Pass 'Resolve-SitePathArgument: -File lists are read, real lists and comma folder names are kept, and a failure explains itself'
+    }
+}
+finally {
+    if (Test-Path -LiteralPath $sitePathRoot) {
+        Remove-Item -LiteralPath $sitePathRoot -Recurse -Force
+    }
+}
+
+# =====================================================================================
 #  6. The triage tool runs, end to end, and reaches the right verdicts.
 #
 #  The most important assertion in this file, because it is the only one that fails when the
