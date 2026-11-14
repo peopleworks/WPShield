@@ -20,6 +20,34 @@ namespace WPShield.Gateway.Tests;
 /// </summary>
 public sealed class LogRedactionTests
 {
+    [Theory]
+    [InlineData("site-one.test", false)]
+    [InlineData("unknown.example", false)]
+    [InlineData("site-one.test", true)]
+    public async Task RequestPath_LogsNormalizedValue(string host, bool upload)
+    {
+        await using var harness = await RedactionHarness.StartAsync();
+        using var request = harness.CreateRequest(host, upload ? HttpMethod.Post : HttpMethod.Get, "/UPPER%1B[31m.php");
+        if (upload)
+        {
+            var content = new MultipartFormDataContent();
+            content.Add(new StringContent("synthetic content"), "file", "sample.php");
+            request.Content = content;
+        }
+        using var response = await harness.Client.SendAsync(request);
+        var entries = harness.Logger.Entries.Where(entry => entry.Category == "WPShield.Gateway.Request").ToArray();
+        Assert.NotEmpty(entries);
+        Assert.Contains(entries, entry => entry.StateValues.Contains("/upper[31m.php"));
+        Assert.All(entries, entry => Assert.DoesNotContain("\u001b", entry.Message, StringComparison.Ordinal));
+        Assert.All(entries, entry => Assert.All(entry.StateValues,
+            value => Assert.DoesNotContain("\u001b", value ?? string.Empty, StringComparison.Ordinal)));
+        if (upload)
+        {
+            Assert.Contains(entries, entry => entry.Message.StartsWith("Upload finding.", StringComparison.Ordinal));
+            Assert.Contains(entries, entry => entry.Message.StartsWith("Upload inspection complete.", StringComparison.Ordinal));
+        }
+    }
+
     private sealed class TestLoggerProvider : ILoggerProvider
     {
         private readonly ConcurrentBag<LogEntry> _entries = new();
@@ -207,16 +235,19 @@ public sealed class LogRedactionTests
         private readonly WebApplication _gateway;
         private readonly HttpClient _client;
         private readonly TestLoggerProvider _loggerProvider;
+        private readonly SyntheticBackend _backend;
 
         public TestLoggerProvider Logger => _loggerProvider;
 
         public HttpClient Client => _client;
 
-        private RedactionHarness(WebApplication gateway, HttpClient client, TestLoggerProvider loggerProvider)
+        private RedactionHarness(WebApplication gateway, HttpClient client, TestLoggerProvider loggerProvider,
+            SyntheticBackend backend)
         {
             _gateway = gateway;
             _client = client;
             _loggerProvider = loggerProvider;
+            _backend = backend;
         }
 
         public static async Task<RedactionHarness> StartAsync()
@@ -255,7 +286,7 @@ public sealed class LogRedactionTests
                 var address = GetBoundAddress(gateway);
                 var client = new HttpClient { BaseAddress = address };
 
-                return new RedactionHarness(gateway, client, loggerProvider);
+                return new RedactionHarness(gateway, client, loggerProvider, siteOne);
             }
             catch
             {
@@ -279,6 +310,7 @@ public sealed class LogRedactionTests
         {
             _client.Dispose();
             await _gateway.DisposeAsync();
+            await _backend.DisposeAsync();
             _loggerProvider.Dispose();
         }
     }

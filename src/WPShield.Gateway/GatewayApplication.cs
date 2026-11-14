@@ -198,7 +198,7 @@ public static class GatewayApplication
                     client,
                     host,
                     context.Request.Method,
-                    context.Request.Path.Value);
+                    NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value);
                 await WriteGatewayErrorAsync(context, StatusCodes.Status421MisdirectedRequest, "unknown_host");
                 return;
             }
@@ -248,7 +248,7 @@ public static class GatewayApplication
                         limit.RuleId,
                         client,
                         context.Request.Method,
-                        context.Request.Path.Value,
+                        NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value,
                         limit.PermitLimit,
                         limit.WindowSeconds,
                         refusing ? "Block" : "Observe",
@@ -298,7 +298,7 @@ public static class GatewayApplication
                 site.Id,
                 client,
                 context.Request.Method,
-                context.Request.Path.Value);
+                NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value);
 
             ForwarderError error;
             PooledRequestBuffer? buffer = null;

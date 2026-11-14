@@ -64,8 +64,8 @@ public sealed class RateLimitRuleOptions
     public string Id { get; init; } = string.Empty;
 
     /// <summary>
-    /// Request paths this rule covers, matched whole and case-insensitively against the decoded
-    /// path — never against a raw request target.
+    /// Request paths this rule covers, matched whole after Windows path normalization.
+    /// Both request views are checked, including one further percent-decode when it changes the path.
     /// </summary>
     /// <remarks>
     /// Whole-path matching rather than a prefix or a suffix. <c>/wp-login.php</c> means that path,

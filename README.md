@@ -178,7 +178,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,365 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,530 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -192,7 +192,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | **Network layer packet filtering** | **Available** | **`WPShield.NetworkFilter` inspects inbound TCP/UDP packets in user mode via WinDivert.** Rate limiting, dynamic block lists, and port-scan detection run ahead of IIS with a strict per-packet time budget so the filter can never stall the network stack or trigger a kernel watchdog. |
 | **Security event monitoring** | **Available** | **`WPShield.SecurityMonitor` reads the Windows Security event log and detects RDP brute-force and failed-logon patterns.** It publishes findings to a sink that can feed the dynamic block list of `WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication failures. |
 | **Security → Network filter bridge** | **Available** | **`WPShield.Integration` wires `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`** via `NetworkFilterBlockListSink`, so IPs caught by security event rules are dropped at the packet layer before they reach IIS. |
-| Rate limiting and observability | Planned | M3 and M4 |
+| Rate limiting and observability | Partial | Configured per-client/site/rule fixed-window budgets, structured file logs and redaction tests exist; broader M3/M4 work remains |
 | Dashboard and Windows Service | Planned | M5 and M6 |
 | Production activation | Not approved | Requires M1-M6 validation and controlled M7 rollout |
 
@@ -365,7 +365,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,365 tests across seven projects — 251 for the abstractions, 83 for the core, 98 for the Windows rules, 293 for the WordPress rules, 198 for the CLI, 419 for the gateway and 23 for the network sensor — and finishes in a few seconds.
+The suite is 1,530 tests across ten projects — 251 for the abstractions, 83 for the core, 98 for the Windows rules, 293 for the WordPress rules, 215 for the CLI, 434 for the gateway, 23 for the network sensor, 117 for the network filter, 8 for the security monitor and 8 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -477,6 +477,7 @@ The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/apps
 | `Gateway:Multipart:MaximumFieldCount` | Non-file parts counted per request; defaults to 200 and cannot exceed 1000 |
 | `Gateway:Multipart:MaximumPartHeaderBytes` | Header bytes allowed on one part; defaults to 16 KiB and cannot exceed 32 KiB |
 | `Gateway:Multipart:SampleBytes` | Leading bytes kept per file for the content rules; defaults to 4096, cannot exceed 64 KiB, and **cannot go below 512**, under which `FILE-TYPE-001` and `PHP-CONTENT-002` can no longer decide |
+| `Gateway:Multipart:MaximumConcurrentInspections` | Retained multipart buffers across all sites, including forwarding; default 10, ceiling 50. Monitor streams uninspected at capacity; Block returns 429 |
 | `Gateway:Multipart:ReadTimeoutSeconds` | Deadline covering the whole inspection read; defaults to 30 and cannot exceed 120 |
 | `Sites[].Id` | Stable site identifier used by routing and findings |
 | `Sites[].Hosts` | Explicit hostnames assigned to this site |
@@ -490,19 +491,20 @@ Every `Gateway:Multipart` value is validated the same way: an out-of-range setti
 
 ## What each response means
 
-The gateway produces a response of its own in seven situations. Everything else comes from the backend site and is forwarded unchanged. `403`, `408` and `415` are new with bounded multipart inspection.
+The gateway produces responses of its own in the following situations. Everything else comes from the backend site and is forwarded unchanged. `403`, `408` and `415` are new with bounded multipart inspection.
 
 | Status | When | Body |
 | --- | --- | --- |
 | `421 Misdirected Request` | The `Host` header matches no configured site. There is no default backend, so this is the fail-closed path. | `{"error":"unknown_host","requestId":"…"}` |
 | `403 Forbidden` | A site in `Block` mode received an upload whose findings reached its block threshold. Never produced in `Monitor`. | `{"error":"upload_blocked","requestId":"…","ruleIds":["…"]}` |
 | `415 Unsupported Media Type` | A site in `Block` mode received a `multipart/form-data` body WPShield could not fully inspect — a boundary it refuses to parse, a body that is not valid multipart, or a file, field, header or name limit that stopped the read. `Monitor` forwards it intact and logs a warning instead. | `{"error":"multipart_not_inspectable","requestId":"…","reason":"malformed"|"limit_exceeded","ruleIds":["GATEWAY-MULTIPART-001"]}` |
+| `429 Too Many Requests` | In Block mode, multipart buffer capacity is exhausted or a configured request-rate budget is exceeded. Monitor forwards and records the event. Only rate-budget refusals include `Retry-After`. | Error `multipart_concurrent_limit_exceeded` or `rate_limited`, plus `requestId` |
 | `408 Request Timeout` | The body did not fully arrive within `Gateway:Multipart:ReadTimeoutSeconds`. Applies in every mode, `Monitor` included: a half-arrived body is not a finding, and forwarding it would hand WordPress a body shorter than its declared `Content-Length`. | `{"error":"request_timeout","requestId":"…"}` |
 | `413 Content Too Large` | The declared `Content-Length` exceeds `Gateway:MaximumRequestBytes`, or a body of unknown length crossed that limit while streaming. | `{"error":"request_too_large","requestId":"…"}` |
 | `502 Bad Gateway` | The assigned backend could not be reached, or went quiet for longer than the forwarding activity timeout. Nothing about the backend's failure is echoed to the caller. | `{"error":"backend_unavailable","requestId":"…"}` |
 | `404 Not Found` on `/_wpshield/health/*` | A health probe arrived from a non-local caller while `AllowRemoteHealthChecks` is `false`, or the path is not a health endpoint that exists. | — |
 
-A refusal body carries the request identifier and the triggering rule identifiers, and never the raw or normalized file name, the field name, the sample, the evidence, the site identifier, the destination, the score or the thresholds. The identifiers are disclosed because the complete rule catalogue is already published above; the score is withheld because a number turns evasion into hill-climbing, where a binary allow/deny forces a blind search. No `Retry-After` is sent: it would imply a refusal that will in fact not change.
+A refusal body carries the request identifier and the triggering rule identifiers, and never the raw or normalized file name, the field name, the sample, the evidence, the site identifier, the destination, the score or the thresholds. The identifiers are disclosed because the complete rule catalogue is already published above; the score is withheld because a number turns evasion into hill-climbing, where a binary allow/deny forces a blind search. Content-policy refusals send no `Retry-After`; rate-budget refusals do include it.
 
 Both health endpoints answer `200` locally: `/_wpshield/health/live` returns `{"status":"live","service":"WPShield.Gateway"}` and `/_wpshield/health/ready` returns `{"status":"ready","sites":2}`. Every response, forwarded or generated, carries an `X-WPShield-Request-ID` correlation header and `X-Content-Type-Options: nosniff`, and every response WPShield generates itself adds `Cache-Control: no-store`. That request ID is generated by WPShield; an inbound one is discarded rather than trusted.
 
@@ -552,7 +554,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,365 tests
+|-- tests/                            xUnit test projects, 1,530 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/
@@ -589,7 +591,7 @@ flowchart LR
 | M0 | Foundation, rule contracts, CI, and repository guidance | Complete except the configuration schema and localized validation messages |
 | M1 | Hardened loopback multi-site HTTP gateway and synthetic tests | In progress |
 | M2 | Bounded request controls, multipart inspection, and high-confidence rules | In progress |
-| M3 | Per-site and per-IP rate limiting for sensitive WordPress paths | Planned |
+| M3 | Configured per-client/site/rule budgets and retained-buffer limits | Partial; broader policies and exceptions remain |
 | M4 | Privacy-safe structured events, metrics, rotation, and retention | Planned |
 | M5 | Loopback multilingual management dashboard | Planned |
 | M6 | Least-privilege Windows Service packaging and signed releases | Planned |

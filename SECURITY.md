@@ -74,7 +74,8 @@ Out of scope:
 - **A host that was already compromised.** WPShield inspects requests. It cannot un-ring that bell.
 - **Missing capabilities that the README marks `Planned` or `Not approved`.** Upload inspection
   covers `multipart/form-data` only; urlencoded forms, JSON, XML-RPC, `application/octet-stream`
-  PUTs and archive contents are uninspected, and nothing bounds concurrent buffered inspections.
+  PUTs and archive contents are uninspected. Concurrent multipart buffers are bounded through
+  forwarding; exceeding that bound in Monitor forwards without upload inspection and logs a warning.
   The status table says so, so none of those is a vulnerability report.
 
 WPShield complements Microsoft Defender and normal WordPress hardening; it does not replace them, and
