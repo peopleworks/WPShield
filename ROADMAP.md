@@ -271,12 +271,12 @@ Not yet done:
 > because leaving it undone makes WordPress generate `http://` URLs behind an HTTPS site. See
 > [operator configuration](docs/en/operator-configuration.md#trusted-proxies).
 >
-> M2 also left a resource control unfinished. Nothing bounds how many multipart bodies may be
-> buffered at once, and `KestrelServerLimits.MaxConcurrentConnections` is unlimited by default, so
-> the loopback-only restriction is currently the only thing bounding that memory.
+> The multipart buffer limit now covers reading, inspection and forwarding, until the buffer is
+> disposed. `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10, with a ceiling of 50.
+> Monitor forwards uninspected with a warning at capacity; Block returns 429.
 
-- [ ] Bound the number of concurrent buffered multipart inspections, which M2 deliberately left unbounded.
-- [ ] Add per-IP and per-site burst controls with IPv4 and IPv6 support.
+- [x] Bound concurrent retained multipart buffers, including during forwarding.
+- [x] Add fixed-window budgets per resolved client, site and configured rule, with IPv4 and IPv6 support. Normalized path aliases, including the extra decode view, share a budget.
 - [ ] Define separate policies for login, XML-RPC, uploads, REST, and administrative AJAX.
 - [ ] Add expiring temporary blocks and configurable exceptions.
 - [ ] Preserve Elementor and legitimate `admin-ajax.php` traffic.
@@ -287,7 +287,7 @@ Not yet done:
 - [ ] Emit structured gateway, routing, inspection, rule, backend, and configuration events.
 - [ ] Add per-site request, action, rule, byte, error, and duration metrics.
 - [x] Store privacy-safe JSON Lines with rotation, size limits and retention. **Restricted permissions are not done here**: the gateway creates the log directory but does not set its ACL, because logs carry real hostnames, real paths and real client addresses, and locking that down belongs to the M6 installation procedure rather than to configuration. Documented in [operator configuration](docs/en/operator-configuration.md#log-files).
-- [ ] Add automated redaction tests for sensitive headers, secrets, forms, query strings, and upload content.
+- [x] Add automated redaction tests for sensitive headers, secrets, forms, query strings, and upload content. Request log paths use normalized values so control characters cannot reach log consumers.
 
 ## M5 — Local multilingual dashboard
 

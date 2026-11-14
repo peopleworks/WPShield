@@ -12,6 +12,20 @@ public sealed class RequestRateLimiterTests
     private const string Site = "site-one";
     private const string Client = "203.0.113.5";
 
+    [Theory]
+    [InlineData("//wp-login.php")]
+    [InlineData("/folder/../wp-login.php")]
+    [InlineData("/WP-LOGIN.PHP.")]
+    [InlineData("/wp-login.php::$DATA")]
+    [InlineData("/wp-login%2ephp")]
+    [InlineData("/folder\\..\\wp-login.php")]
+    public void Evaluate_NormalizedAliasesShareTheLoginBudget(string path)
+    {
+        using var limiter = Create(permitLimit: 1);
+        Assert.Null(limiter.Evaluate(Site, Client, "/wp-login.php"));
+        Assert.NotNull(limiter.Evaluate(Site, Client, path));
+    }
+
     [Fact]
     public void Evaluate_AllowsUpToThePermitLimitAndRefusesTheNextOne()
     {

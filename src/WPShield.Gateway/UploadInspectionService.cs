@@ -214,7 +214,10 @@ internal sealed class UploadInspectionService(
 
             enteredConcurrentLimiter = true;
 
-            buffer = new PooledRequestBuffer(gatewayOptions.MaximumRequestBytes);
+            buffer = new PooledRequestBuffer(gatewayOptions.MaximumRequestBytes, _limiter);
+            // The slot follows the memory, including while the caller forwards the body.
+            // Rejections and failed reads dispose here; forwarded bodies dispose in the caller.
+            enteredConcurrentLimiter = false;
 
             // Phase one: drain. This is the only phase that can leave a partial body, and therefore
             // the only one whose timeout cannot end in a forward.
@@ -394,7 +397,7 @@ internal sealed class UploadInspectionService(
                 context.TraceIdentifier,
                 site.Id,
                 method,
-                path,
+                inspectionContext.NormalizedPath.Literal.Value,
                 partIndex,
                 normalizedName,
                 result.Score,
@@ -574,7 +577,7 @@ internal sealed class UploadInspectionService(
             context.TraceIdentifier,
             site.Id,
             context.Request.Method,
-            context.Request.Path.Value ?? "/",
+            NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value,
             outcome.Files.Count,
             outcome.FieldCount,
             outcome.Status,
@@ -716,6 +719,7 @@ internal sealed class PooledRequestBuffer : Stream
 
     private readonly List<byte[]> _chunks = [];
     private readonly long _maximumBytes;
+    private readonly ConcurrentInspectionLimiter? _limiter;
     private long _length;
     private long _position;
     private bool _disposed;
@@ -725,11 +729,13 @@ internal sealed class PooledRequestBuffer : Stream
     /// because <see cref="RequestBodyLimitStream"/> deliberately permits reading one byte past the
     /// limit so that an overflow is <i>detectable</i> rather than merely truncated.
     /// </param>
-    public PooledRequestBuffer(long maximumRequestBytes)
+    /// <param name="limiter">An already acquired slot, released once when this buffer is disposed.</param>
+    public PooledRequestBuffer(long maximumRequestBytes, ConcurrentInspectionLimiter? limiter = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maximumRequestBytes);
 
         _maximumBytes = maximumRequestBytes + 1;
+        _limiter = limiter;
     }
 
     public override bool CanRead => true;
@@ -898,6 +904,7 @@ internal sealed class PooledRequestBuffer : Stream
             _chunks.Clear();
             _length = 0;
             _position = 0;
+            _limiter?.Release();
         }
 
         base.Dispose(disposing);

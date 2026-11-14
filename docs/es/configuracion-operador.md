@@ -275,9 +275,10 @@ vería igual que una tarde ocupada. Configure `TrustedProxies` antes de confiar 
 
 ### Qué vigilar
 
-- **Las rutas se comparan enteras**, sin distinguir mayúsculas, contra la ruta decodificada. Un
-  WordPress instalado bajo `/blog` necesita `/blog/wp-login.php`. Coincidir con más de lo que usted
-  escribió es como un limitador empieza a rechazar tráfico que nadie le pidió mirar.
+- **Las rutas se comparan enteras después de normalizarlas para Windows.** Se normalizan mayúsculas,
+  separadores, navegación relativa, puntos y espacios finales y sufijos de streams. También se evalúa
+  la vista con una decodificación porcentual adicional, para que los alias compartan presupuesto.
+  Un WordPress bajo `/blog` sigue necesitando `/blog/wp-login.php`; no es coincidencia por prefijo.
 - **`Rules` es un arreglo, así que una superposición lo fusiona elemento por elemento** — la misma
   trampa que trae `Sites`. Declare todas las reglas que quiera, no solo la que está cambiando.
 - **Una oficina detrás de una sola dirección NAT comparte presupuesto.** Diez intentos cada cinco
