@@ -264,9 +264,10 @@ visitor of the day would be refused and a brute force would look like a busy aft
 
 ### What to watch for
 
-- **Paths are matched whole**, case-insensitively, against the decoded path. A WordPress installed
-  under `/blog` needs `/blog/wp-login.php`. Matching more than you wrote is how a limiter starts
-  refusing traffic nobody asked it to look at.
+- **Paths are matched whole after Windows normalization.** Case, separators, traversal, trailing
+  dots and spaces, and stream suffixes are normalized. The extra percent-decode view is checked too,
+  so equivalent request spellings share a budget. A WordPress installed under `/blog` still needs
+  `/blog/wp-login.php`; this is not prefix matching.
 - **`Rules` is an array, so an overlay merges it element by element** — the same trap `Sites` carries.
   Declare every rule you want, not only the one you are changing.
 - **An office behind one NAT address shares a budget.** Ten attempts per five minutes is generous for

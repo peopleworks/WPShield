@@ -94,17 +94,19 @@ internal sealed class RequestRateLimiter : IDisposable, IAsyncDisposable
 
     private RateLimitRuleOptions? FindRule(string path)
     {
-        // Trailing slash trimmed once so /wp-login.php/ and /wp-login.php are one path rather than
-        // two budgets, which is otherwise a free doubling for anyone who notices.
-        var candidate = path.Length > 1 && path.EndsWith('/') ? path[..^1] : path;
-
-        foreach (var rule in _options.Rules)
+        // Use the same Windows path views as inspection, including the extra decode view.
+        // Otherwise equivalent spellings can reach the same login endpoint without spending permits.
+        foreach (var view in NormalizedRequestPath.Create(path).Views)
         {
-            foreach (var configured in rule.Paths)
+            foreach (var rule in _options.Rules)
             {
-                if (string.Equals(candidate, configured, StringComparison.OrdinalIgnoreCase))
+                foreach (var configured in rule.Paths)
                 {
-                    return rule;
+                    if (string.Equals(view.Value, NormalizedRequestPath.Create(configured).Literal.Value,
+                        StringComparison.Ordinal))
+                    {
+                        return rule;
+                    }
                 }
             }
         }

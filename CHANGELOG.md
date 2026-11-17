@@ -14,6 +14,14 @@ must complete first.
 
 ### Changed
 
+- **Gateway evidence now separates inspection recommendations from actual request outcomes.**
+  A versioned `request_completed` event correlates findings with build versions, a configuration
+  activation identifier, per-stage completeness and forwarding, refusal, cancellation or failure.
+  Upload summaries use `Decision` and `ForwardPermitted` instead of claiming a completed forward.
+  Completeness covers the configured sample scope; it does not guarantee durable log delivery.
+  See the [English](docs/en/request-evidence.md) and [Spanish](docs/es/evidencia-solicitudes.md)
+  field references. Reader-1 remains an evaluation plan, with no runtime integration.
+
 - **The rules are two packages now: `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`.** This
   is the first half of [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md)'s first exit
   condition. Five of the eleven rules contain nothing about WordPress - `WP-PATH-002`, `IIS-PATH-001`,
@@ -47,6 +55,12 @@ must complete first.
   row of "does not contain" assertions passes just as well against an empty list.
 
 ### Fixed
+
+- **Concurrent multipart capacity now stays reserved through forwarding**, until its bounded
+  in-memory buffer is disposed. Previously a slow backend could retain buffers after the inspection
+  slots were released. Monitor still forwards uninspected with a warning at capacity; Block returns 429.
+- **Rate budgets match normalized path aliases**, including the additional percent-decoding view.
+  Request logs also use normalized paths so control characters cannot reach log consumers.
 
 - **`main` built on one machine only.** `WPShield.SecurityMonitor` referenced
   `System.Diagnostics.EventLog` through a `HintPath` into
