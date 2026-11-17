@@ -723,6 +723,11 @@ Reducir ataques repetitivos sin intentar resolver DDoS volumétrico.
 
 ## M4 — Observabilidad
 
+**Primera entrega implementada:** [evidencia final de solicitudes](evidencia-solicitudes.md), con
+versiones, identificador de activación de configuración, completitud por etapa y resultado real del
+reenvío. No garantiza entrega durable de logs ni implementa nuevas métricas de pérdida.
+El resto de esta sección sigue siendo planificación; prevalece el [roadmap publicado](../../ROADMAP.md).
+
 ### Eventos
 
 ```text

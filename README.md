@@ -178,7 +178,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,530 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,559 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -193,6 +193,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | **Security event monitoring** | **Available** | **`WPShield.SecurityMonitor` reads the Windows Security event log and detects RDP brute-force and failed-logon patterns.** It publishes findings to a sink that can feed the dynamic block list of `WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication failures. |
 | **Security → Network filter bridge** | **Available** | **`WPShield.Integration` wires `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`** via `NetworkFilterBlockListSink`, so IPs caught by security event rules are dropped at the packet layer before they reach IIS. |
 | Rate limiting and observability | Partial | Configured per-client/site/rule fixed-window budgets, structured file logs and redaction tests exist; broader M3/M4 work remains |
+| Request evidence traceability | Available | Versioned final events correlate findings, build versions, configuration activation, inspection completeness and actual forwarding outcomes. Durable log completeness and new loss metrics remain future work. |
 | Dashboard and Windows Service | Planned | M5 and M6 |
 | Production activation | Not approved | Requires M1-M6 validation and controlled M7 rollout |
 
@@ -324,6 +325,34 @@ Scores are summed within one file and capped at 100; the default thresholds are 
 
 These rules now run on gateway traffic for `multipart/form-data` requests — see [bounded multipart inspection](docs/en/m2-multipart-inspection.md) for what is parsed, what is sampled, and what each mode answers with. `FILE-TYPE-001` deliberately never fires on the declared `Content-Type`, because browsers derive it from the same extension and every non-browser client legitimately sends `application/octet-stream`. Each rule documents its own false positives in [upload rules](docs/en/m2-upload-rules.md); future rules must include benign tests, false-positive analysis, safe evidence, and English and Spanish documentation.
 
+## Traceability and inspection completeness
+
+Each request that reaches the gateway's forwarding endpoint produces a final `request_completed`
+log event with `SchemaVersion=1`. Its `RequestId` links the result to inspection findings and the
+`X-WPShield-Request-ID` response header. The event records build versions, an opaque configuration
+activation identifier, the resolved site and client, and the result of each inspection stage.
+
+| Question | Evidence |
+| --- | --- |
+| What ran? | Gateway, engine and rule assembly versions, plus `ConfigurationRevision`, which identifies one startup activation and changes on restart |
+| What was inspected? | Separate path and upload states: `not_started`, `not_inspected`, `partial` or `complete`, with reasons, scores and rule IDs |
+| What did the rules recommend? | `PathAction` and `UploadAction`, after applying the site's mode and thresholds; Monitor can record `Observe` while permitting forwarding |
+| What actually happened? | `Disposition`: `forwarded`, `rejected`, `forwarding_failed`, `cancelled` or `failed`, with a reason and whether forwarding was attempted |
+
+For example, a suspicious upload in Monitor can have `UploadAction=Observe` and still end with
+`Disposition=forwarding_failed` if the backend is unavailable. An inspection summary no longer
+claims successful forwarding before the exchange finishes. The 29 new evidence tests cover mode
+differences, malformed bodies, capacity and size limits, timeouts, cancellation, backend failures,
+privacy and client-address consistency.
+
+**Completeness is scoped.** A complete upload inspection covers configured leading samples and
+filename views, not all file content. The activation identifier is not a retained configuration
+snapshot. Missing log events mean unknown: filtering, queue saturation, storage failures or a process
+crash can leave gaps. This delivery does not implement new loss metrics or integrate Reader-1.
+
+See the field reference and compatibility notes in [English](docs/en/request-evidence.md) or
+[Español](docs/es/evidencia-solicitudes.md).
+
 ## How it compares
 
 An evaluator is choosing between real, shipping alternatives. The table below compares **design position**, not measured detection rates: WPShield has not been benchmarked against any of these products, and it would be dishonest to imply otherwise.
@@ -365,7 +394,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,530 tests across ten projects — 251 for the abstractions, 83 for the core, 98 for the Windows rules, 293 for the WordPress rules, 215 for the CLI, 434 for the gateway, 23 for the network sensor, 117 for the network filter, 8 for the security monitor and 8 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,559 tests across ten projects — 251 for the abstractions, 83 for the core, 98 for the Windows rules, 293 for the WordPress rules, 215 for the CLI, 463 for the gateway, 23 for the network sensor, 117 for the network filter, 8 for the security monitor and 8 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -554,7 +583,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,530 tests
+|-- tests/                            xUnit test projects, 1,559 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/
@@ -630,6 +659,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | Triage tool | [Triage tool](docs/en/triage-tool.md) | [Herramienta de triage](docs/es/herramienta-de-triage.md) |
 | Preflight | [Preflight](docs/en/preflight.md) | [Verificación previa](docs/es/verificacion-previa.md) |
 | Deployment | [Deployment](docs/en/deployment.md) | [Despliegue](docs/es/despliegue.md) |
+| Request evidence | [Traceability and completeness](docs/en/request-evidence.md) | [Trazabilidad y completitud](docs/es/evidencia-solicitudes.md) |
 | TelltaleDNS evaluation (proposal) | [Evaluation](docs/en/telltaledns-evaluation.md) | [Evaluación](docs/es/evaluacion-telltaledns.md) |
 | Reader-1 evaluation plan (proposal) | [Evaluation plan](docs/en/reader-1-evaluation-plan.md) | [Plan de evaluación](docs/es/plan-evaluacion-reader-1.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |

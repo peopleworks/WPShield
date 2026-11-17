@@ -1,7 +1,7 @@
 # TelltaleDNS: ideas worth evaluating for WPShield
 
-Status: research and proposed work only. Reviewed 2026-11-14. This note does not approve an
-integration, change the published roadmap or claim production readiness.
+Status: research reviewed 2026-11-14; first evidence delivery implemented 2026-11-17, as noted below.
+Remaining items are proposals. This note does not approve an upstream integration or claim production readiness.
 
 ## Evidence and limits
 
@@ -23,6 +23,11 @@ notices. This review proposes independent .NET designs, with no copied implement
 ## Priorities and acceptance gates
 
 ### 1. Versioned decision evidence — first, M4 with M3 consumers
+
+**First delivery implemented (2026-11-17).** [Request evidence](request-evidence.md) adds a versioned
+final event, build versions, a configuration activation identifier, per-stage inspection completeness,
+and actual outcome. The portable rule contracts remain unchanged: the gateway owns transport outcomes.
+Rich offline explanations, persisted configuration snapshots and dedicated CLI consumption remain future work.
 
 **Inspected upstream mechanism.** [explain.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-filter/src/explain.rs)
 returns matching rules, precedence, winner, snapshot version and source line attribution. It also

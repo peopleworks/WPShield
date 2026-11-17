@@ -1,8 +1,8 @@
 # TelltaleDNS: ideas que conviene evaluar para WPShield
 
-Estado: investigación y propuestas de trabajo únicamente. Revisión realizada el 2026-11-14.
-Esta nota no aprueba una integración, no modifica el roadmap publicado ni afirma que el proyecto
-esté listo para producción.
+Estado: investigación revisada el 2026-11-14; primera entrega de evidencia implementada el 2026-11-17,
+según se indica abajo. Los demás puntos son propuestas. Esta nota no aprueba integrar el proyecto de
+origen ni afirma que WPShield esté listo para producción.
 
 ## Evidencia y límites
 
@@ -26,6 +26,12 @@ en .NET, sin copiar implementaciones.
 ## Prioridades y criterios de aceptación
 
 ### 1. Evidencia de decisiones con versión — primero, M4 con consumidores de M3
+
+**Primera entrega implementada (2026-11-17).** La [evidencia de solicitudes](evidencia-solicitudes.md)
+añade un evento final versionado, versiones de compilación, un identificador de activación de la
+configuración, completitud por etapa y resultado real. Los contratos portables de reglas permanecen
+iguales: el gateway conoce el resultado del transporte. Quedan pendientes las explicaciones offline,
+las instantáneas persistidas de configuración y una vista específica en la CLI.
 
 **Mecanismo inspeccionado en el proyecto de origen.** [explain.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-filter/src/explain.rs)
 devuelve las reglas que coinciden, su precedencia, la regla ganadora, la versión de la instantánea
