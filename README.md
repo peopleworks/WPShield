@@ -630,6 +630,8 @@ Operational and architectural documentation is maintained in English and Spanish
 | Triage tool | [Triage tool](docs/en/triage-tool.md) | [Herramienta de triage](docs/es/herramienta-de-triage.md) |
 | Preflight | [Preflight](docs/en/preflight.md) | [Verificación previa](docs/es/verificacion-previa.md) |
 | Deployment | [Deployment](docs/en/deployment.md) | [Despliegue](docs/es/despliegue.md) |
+| TelltaleDNS evaluation (proposal) | [Evaluation](docs/en/telltaledns-evaluation.md) | [Evaluación](docs/es/evaluacion-telltaledns.md) |
+| Reader-1 evaluation plan (proposal) | [Evaluation plan](docs/en/reader-1-evaluation-plan.md) | [Plan de evaluación](docs/es/plan-evaluacion-reader-1.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
 | ADR 0002 — brute-force defence | [Where brute-force defence belongs](docs/en/adr/0002-host-level-brute-force-defence.md) | [Dónde vive la defensa contra fuerza bruta](docs/es/adr/0002-defensa-fuerza-bruta-a-nivel-de-host.md) |
 | ADR 0003 — operator tooling | [Operator tooling moves to a .NET CLI](docs/en/adr/0003-operator-tooling-in-dotnet.md) | [Las herramientas de operador pasan a una CLI de .NET](docs/es/adr/0003-herramientas-de-operador-en-dotnet.md) |
