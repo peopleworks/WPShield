@@ -1,7 +1,7 @@
 namespace WPShield.Gateway;
 
 /// <summary>
-/// Bounds how many <c>multipart/form-data</b> inspections may hold a body buffer at once.
+/// Bounds how many <c>multipart/form-data</c> inspections may hold a body buffer at once.
 /// </summary>
 /// <remarks>
 /// <para>

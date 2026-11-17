@@ -158,29 +158,26 @@ caracteres.
 
 ### Cuánto cuesta esto en memoria
 
-Es una regresión real frente al gateway anterior a M2, que no retenía memoria de cuerpo por
-solicitud. Con los valores predeterminados, una solicitud multipart retiene aproximadamente
-**6,15 MiB** durante hasta 30 segundos — como máximo 97 bloques de 64 KiB, más 20 muestras de 4 KiB,
-más 12 KiB de trabajo. Con los peores valores configurables legalmente, con `MaximumRequestBytes` en
-su tope de 64 MiB y 100 archivos con muestras de 64 KiB, son aproximadamente **70,3 MiB** por
-solicitud.
+El almacenamiento en memoria tiene un coste que el gateway anterior a M2 no tenía. Con los valores
+predeterminados, una inspección puede usar aproximadamente **6,15 MiB** (97 bloques de 64 KiB,
+20 muestras de 4 KiB y espacio de trabajo). Con los mayores valores permitidos de solicitud y
+muestras, son aproximadamente **70,3 MiB** por inspección. Son estimaciones de búferes y muestras,
+no un límite de memoria total del proceso ni de la memoria que conservan los pools.
 
-Hoy nada acota el número de solicitudes almacenadas concurrentemente.
-`KestrelServerLimits.MaxConcurrentConnections` es ilimitado por defecto y el gateway solo establece
-`MaxRequestBodySize`. Como `ReadTimeoutSeconds` acota cuánto tiempo cada solicitud retiene su búfer,
-sostener una cantidad dada de memoria fijada le cuesta al atacante una tasa de subida proporcional —
-y modesta. Las palancas que existen hoy son:
+`Gateway:Multipart:MaximumConcurrentInspections` acota los cuerpos retenidos entre todos los sitios:
+**10 de forma predeterminada, configurable entre 1 y 50**. El cupo pertenece al búfer hasta su
+liberación, incluido el reenvío a un backend lento. Terminar la inspección no libera el cupo.
+El rechazo, un fallo de lectura y la cancelación liberan el búfer y su cupo; la liberación es idempotente.
 
-- `Gateway:MaximumRequestBytes` divide el peor caso directamente. Bajarlo a 2 MiB reduce la
-  exposición en cerca de dos tercios.
-- `Gateway:Multipart:ReadTimeoutSeconds` acorta la retención y eleva proporcionalmente el ancho de
-  banda que el atacante necesita.
-- `Kestrel:Limits:MaxConcurrentConnections` como instrumento contundente. **No** está expuesto a
-  través de `GatewayOptions` y debe fijarse directamente en la configuración de Kestrel.
+Si no hay cupo, `Monitor` transmite la solicitud sin inspeccionar la carga y registra un aviso;
+`Block` devuelve **HTTP 429 `multipart_concurrent_limit_exceeded`** antes de leer el cuerpo.
+No hay cola ni `Retry-After` para este rechazo por capacidad. Los sitios Disabled y el tráfico que
+no es multipart no ocupan cupo. El límite de tamaño sigue aplicándose a las solicitudes transmitidas.
 
-Un límite explícito sobre inspecciones almacenadas concurrentes es trabajo de M3. Hasta que llegue,
-la restricción a loopback no es solo una afirmación sobre la madurez del proyecto: es además lo único
-que acota esta memoria.
+`ReadTimeoutSeconds` acota la lectura e inspección, no el reenvío posterior, que tiene su propio
+tiempo de espera de actividad. Reducir los límites de tamaño y concurrencia reduce la memoria de
+búferes retenida, pero no limita todas las conexiones ni proporciona mitigación DDoS volumétrica.
+El laboratorio sigue limitado a loopback y no está aprobado para tráfico de producción.
 
 ## Boundaries
 
@@ -433,7 +430,8 @@ lector a suponer más de lo que es cierto:
    WordPress. Es la mayor laguna aislada y todavía no tiene hito asignado.
 5. **Solo se examinan los primeros `SampleBytes` de cada archivo.** Un marcador colocado más allá de
    la ventana de muestreo no se ve, y tampoco la cola de un poliglota de portador grande.
-6. **Nada acota las inspecciones almacenadas concurrentes.** Véase
+6. **El límite de búferes se comparte entre sitios.** Un sitio ocupado puede agotar la capacidad
+   de otro; Monitor reenvía sin inspeccionar y Block devuelve 429. Véase
    [Cuánto cuesta esto en memoria](#cuánto-cuesta-esto-en-memoria).
 7. **Solo se inspeccionan solicitudes.** Los cuerpos de respuesta nunca se leen.
 
@@ -446,3 +444,7 @@ de escape para incidentes, no una perilla de ajuste — un gateway con la inspec
 proxy inverso con un límite de tamaño.
 
 No modificar bindings públicos de IIS, DNS, certificados, firewall ni servicios de Windows.
+
+Las rutas del log se normalizan antes de formar el mensaje o los campos estructurados, incluidos los
+hallazgos de carga y los eventos de finalización. Los caracteres de control de la ruta recibida no se
+copian a esos eventos. La ruta de la solicitud reenviada no cambia.

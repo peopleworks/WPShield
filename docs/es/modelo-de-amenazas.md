@@ -139,9 +139,9 @@ predeterminado la acción recomendada es `Observe`, que es lo que hoy reportan t
 | [T6](#t6--contenido-ejecutable-bajo-un-nombre-inofensivo) | Contenido ejecutable bajo un nombre inofensivo, y tipo declarado que no corresponde | `PHP-CONTENT-001`, `FILE-TYPE-001`, `PHP-CONTENT-002` | Parcial — limitada a la muestra y solo multipart |
 | [T7](#t7--confusión-del-encabezado-host-en-un-despliegue-multisitio) | Confusión del encabezado `Host` en un despliegue multisitio | Mapa explícito de hosts, HTTP 421 | Entregado |
 | [T8](#t8--suplantación-de-encabezados-de-reenvío-y-de-sobrescritura-de-ruta) | Suplantación de encabezados de reenvío y de sobrescritura de ruta | Barrido de encabezados en `WPShieldTransformer` | Entregado |
-| [T9](#t9--cuerpos-de-solicitud-sin-límite-o-de-tamaño-excesivo) | Cuerpos de solicitud sin límite o de tamaño excesivo | 6 MiB predeterminado, techo de 64 MiB, HTTP 413, estructura multipart acotada | Parcial — la concurrencia no está acotada, M3 |
-| [T10](#t10--sondeo-automatizado-y-solicitudes-abusivas-repetidas) | Sondeo automatizado y solicitudes abusivas repetidas | Ninguno | **Sin mitigar — M3** |
-| [T11](#t11--divulgación-de-secretos-a-través-de-registros-y-evidencia) | Divulgación de secretos a través de registros y evidencia | Disciplina de registro sostenida en la revisión de código | Parcial — las pruebas automatizadas son M4 |
+| [T9](#t9--cuerpos-de-solicitud-sin-límite-o-de-tamaño-excesivo) | Cuerpos de solicitud sin límite o de tamaño excesivo | 6 MiB predeterminado, techo de 64 MiB, HTTP 413, estructura multipart acotada | Búferes retenidos acotados; quedan la capacidad compartida y otros recursos |
+| [T10](#t10--sondeo-automatizado-y-solicitudes-abusivas-repetidas) | Sondeo automatizado y solicitudes abusivas repetidas | Ventanas fijas configuradas por cliente, sitio y regla | Parcial — solo rutas configuradas |
+| [T11](#t11--divulgación-de-secretos-a-través-de-registros-y-evidencia) | Divulgación de secretos a través de registros y evidencia | Disciplina de registro sostenida en la revisión de código | Pruebas automatizadas de redacción; rutas normalizadas |
 | [T12](#t12--el-gateway-como-nueva-superficie-de-ataque-y-punto-único-de-fallo) | El gateway como nueva superficie de ataque y punto único de fallo | Validación de arranque que falla cerrado, solo loopback, bypass por conmutador de regla | Parcial — M7 |
 | [T13](#t13--cadena-de-suministro-dependencias-y-paquetes-de-reglas-comunitarios) | Cadena de suministro: dependencias y paquetes de reglas comunitarios | Versiones fijadas, CodeQL, acciones fijadas por SHA | Parcial — los paquetes de reglas son M8 |
 
@@ -286,7 +286,7 @@ navegadores derivan el `Content-Type` de una parte de esa misma extensión, y cu
 aplicaciones móviles y el respaldo de plupload envían legítimamente `application/octet-stream`, de
 modo que una regla que se disparase por esa discrepancia se dispararía con todo cliente que no sea un
 navegador. La comparación por contenido también sigue limitada a una muestra por diseño —WPShield
-nunca retiene una carga completa para inspeccionarla—, así que un marcador colocado más allá de la
+entrega a las reglas solo una muestra inicial, aunque retiene el cuerpo acotado para reenviarlo—, así que un marcador colocado más allá de la
 ventana de muestra no se ve, y `PHP-CONTENT-002` solo demuestra el políglota de portador mínimo,
 porque en una fotografía real el `EOI` del JPEG queda muy por detrás de esa ventana. El contenido de
 los archivos comprimidos nunca se abre. `FILE-TYPE-001` también guarda silencio ante bytes que no
@@ -331,23 +331,20 @@ para cubrir también encabezados que este proyecto no ha visto nunca; la familia
 cliente `X-Real-IP`, `X-Client-IP`, `X-Cluster-Client-IP`, `True-Client-IP`, `CF-Connecting-IP`,
 `Fastly-Client-IP`, `X-Azure-ClientIP`, `X-Azure-SocketIP`; los encabezados de sobrescritura de ruta
 `X-Original-URL`, `X-Rewrite-URL`, `X-Original-Host`; y el propio `X-WPShield-Request-ID` de
-WPShield. Solo entonces establece `X-Forwarded-For` a partir de la conexión real,
+WPShield. Solo entonces establece `X-Forwarded-For` a partir del cliente resuelto,
 `X-Forwarded-Proto`, `X-Forwarded-Host` y un identificador de solicitud nuevo.
 
 Eliminar el `X-WPShield-Request-ID` entrante **sostiene peso, no es cosmético**: la regla de reescritura
 contra bucles del ADR 0001 omite las solicitudes que ya lo traen. Si un cliente pudiera establecerlo,
 un cliente podría saltarse la inspección por completo.
 
-**Sin mitigar, y cambia en M7.** Hoy el gateway es el único salto, así que descartarlo todo es
-correcto. Bajo el ADR 0001 la dirección real del cliente llega en `X-Forwarded-For` desde un proxy
-local, y descartarla haría que todos los visitantes parecieran `127.0.0.1` — lo que haría que el
-límite de tasa por IP de T10 estrangulara a todos los visitantes como si fueran uno solo y volvería
-inútil la evidencia registrada. La invariante pasa a ser *confiar en los encabezados de reenvío solo
-desde un proxy configurado como de confianza, nunca en otro caso*. `Gateway:TrustedProxies` todavía
-no existe; debe tener valor predeterminado vacío, para que una configuración incompleta conserve el
-comportamiento actual de eliminarlo todo, y las familias de sobrescritura de ruta y de dirección de
-cliente deben seguir eliminándose incondicionalmente de cualquier par. **Este diseño debe llegar
-antes de M3.**
+**Proxies de confianza.** `Gateway:TrustedProxies` existe y su lista predeterminada está vacía.
+Solo admite direcciones IP exactas del par. Un par de confianza puede aportar `X-Forwarded-For` y
+`X-Forwarded-Proto`; gana la dirección del extremo derecho sin saltar entradas de confianza y el
+esquema se convierte al literal canónico `http` o `https`. Los demás encabezados de reenvío y de
+sobrescritura de ruta se eliminan para todos los pares. El cliente se resuelve una sola vez y se
+reutiliza en reenvío, registros y límites de tasa. Las cadenas de varios proxies no están soportadas;
+el operador debe configurar únicamente el salto de proxy previsto.
 
 ### T9 — Cuerpos de solicitud sin límite o de tamaño excesivo
 
@@ -380,29 +377,29 @@ aviso, y `Block` responde **HTTP 415 `multipart_not_inspectable`**. Un cuerpo qu
 dentro de `ReadTimeoutSeconds` se responde con **HTTP 408** en todos los modos, `Monitor` incluido,
 porque reenviar un cuerpo parcial entregaría a WordPress menos de lo que declara su `Content-Length`.
 
-**Sin mitigar, y esta es una exposición nueva en vez de una vieja.** Inspeccionar un cuerpo multipart
-implica retenerlo. Antes de M2 el gateway transmitía todo y no retenía memoria de cuerpo por
-solicitud; ahora una solicitud multipart fija aproximadamente 6,15 MiB con los valores predeterminados
-durante hasta `ReadTimeoutSeconds`, y **nada acota cuántas pueden retenerse a la vez**.
-`KestrelServerLimits.MaxConcurrentConnections` es ilimitado de forma predeterminada y el gateway solo
-fija `MaxRequestBodySize`. `Gateway:MaximumRequestBytes` divide el peor caso directamente y
-`Gateway:Multipart:ReadTimeoutSeconds` acorta la retención, pero un límite explícito de inspecciones
-concurrentes con búfer es trabajo de M3. Las solicitudes que no son multipart siguen transmitiéndose
-y siguen sin retener nada, y el agotamiento por lectura lenta en ellas solo está acotado por el
-tiempo de espera de actividad del reenviador.
+**Control de búferes concurrentes.** `Gateway:Multipart:MaximumConcurrentInspections` vale 10 de
+forma predeterminada, admite de 1 a 50 y conserva cada cupo hasta liberar su búfer, incluido el reenvío.
+Sin cupo, Monitor reenvía sin inspeccionar la carga y registra un aviso; Block devuelve HTTP 429
+`multipart_concurrent_limit_exceeded`. No se crea una cola. La cancelación y el fallo de lectura
+liberan búfer y cupo. `ReadTimeoutSeconds` cubre lectura e inspección; el reenvío tiene su propio
+tiempo de espera de actividad. Esto no limita la memoria total del proceso ni todas las conexiones.
+La capacidad se comparte entre sitios: las cargas de uno pueden consumir la capacidad de otro.
 
 ### T10 — Sondeo automatizado y solicitudes abusivas repetidas
 
 **El ataque.** Relleno de credenciales contra `wp-login.php`, amplificación mediante `xmlrpc.php`,
 enumeración de rutas de plugins, intentos repetidos de carga para encontrar el borde de una regla.
 
-**Control actual: ninguno.** Se dice sin rodeos porque la ausencia es el hallazgo.
+**Control.** `Gateway:RateLimit` aplica presupuestos de ventana fija a las rutas configuradas,
+separados por dirección resuelta del cliente, sitio y regla. Los alias normalizados para Windows y
+la vista con una decodificación porcentual adicional comparten presupuesto. Monitor registra el
+exceso y reenvía; Block devuelve HTTP 429 `rate_limited` con `Retry-After`. Los sitios Disabled omiten
+este control. Las rutas que ninguna regla nombra no tienen presupuesto. La coincidencia exige la ruta
+normalizada completa, no un prefijo arbitrario.
 
-**Sin mitigar — M3.** El control de ráfagas por IP y por sitio, las políticas separadas para inicio
-de sesión, XML-RPC, cargas, REST y AJAX administrativo, y los bloqueos temporales con vencimiento son
-todos M3. M3 no puede comenzar antes de que llegue el diseño de proxy de confianza de T8, porque
-limitar por IP no significa nada cuando todas las solicitudes parecen venir del proxy. WPShield no
-proveerá mitigación volumétrica de DDoS en ningún milestone.
+**Límites pendientes.** No proporciona un presupuesto total por sitio, cobertura de cualquier ruta ni
+mitigación DDoS volumétrica. La atribución correcta del cliente depende de los proxies de confianza.
+Una dirección de cliente compartida puede hacer que visitantes legítimos compartan presupuesto.
 
 ### T11 — Divulgación de secretos a través de registros y evidencia
 
@@ -412,18 +409,18 @@ consulta completas —incluidos restablecimientos de contraseña y claves de API
 respalda, se envía a un agregador de registros y se pega en un ticket de soporte.
 
 **Control.** El registro de solicitudes anota el identificador de solicitud, el identificador de
-sitio, el método y `Path.Value` —la ruta sin su cadena de consulta— y nunca encabezados ni cuerpos.
+sitio, el método y la ruta normalizada sin su cadena de consulta y nunca encabezados ni cuerpos.
 La evidencia de las reglas anota valores normalizados y tipos de anomalía, nunca el nombre crudo
 provisto por el atacante. Las respuestas de error llevan solo un código de error y el identificador de
 solicitud. [SECURITY.md](../../SECURITY.md) trata la aparición de un secreto en un registro como una
 vulnerabilidad, no como una aspereza.
 
-**Sin mitigar.** La disciplina la sostiene la revisión de código, no las pruebas: las pruebas
-automatizadas de redacción son M4, junto con la salida estructurada en JSON Lines, la rotación, la
-retención y los permisos restringidos de directorio. Un registro capturado del gateway es un artefacto
-sensible y no debe subirse al repositorio. Si WPShield se coloca detrás de IIS en M7, los registros
-propios de IIS quedan fuera del control de WPShield y anotan la cadena de consulta completa de forma
-predeterminada.
+**Validación y riesgo residual.** Las pruebas automatizadas cubren encabezados sensibles, cadenas
+de consulta, contenido de cargas y rutas normalizadas. La rotación y retención JSON Lines están
+implementadas; los permisos restringidos de directorio forman parte de la instalación. Las pruebas
+no demuestran la ausencia de cualquier secreto posible. Los registros capturados siguen siendo
+sensibles y no deben subirse al repositorio. Los registros de IIS quedan fuera del control de
+WPShield y pueden contener cadenas de consulta completas.
 
 ### T12 — El gateway como nueva superficie de ataque y punto único de fallo
 
@@ -500,6 +497,34 @@ transitivo puede llegar sin revisión. Las publicaciones no están firmadas con 
 elemento de M6. Las alertas *de seguridad* de Dependabot son una opción del repositorio que todavía no
 está habilitada.
 
+### T14 — El filtro de red como palanca contra el host
+
+**El ataque.** `wpshield network-filter` (M2.7, [ADR 0006](adr/0006-bloqueo-en-capa-de-red.md),
+Propuesto) puede descartar paquetes para todos los sitios del host, así que a un atacante le vale más
+que cualquier regla suelta. Hay cuatro maneras de volverlo contra su operador: hacer que bloquee una
+dirección legítima falsificando la evidencia; dejar al administrador fuera de la sesión con la que lo
+desharía; trabar el proceso para que el tráfico se detenga; o plantar una DLL que cargue un proceso
+elevado.
+
+**Control.**
+
+| Amenaza | Control |
+| --- | --- |
+| Evidencia falsificada bloquea a un tercero | El origen de un SYN se puede falsificar, así que `WP-NET-002` y `WP-NET-003` solo bloquean con `--syn-rules-may-block`. Los hallazgos del registro de Seguridad sí pueden bloquear: un inicio de sesión falla después de un handshake completo. |
+| El administrador queda fuera | La lista de permitidos se aplica al insertar y otra vez al escribir los filtros; Block se niega a arrancar con la lista vacía o con una dirección no listada conectada al puerto RDP leído del registro de Windows, y cada bloqueo dinámico nuevo se rechaza para una dirección que tenga en ese momento una conexión RDP. Monitor es el modo por defecto y nunca abre un handle DROP. |
+| Un proceso trabado o caído detiene el tráfico | El tráfico normal nunca pasa por el proceso: los bloqueos son filtros DROP en el kernel y la observación trabaja sobre copias. Un bloqueo es un handle, así que al terminar el proceso se levantan todos. |
+| Una `WinDivert.dll` plantada se ejecuta elevada | Cada import resuelve la DLL solo desde el directorio del ensamblado. WinDivert no se empaqueta; el operador copia la versión oficial. |
+| Un filtro significa algo distinto de lo previsto | Los filtros se escriben solo a partir de direcciones ya analizadas; una autoprueba con las funciones de compilación y evaluación de la biblioteca real condiciona el modo Block. |
+| Una inundación con orígenes falsos agota la memoria | El estado por origen tiene tope y desaloja al menos reciente; los hallazgos se registran una vez por origen y umbral. |
+
+**Sin mitigar.** Un proceso que se cuelga sin terminar conserva sus bloqueos actuales hasta que se lo
+mata, y mientras tanto no puede vencer los dinámicos; esos bloqueos solo pueden cubrir direcciones
+que no están en la lista de permitidos. El propio código de kernel de WinDivert está en la ruta de los
+paquetes con los que coinciden sus filtros, y WPShield confía en ese controlador de un tercero. Su
+firma EV se emitió a una empresa distinta del autor de WinDivert, así que el operador comprueba los
+archivos por SHA-256 contra el diseño del filtro de red, no por quién los firmó. La autoprueba ya pasó
+contra la biblioteca real; el filtro todavía no se ha ejecutado contra un controlador real.
+
 ---
 
 ## Salvaguardas requeridas
@@ -512,7 +537,7 @@ Las salvaguardas a las que este proyecto se obliga, y dónde está realmente cad
 | Los hosts desconocidos fallan cerrado | **Cumplida.** HTTP 421, sin backend predeterminado. |
 | Los cuerpos de solicitud están acotados | **Cumplida.** 6 MiB predeterminado, techo de 64 MiB, declarado y por streaming. |
 | Las cargas nunca se escriben en disco, nunca se almacenan sin límite y solo se almacenan en memoria para `multipart/form-data` | **Cumplida.** `PooledRequestBuffer` referencia `ArrayPool<byte>` y ninguna API de archivos, así que la ausencia de disco es estructural y no un valor de umbral; `RequestBodyLimitStream` acota el vaciado antes de almacenar un solo byte; toda solicitud que no sea multipart sigue transmitiéndose. Dos pruebas lo sostienen: una ejecuta cuerpos de toda forma con los directorios temporales del framework redirigidos y exige que sigan vacíos, y la otra revisa el ensamblado del gateway en busca de cualquier tipo referenciado capaz de escribir un archivo. |
-| Los registros omiten autorización, cookies, tokens y secretos enviados | **Parcial.** Lo sostienen la revisión de código y lo que el código elige registrar; las pruebas automatizadas de redacción son M4. |
+| Los registros omiten autorización, cookies, tokens y secretos enviados | **Probado.** Las pruebas automatizadas cubren valores sensibles y rutas normalizadas; no demuestran la ausencia de cualquier secreto posible. |
 | Los paquetes de reglas están versionados y revisados | **M8.** Todavía no existe carga externa de reglas. |
 | Los despliegues en producción tienen un procedimiento documentado de bypass y reversión | **Documentado en el ADR 0001, aún no ejercitado.** Cronometrar el bypass es un elemento de validación de M7. |
 | Los nombres de host reales, los puertos internos y la topología de despliegue quedan fuera del repositorio | **Cumplida por convención y por una comprobación de arranque.** La configuración usa marcadores RFC 2606; los valores reales viven en el `appsettings.Local.json` ignorado por git. |
@@ -533,13 +558,10 @@ contenido de los archivos comprimidos nunca se abre, lo que deja sin detectar la
 plugins y temas —una vía de carga legítima de WordPress—; y solo se leen los primeros `SampleBytes`
 de cada archivo.
 
-El segundo es la **memoria**, y es una regresión antes que un límite. El almacenamiento en memoria es
-lo que hace posible el modo Block, y significa que una solicitud multipart fija ahora unos 6,15 MiB
-con los valores predeterminados durante hasta el tiempo de espera de lectura, sin que nada acote
-cuántas pueden retenerse a la vez —véase T9—. La restricción de solo loopback ha cambiado por tanto
-de carácter: antes era una afirmación sobre la madurez del proyecto, y ahora es además lo único que
-acota esta memoria. Un límite explícito es trabajo de M3, y es un prerrequisito de M7 y no una
-comodidad.
+El segundo es la **memoria y la capacidad**. Los búferes multipart retenidos están acotados durante
+el reenvío por el límite de concurrencia de T9. Al agotarlo, Monitor reenvía deliberadamente sin
+inspeccionar la carga y Block rechaza. Los pools, las conexiones y los recursos del backend quedan
+fuera de esta garantía sobre la cantidad de búferes; la capacidad compartida puede afectar a otros sitios.
 
 Por debajo de ambos está la propia posición de despliegue. Durante M1 y M2 el gateway escucha solo en loopback y
 no reemplaza los bindings públicos de IIS en los puertos 80 y 443, lo cual se hace cumplir en el

@@ -69,6 +69,7 @@ public static class GatewayApplication
         var multipartOptions = gatewayOptions.Multipart;
         var sites = builder.Configuration.GetSection("Sites").Get<SiteOptions[]>() ?? [];
         GatewayConfigurationValidator.Validate(gatewayOptions, multipartOptions, sites);
+        var evidenceIdentity = new EvidenceIdentity();
 
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.Logging.AddFilter("Yarp.ReverseProxy", LogLevel.Warning);
@@ -97,6 +98,9 @@ public static class GatewayApplication
 
         var app = builder.Build();
         var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
+        loggerFactory.CreateLogger("WPShield.Gateway.Configuration").LogInformation(
+            "Request evidence activated. SchemaVersion={SchemaVersion} ConfigurationRevision={ConfigurationRevision}",
+            1, evidenceIdentity.ConfigurationRevision);
 
         // The file writer can now announce a write failure through the destinations that still work,
         // which under a Windows service means the Windows Event Log. Until this line it can only
@@ -182,9 +186,45 @@ public static class GatewayApplication
             WPShieldTransformer transformer,
             ILoggerFactory requestLoggerFactory)
         {
+            var evidence = new RequestEvidence();
+            context.Features.Set(evidence);
+            try
+            {
+                await ForwardRequestCoreAsync(context, siteResolver, forwarder, httpClient, transformer, requestLoggerFactory);
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                evidence.Cancel();
+                throw;
+            }
+            catch
+            {
+                // Preserve the original exception for the server; evidence contains no exception text.
+                evidence.Disposition = "failed";
+                evidence.Reason = evidence.ForwardingAttempted ? "forwarding_exception" : "pipeline_failure";
+                throw;
+            }
+            finally
+            {
+                evidence.Log(requestLoggerFactory.CreateLogger("WPShield.Gateway.Evidence"),
+                    context, evidenceIdentity, multipartOptions.SampleBytes);
+            }
+        }
+
+        async Task ForwardRequestCoreAsync(
+            HttpContext context,
+            SiteResolver siteResolver,
+            IHttpForwarder forwarder,
+            HttpMessageInvoker httpClient,
+            WPShieldTransformer transformer,
+            ILoggerFactory requestLoggerFactory)
+        {
             var logger = requestLoggerFactory.CreateLogger("WPShield.Gateway.Request");
             var host = context.Request.Host.Host;
             var site = siteResolver.Resolve(host);
+            var evidence = context.Features.Get<RequestEvidence>()!;
+            evidence.SiteId = site?.Id;
+            evidence.Mode = site?.Mode;
 
             // The same resolved value the transformer forwards, so an operator comparing a WPShield
             // log line with a WordPress access log entry sees one address, not two.
@@ -198,7 +238,7 @@ public static class GatewayApplication
                     client,
                     host,
                     context.Request.Method,
-                    context.Request.Path.Value);
+                    NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value);
                 await WriteGatewayErrorAsync(context, StatusCodes.Status421MisdirectedRequest, "unknown_host");
                 return;
             }
@@ -218,7 +258,7 @@ public static class GatewayApplication
             if (site.Mode == ProtectionMode.Disabled)
             {
                 logger.LogInformation(
-                    "Site protection disabled; request forwarded. RequestId={RequestId} SiteId={SiteId}",
+                    "Site protection disabled; forwarding permitted. RequestId={RequestId} SiteId={SiteId}",
                     context.TraceIdentifier,
                     site.Id);
             }
@@ -233,6 +273,7 @@ public static class GatewayApplication
 
                 if (exceeded is { } limit)
                 {
+                    evidence.RateLimitRuleId = limit.RuleId;
                     var refusing = site.Mode == ProtectionMode.Block;
 
                     // Warning for a refusal, Information for an observation - the same split the path
@@ -248,7 +289,7 @@ public static class GatewayApplication
                         limit.RuleId,
                         client,
                         context.Request.Method,
-                        context.Request.Path.Value,
+                        NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value,
                         limit.PermitLimit,
                         limit.WindowSeconds,
                         refusing ? "Block" : "Observe",
@@ -298,7 +339,7 @@ public static class GatewayApplication
                 site.Id,
                 client,
                 context.Request.Method,
-                context.Request.Path.Value);
+                NormalizedRequestPath.Create(context.Request.Path.Value).Literal.Value);
 
             ForwarderError error;
             PooledRequestBuffer? buffer = null;
@@ -343,6 +384,7 @@ public static class GatewayApplication
                     context.Request.Body = buffer;
                 }
 
+                evidence.ForwardingAttempted = true;
                 error = await forwarder.SendAsync(
                     context,
                     site.Destination.ToString().TrimEnd('/') + "/",
@@ -366,6 +408,7 @@ public static class GatewayApplication
             }
             catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
             {
+                evidence.Cancel();
                 // A deliberate, narrow exception to the rule that cancellation is never swallowed.
                 // This is the top of the request pipeline: there is no caller left to observe the
                 // exception, and rethrowing turns an entirely ordinary client abort — a visitor who
@@ -374,7 +417,7 @@ public static class GatewayApplication
                 // narrow: a read-deadline cancellation does not match here and is handled as a
                 // timeout. Nothing is written, because the connection is already gone.
                 logger.LogInformation(
-                    "Client disconnected before the request could be forwarded. RequestId={RequestId} SiteId={SiteId} BufferedBytes={BufferedBytes}",
+                    "Client disconnected during request processing. RequestId={RequestId} SiteId={SiteId} BufferedBytes={BufferedBytes}",
                     context.TraceIdentifier,
                     site.Id,
                     buffer?.Length ?? 0);
@@ -388,6 +431,14 @@ public static class GatewayApplication
 
             if (error == ForwarderError.None)
             {
+                evidence.Disposition = "forwarded";
+                evidence.Reason = "exchange_completed";
+                return;
+            }
+
+            if (context.RequestAborted.IsCancellationRequested)
+            {
+                evidence.Cancel();
                 return;
             }
 
@@ -480,6 +531,7 @@ public static class GatewayApplication
         IReadOnlyList<string>? ruleIds = null,
         int? retryAfterSeconds = null)
     {
+        context.Features.Get<RequestEvidence>()?.Refuse(error);
         if (context.Response.HasStarted)
         {
             return;

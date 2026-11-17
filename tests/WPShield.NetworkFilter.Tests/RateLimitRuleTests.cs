@@ -1,176 +1,87 @@
 namespace WPShield.NetworkFilter.Tests;
 
-public class RateLimitRuleTests
+public sealed class RateLimitRuleTests
 {
-    [Fact]
-    public void Below_threshold_returns_allow_with_zero_score()
+    private static readonly DateTimeOffset Start = new(2026, 11, 1, 12, 0, 0, TimeSpan.Zero);
+
+    private static NetworkInspectionContext Attempt(string source, DateTimeOffset at, int port = 443) => new()
     {
-        var rule = new RateLimitRule(maxConnectionsPerMinute: 60);
+        SourceIp = source,
+        DestinationIp = "192.0.2.1",
+        SourcePort = 49152,
+        DestinationPort = port,
+        Protocol = "TCP",
+        Timestamp = at,
+    };
 
-        var result = rule.Inspect(new NetworkInspectionContext
+    private static NetworkInspectionResult Feed(RateLimitRule rule, string source, int attempts)
+    {
+        NetworkInspectionResult? last = null;
+        for (var i = 0; i < attempts; i++)
         {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = DateTimeOffset.UtcNow
-        });
+            last = rule.Inspect(Attempt(source, Start.AddMilliseconds(i)));
+        }
 
-        Assert.Equal(0, result.Score);
-        Assert.Equal(NetworkInspectionAction.Allow, result.Action);
+        return last!;
+    }
+
+    [Fact]
+    public void BelowTheThreshold_IsAllowWithScoreZero()
+    {
+        var result = Feed(new RateLimitRule(maxConnectionsPerMinute: 10), "198.51.100.7", 9);
+
         Assert.Equal("WP-NET-002", result.RuleId);
-    }
-
-    [Fact]
-    public void Above_threshold_returns_block_with_high_score()
-    {
-        var rule = new RateLimitRule(maxConnectionsPerMinute: 60);
-        var now = DateTimeOffset.UtcNow;
-
-        // 61 connections in the same minute -> score 40 (Observe)
-        for (int i = 0; i < 61; i++)
-        {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = 443,
-                Protocol = "TCP",
-                Timestamp = now
-            });
-        }
-
-        var observe40 = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        Assert.Equal(40, observe40.Score);
-        Assert.Equal(NetworkInspectionAction.Observe, observe40.Action);
-
-        // Push past 90 -> score 70 (still Observe)
-        for (int i = 0; i < 31; i++)
-        {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = 443,
-                Protocol = "TCP",
-                Timestamp = now
-            });
-        }
-
-        var observe70 = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        Assert.Equal(70, observe70.Score);
-        Assert.Equal(NetworkInspectionAction.Observe, observe70.Action);
-
-        // Push past 120 -> score 100 (Block)
-        for (int i = 0; i < 31; i++)
-        {
-            rule.Inspect(new NetworkInspectionContext
-            {
-                SourceIp = "10.0.0.1",
-                DestinationIp = "10.0.0.2",
-                SourcePort = 51422,
-                DestinationPort = 443,
-                Protocol = "TCP",
-                Timestamp = now
-            });
-        }
-
-        var block = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        Assert.Equal(100, block.Score);
-        Assert.Equal(NetworkInspectionAction.Block, block.Action);
-        Assert.True((int)block.Evidence["connections_last_minute"] > 120);
-    }
-
-    [Fact]
-    public void Different_ips_are_tracked_separately()
-    {
-        var rule = new RateLimitRule(maxConnectionsPerMinute: 1);
-        var now = DateTimeOffset.UtcNow;
-
-        var first = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        var second = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.2",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51423,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
-        Assert.Equal(0, first.Score);
-        Assert.Equal(0, second.Score);
-    }
-
-    [Fact]
-    public void Window_expires_old_entries()
-    {
-        var rule = new RateLimitRule(maxConnectionsPerMinute: 1);
-        var now = DateTimeOffset.UtcNow;
-        var oneMinuteAgo = now.AddMinutes(-1).AddSeconds(-1);
-
-        // Fill the window in the past
-        rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = oneMinuteAgo
-        });
-
-        // Now the window should have expired, so this should be 0
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = now
-        });
-
         Assert.Equal(0, result.Score);
         Assert.Equal(NetworkInspectionAction.Allow, result.Action);
+    }
+
+    [Theory]
+    [InlineData(10, 60, NetworkInspectionAction.Observe)]
+    [InlineData(20, 80, NetworkInspectionAction.Block)]
+    [InlineData(40, 100, NetworkInspectionAction.Block)]
+    public void AtEachMultipleOfTheThreshold_TheScoreRises(int attempts, int score, NetworkInspectionAction action)
+    {
+        var result = Feed(new RateLimitRule(maxConnectionsPerMinute: 10), "198.51.100.7", attempts);
+
+        Assert.Equal(score, result.Score);
+        Assert.Equal(action, result.Action);
+        Assert.Equal("198.51.100.7", result.Evidence["source_ip"]);
+    }
+
+    [Fact]
+    public void AttemptsOlderThanAMinute_StopCounting()
+    {
+        var rule = new RateLimitRule(maxConnectionsPerMinute: 10);
+        for (var i = 0; i < 9; i++)
+        {
+            rule.Inspect(Attempt("198.51.100.7", Start));
+        }
+
+        var later = rule.Inspect(Attempt("198.51.100.7", Start.AddMinutes(2)));
+
+        Assert.Equal(1, later.Evidence["attempts_last_minute"]);
+    }
+
+    [Fact]
+    public void Sources_AreCountedSeparately()
+    {
+        var rule = new RateLimitRule(maxConnectionsPerMinute: 10);
+        Feed(rule, "198.51.100.7", 10);
+
+        Assert.Equal(0, rule.Inspect(Attempt("198.51.100.8", Start)).Score);
+    }
+
+    [Fact]
+    public void AFloodOfForgedSources_IsBoundedByEvictingTheOldest()
+    {
+        var rule = new RateLimitRule(maxConnectionsPerMinute: 2, maximumSources: 100);
+        rule.Inspect(Attempt("198.51.100.1", Start));
+
+        for (var i = 0; i < 5_000; i++)
+        {
+            rule.Inspect(Attempt($"10.{i / 250}.{i % 250}.1", Start));
+        }
+
+        Assert.Equal(1, rule.Inspect(Attempt("198.51.100.1", Start)).Evidence["attempts_last_minute"]);
     }
 }

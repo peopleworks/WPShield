@@ -149,28 +149,25 @@ part may carry at most 16 headers, and a file name is capped at 1024 characters.
 
 ### What this costs in memory
 
-This is a real regression against the pre-M2 gateway, which held no per-request body memory at all.
-At the defaults a multipart request holds roughly **6.15 MiB** for up to 30 seconds — at most
-97 × 64 KiB chunks, plus 20 × 4 KiB samples, plus 12 KiB of scratch. At the worst legally
-configurable values, with `MaximumRequestBytes` at its 64 MiB ceiling and 100 files at 64 KiB
-samples, it is roughly **70.3 MiB** per request.
+Buffering costs memory that the pre-M2 streaming gateway did not hold. At the defaults, an
+inspection can use roughly **6.15 MiB** (97 chunks of 64 KiB, 20 samples of 4 KiB and scratch space).
+At the largest permitted request and sample settings, it is roughly **70.3 MiB** per inspection.
+These are buffer and sample estimates, not a bound on total process memory or memory retained by pools.
 
-Nothing bounds the number of concurrent buffered requests today.
-`KestrelServerLimits.MaxConcurrentConnections` defaults to unlimited and the gateway sets only
-`MaxRequestBodySize`. Because `ReadTimeoutSeconds` caps how long each request holds its buffer,
-sustaining a given quantity of pinned memory costs an attacker a proportional — and modest — upload
-rate. The levers that exist today are:
+`Gateway:Multipart:MaximumConcurrentInspections` bounds retained request buffers across all sites:
+**10 by default, configurable from 1 to 50**. The slot belongs to the buffer until it is disposed,
+including forwarding to a slow backend. Finishing inspection does not release the slot. Rejection,
+read failure and cancellation dispose the buffer and release the slot; disposal is idempotent.
 
-- `Gateway:MaximumRequestBytes` divides the worst case directly. Lowering it to 2 MiB cuts the
-  exposure by roughly two thirds.
-- `Gateway:Multipart:ReadTimeoutSeconds` shortens the hold and raises the required attacker
-  bandwidth proportionally.
-- `Kestrel:Limits:MaxConcurrentConnections` as the blunt instrument. It is **not** exposed through
-  `GatewayOptions` and must be set in the Kestrel configuration directly.
+When no slot is free, `Monitor` streams the request without upload inspection and logs a warning;
+`Block` returns **HTTP 429 `multipart_concurrent_limit_exceeded`** before reading the body.
+There is no queue and no `Retry-After` for this capacity refusal. Disabled sites and non-multipart
+traffic do not take a slot. The request-size limit still applies to streamed requests.
 
-An explicit bound on concurrent buffered inspections is M3 work. Until it lands, the loopback-only
-restriction is not only a statement about project maturity — it is also the only thing bounding this
-memory.
+`ReadTimeoutSeconds` bounds reading and inspection, not the later forwarding phase. Forwarding has
+its own activity timeout. Lower request and concurrency limits reduce retained buffer memory, but
+this control does not cap all connections or provide volumetric DDoS mitigation. The laboratory
+remains loopback-only and is not approved for production traffic.
 
 ## Boundaries
 
@@ -413,8 +410,8 @@ assume more than is true:
    single gap, and no milestone is assigned to it yet.
 5. **Only the leading `SampleBytes` of each file are examined.** A marker placed past the sample
    window is not seen, and neither is the tail of a large-carrier polyglot.
-6. **Nothing bounds concurrent buffered inspections.** See [What this costs in
-   memory](#what-this-costs-in-memory).
+6. **The buffer limit is shared across sites.** A busy site can exhaust inspection capacity for
+   another; Monitor then forwards uninspected and Block returns 429. See [memory costs](#what-this-costs-in-memory).
 7. **Only requests are inspected.** Response bodies are never read.
 
 ## Rollback
@@ -425,3 +422,7 @@ live traffic. The startup warning above will say so on every start. This is an i
 hatch, not a tuning knob — a gateway with inspection disabled is a reverse proxy with a size limit.
 
 Do not alter public IIS bindings, DNS, certificates, firewall rules, or Windows services.
+
+Request log paths are normalized before formatting or structured logging, including upload findings
+and completion events. Raw control characters are never copied from the request path into these events.
+The forwarded request path is unchanged.

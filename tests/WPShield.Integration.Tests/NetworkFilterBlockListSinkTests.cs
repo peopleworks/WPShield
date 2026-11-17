@@ -1,215 +1,101 @@
+using WPShield.NetworkFilter.Tests.Support;
+
 namespace WPShield.Integration.Tests;
 
-public class NetworkFilterBlockListSinkTests
+/// <summary>
+/// A Security-log finding reaches the network filter as a block request, and everything about whether
+/// it becomes a block is decided by the filter, not by the sink.
+/// </summary>
+public sealed class NetworkFilterBlockListSinkTests
 {
-    [Fact]
-    public void Block_finding_adds_ip_to_block_list_rule()
+    private static NetworkFilterService StartedFilter(NetworkFilterMode mode, string allow = "203.0.113.50")
     {
-        var rule = new BlockListRule(Array.Empty<string>());
-        var sink = new NetworkFilterBlockListSink(rule);
+        IpRange.TryParseAllow(allow, out var allowed, out _);
+        var service = new NetworkFilterService(
+            new NetworkFilterOptions { Mode = mode, AllowList = [allowed!] },
+            new FakeDivertDriver(),
+            new RecordingSink(),
+            lockoutProbe: () => new LockoutProbe(3389, []));
+        Assert.True(service.Start().Started);
+        return service;
+    }
 
-        var finding = new SecurityInspectionResult
-        {
-            RuleId = "WP-SEC-001",
-            Score = 100,
-            Action = NetworkInspectionAction.Block,
-            MessageKey = "Findings.RdpBruteForce",
-            Evidence = new Dictionary<string, object>
-            {
-                ["source_ip"] = "10.0.0.1"
-            }
-        };
+    private static SecurityInspectionResult Finding(NetworkInspectionAction action, string ruleId = "WP-SEC-002") => new()
+    {
+        RuleId = ruleId,
+        Score = action == NetworkInspectionAction.Block ? 100 : 40,
+        Action = action,
+        MessageKey = "Findings.FailedLogon",
+        Evidence = new Dictionary<string, object>(),
+    };
 
-        var context = new SecurityInspectionContext
-        {
-            EventId = 4625,
-            SourceIp = "10.0.0.1",
-            UserName = "Administrator",
-            LogonType = "10",
-            ProcessName = "svchost.exe",
-            ComputerName = "SERVER01",
-            TimeCreated = DateTimeOffset.UtcNow,
-            Message = "An account failed to log on."
-        };
+    private static SecurityInspectionContext Logon(string sourceIp) => new()
+    {
+        EventId = 4625,
+        SourceIp = sourceIp,
+        UserName = "synthetic-user",
+        LogonType = "3",
+        ProcessName = string.Empty,
+        ComputerName = "host.example",
+        TimeCreated = DateTimeOffset.UtcNow,
+        Message = string.Empty,
+    };
 
-        sink.Publish(finding, context);
+    [Fact]
+    public void ABlockFinding_BecomesADynamicBlockInBlockMode()
+    {
+        using var filter = StartedFilter(NetworkFilterMode.Block);
+        var sink = new NetworkFilterBlockListSink(filter);
 
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = DateTimeOffset.UtcNow
-        });
+        sink.Publish(Finding(NetworkInspectionAction.Block), Logon("198.51.100.9"));
 
-        Assert.Equal(NetworkInspectionAction.Block, result.Action);
-        Assert.Equal(100, result.Score);
+        var entry = Assert.Single(filter.Blocks.Snapshot());
+        Assert.Equal("198.51.100.9", entry.Range.ToString());
+        Assert.Equal("WP-SEC-002", entry.Source);
+        Assert.NotNull(entry.ExpiresAt);
     }
 
     [Fact]
-    public void Observe_finding_does_not_add_ip()
+    public void AnObserveFinding_BlocksNothing()
     {
-        var rule = new BlockListRule(Array.Empty<string>());
-        var sink = new NetworkFilterBlockListSink(rule);
+        using var filter = StartedFilter(NetworkFilterMode.Block);
 
-        var finding = new SecurityInspectionResult
-        {
-            RuleId = "WP-SEC-001",
-            Score = 40,
-            Action = NetworkInspectionAction.Observe,
-            MessageKey = "Findings.RdpBruteForce",
-            Evidence = new Dictionary<string, object>
-            {
-                ["source_ip"] = "10.0.0.1"
-            }
-        };
+        new NetworkFilterBlockListSink(filter).Publish(Finding(NetworkInspectionAction.Observe), Logon("198.51.100.9"));
 
-        var context = new SecurityInspectionContext
-        {
-            EventId = 4625,
-            SourceIp = "10.0.0.1",
-            UserName = "Administrator",
-            LogonType = "10",
-            ProcessName = "svchost.exe",
-            ComputerName = "SERVER01",
-            TimeCreated = DateTimeOffset.UtcNow,
-            Message = "An account failed to log on."
-        };
+        Assert.Equal(0, filter.Blocks.Count);
+    }
 
-        sink.Publish(finding, context);
+    [Theory]
+    [InlineData("")]
+    [InlineData("-")]
+    [InlineData("127.0.0.1")]
+    [InlineData("::1")]
+    public void ALocalOrMissingAddress_BlocksNothing(string sourceIp)
+    {
+        using var filter = StartedFilter(NetworkFilterMode.Block);
 
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = DateTimeOffset.UtcNow
-        });
+        new NetworkFilterBlockListSink(filter).Publish(Finding(NetworkInspectionAction.Block), Logon(sourceIp));
 
-        Assert.Equal(NetworkInspectionAction.Allow, result.Action);
+        Assert.Equal(0, filter.Blocks.Count);
     }
 
     [Fact]
-    public void Missing_source_ip_is_ignored()
+    public void TheAllowList_WinsOverTheSecurityLog()
     {
-        var rule = new BlockListRule(Array.Empty<string>());
-        var sink = new NetworkFilterBlockListSink(rule);
+        using var filter = StartedFilter(NetworkFilterMode.Block, allow: "198.51.100.0/24");
 
-        var finding = new SecurityInspectionResult
-        {
-            RuleId = "WP-SEC-001",
-            Score = 100,
-            Action = NetworkInspectionAction.Block,
-            MessageKey = "Findings.RdpBruteForce",
-            Evidence = new Dictionary<string, object>()
-        };
+        new NetworkFilterBlockListSink(filter).Publish(Finding(NetworkInspectionAction.Block), Logon("198.51.100.9"));
 
-        var context = new SecurityInspectionContext
-        {
-            EventId = 4625,
-            SourceIp = "10.0.0.1",
-            UserName = "Administrator",
-            LogonType = "10",
-            ProcessName = "svchost.exe",
-            ComputerName = "SERVER01",
-            TimeCreated = DateTimeOffset.UtcNow,
-            Message = "An account failed to log on."
-        };
-
-        // Should not throw
-        sink.Publish(finding, context);
-
-        var result = rule.Inspect(new NetworkInspectionContext
-        {
-            SourceIp = "10.0.0.1",
-            DestinationIp = "10.0.0.2",
-            SourcePort = 51422,
-            DestinationPort = 443,
-            Protocol = "TCP",
-            Timestamp = DateTimeOffset.UtcNow
-        });
-
-        Assert.Equal(NetworkInspectionAction.Allow, result.Action);
+        Assert.Equal(0, filter.Blocks.Count);
     }
 
     [Fact]
-    public void Pending_ips_are_tracked()
+    public void MonitorMode_BlocksNothing()
     {
-        var rule = new BlockListRule(Array.Empty<string>());
-        var sink = new NetworkFilterBlockListSink(rule);
+        using var filter = StartedFilter(NetworkFilterMode.Monitor);
 
-        var finding1 = new SecurityInspectionResult
-        {
-            RuleId = "WP-SEC-001",
-            Score = 100,
-            Action = NetworkInspectionAction.Block,
-            MessageKey = "Findings.RdpBruteForce",
-            Evidence = new Dictionary<string, object> { ["source_ip"] = "10.0.0.1" }
-        };
+        new NetworkFilterBlockListSink(filter).Publish(Finding(NetworkInspectionAction.Block), Logon("198.51.100.9"));
 
-        var finding2 = new SecurityInspectionResult
-        {
-            RuleId = "WP-SEC-001",
-            Score = 100,
-            Action = NetworkInspectionAction.Block,
-            MessageKey = "Findings.RdpBruteForce",
-            Evidence = new Dictionary<string, object> { ["source_ip"] = "10.0.0.2" }
-        };
-
-        var context = new SecurityInspectionContext
-        {
-            EventId = 4625,
-            SourceIp = "10.0.0.1",
-            UserName = "Administrator",
-            LogonType = "10",
-            ProcessName = "svchost.exe",
-            ComputerName = "SERVER01",
-            TimeCreated = DateTimeOffset.UtcNow,
-            Message = "An account failed to log on."
-        };
-
-        sink.Publish(finding1, context);
-        sink.Publish(finding2, context);
-
-        Assert.Equal(2, sink.PendingIps.Count);
-        Assert.Contains("10.0.0.1", sink.PendingIps);
-        Assert.Contains("10.0.0.2", sink.PendingIps);
-    }
-
-    [Fact]
-    public void Duplicate_ip_is_not_added_twice()
-    {
-        var rule = new BlockListRule(Array.Empty<string>());
-        var sink = new NetworkFilterBlockListSink(rule);
-
-        var finding = new SecurityInspectionResult
-        {
-            RuleId = "WP-SEC-001",
-            Score = 100,
-            Action = NetworkInspectionAction.Block,
-            MessageKey = "Findings.RdpBruteForce",
-            Evidence = new Dictionary<string, object> { ["source_ip"] = "10.0.0.1" }
-        };
-
-        var context = new SecurityInspectionContext
-        {
-            EventId = 4625,
-            SourceIp = "10.0.0.1",
-            UserName = "Administrator",
-            LogonType = "10",
-            ProcessName = "svchost.exe",
-            ComputerName = "SERVER01",
-            TimeCreated = DateTimeOffset.UtcNow,
-            Message = "An account failed to log on."
-        };
-
-        sink.Publish(finding, context);
-        sink.Publish(finding, context);
-
-        Assert.Single(sink.PendingIps);
+        Assert.Equal(0, filter.Blocks.Count);
     }
 }

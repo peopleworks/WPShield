@@ -1492,23 +1492,22 @@ footer p { max-width: 46rem; }
                 limit — never to disk — inspected, then forwarded or refused</td>
           </tr>
           <tr>
-            <th scope="row">Network layer packet filtering</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.7; <code>WPShield.NetworkFilter</code> inspects inbound TCP/UDP in user mode via
-                WinDivert, with a strict per-packet time budget so it cannot become a kernel
-                watchdog violation</td>
+            <th scope="row">Network-layer blocking</th>
+            <td><span class="pill pill--proto">Prototype</span></td>
+            <td>M2.7, ADR 0006 (Proposed); not yet run against a driver. Drops packets from the
+                addresses on its block list through WinDivert DROP handles; normal traffic never
+                passes through WPShield and stopping it lifts every block. Monitor by default</td>
           </tr>
           <tr>
             <th scope="row">Security event monitoring</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.8; <code>WPShield.SecurityMonitor</code> reads the Windows Security event log and
-                detects RDP brute force and failed logons</td>
+            <td><span class="pill pill--proto">Prototype</span></td>
+            <td>M2.8; reads the Windows Security event log and reports failed-logon patterns. Replays
+                the whole log on its first scan, and misses RDP failures under NLA</td>
           </tr>
           <tr>
-            <th scope="row">Security → Network filter bridge</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.8; <code>WPShield.Integration</code> feeds security findings into the dynamic
-                block list of <code>WPShield.NetworkFilter</code></td>
+            <th scope="row">Security log → network filter</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M2.8; built, not wired to any command until the monitor reads new events only</td>
           </tr>
           <tr>
             <th scope="row">Inspection of non-multipart bodies</th>
@@ -1596,23 +1595,25 @@ footer p { max-width: 46rem; }
                 rechazan</td>
           </tr>
           <tr>
-            <th scope="row">Filtrado de paquetes en capa de red</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.7; <code>WPShield.NetworkFilter</code> inspecciona TCP/UDP entrante en modo
-                usuario vía WinDivert, con un presupuesto de tiempo estricto por paquete para que
-                nunca se convierta en una violación del watchdog del kernel</td>
+            <th scope="row">Bloqueo en la capa de red</th>
+            <td><span class="pill pill--proto">Prototype</span></td>
+            <td>M2.7, ADR 0006 (Propuesto); aún no se ha ejecutado contra un driver. Descarta los
+                paquetes de las direcciones de su lista de bloqueo mediante handles DROP de
+                WinDivert; el tráfico normal nunca pasa por WPShield y detenerlo levanta todos los
+                bloqueos. Monitor por defecto</td>
           </tr>
           <tr>
             <th scope="row">Monitoreo de eventos de seguridad</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.8; <code>WPShield.SecurityMonitor</code> lee el registro de Seguridad de Windows
-                y detecta fuerza bruta de RDP y fallos de inicio de sesión</td>
+            <td><span class="pill pill--proto">Prototype</span></td>
+            <td>M2.8; lee el registro de Seguridad de Windows y reporta patrones de inicios de sesión
+                fallidos. Relee todo el registro en su primera pasada y no ve los fallos de RDP con
+                NLA</td>
           </tr>
           <tr>
-            <th scope="row">Puente de seguridad a filtro de red</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.8; <code>WPShield.Integration</code> alimenta los hallazgos de seguridad en la
-                lista de bloqueo dinámica de <code>WPShield.NetworkFilter</code></td>
+            <th scope="row">Registro de Seguridad → filtro de red</th>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>M2.8; construido, sin conectar a ningún comando hasta que el monitor lea solo
+                eventos nuevos</td>
           </tr>
           <tr>
             <th scope="row">Inspección de cuerpos que no son multipart</th>
@@ -2177,8 +2178,8 @@ footer p { max-width: 46rem; }
           </tr>
           <tr>
             <th scope="row"><code>network-filter</code></td>
-            <td>User-mode inbound packet filter via WinDivert. Drops attack traffic before IIS. Never runs in kernel; 5 ms per-packet inspection budget.</td>
-            <td><code>--filter</code>, <code>--max-inspection-time-ms</code>, <code>--max-connections-per-minute</code>, <code>--max-distinct-ports-per-minute</code>, <code>--block-list</code></td>
+            <td>Observes new inbound connections; in Block mode drops packets from the addresses on its block list. Normal traffic never passes through it; stopping it lifts every block. Monitor by default.</td>
+            <td><code>--mode</code>, <code>--allow</code>, <code>--block</code>, <code>--block-ttl-minutes</code>, <code>--max-blocks</code>, <code>--syn-rules-may-block</code>, <code>--output</code>, <code>--check</code>, <code>--install-driver</code></td>
           </tr>
           <tr>
             <th scope="row"><code>security-monitor</code></td>
@@ -2265,8 +2266,8 @@ footer p { max-width: 46rem; }
           </tr>
           <tr>
             <th scope="row"><code>network-filter</code></td>
-            <td>Filtro de paquetes entrante en modo usuario vía WinDivert. Descarta tráfico de ataque antes de IIS. Nunca corre en kernel; presupuesto de 5 ms por paquete.</td>
-            <td><code>--filter</code>, <code>--max-inspection-time-ms</code>, <code>--max-connections-per-minute</code>, <code>--max-distinct-ports-per-minute</code>, <code>--block-list</code></td>
+            <td>Observa las conexiones entrantes nuevas; en modo Block descarta los paquetes de las direcciones de su lista de bloqueo. El tráfico normal nunca pasa por él; detenerlo levanta todos los bloqueos. Monitor por defecto.</td>
+            <td><code>--mode</code>, <code>--allow</code>, <code>--block</code>, <code>--block-ttl-minutes</code>, <code>--max-blocks</code>, <code>--syn-rules-may-block</code>, <code>--output</code>, <code>--check</code>, <code>--install-driver</code></td>
           </tr>
           <tr>
             <th scope="row"><code>security-monitor</code></td>
@@ -2292,23 +2293,23 @@ footer p { max-width: 46rem; }
       rebooting with <code>0x00000133 — DPC_WATCHDOG_VIOLATION</code> traced to
       <code>mwac.sys</code> (Malwarebytes Web Access Control) blocking on a kernel spinlock while
       inspecting inbound connections in DPC context. <code>network-filter</code> is the project's
-      own network-layer protection: user mode only, never a kernel spinlock, and a per-packet time
-      budget so it cannot become the watchdog violation it exists to prevent.
-      <code>security-monitor</code> sees what packets cannot: whether an RDP connection succeeded or
-      failed. Pair them through <code>WPShield.Integration</code> so an IP caught failing logons is
-      dropped at the packet layer before it tries again.
+      own network-layer protection, built so it cannot do that: normal traffic never passes through
+      WPShield, blocks are WinDivert DROP filters the driver applies, and a block lasts exactly as
+      long as the process (<a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/adr/0006-network-layer-blocking.md">ADR 0006</a>,
+      Proposed). <code>security-monitor</code> sees what packets cannot: whether a logon failed. The
+      two are not connected yet; that waits until the monitor reads new events only.
     </div>
     <div class="note" lang="es">
       <strong>Los dos verbos nuevos existen por un incidente real.</strong> Un host de producción se
       reiniciaba con <code>0x00000133 — DPC_WATCHDOG_VIOLATION</code> rastreado hasta
       <code>mwac.sys</code> (Malwarebytes Web Access Control) bloqueado en un spinlock de kernel
       mientras inspeccionaba conexiones entrantes en contexto DPC.
-      <code>network-filter</code> es la propia protección de capa de red del proyecto: solo modo
-      usuario, nunca un spinlock de kernel, y un presupuesto de tiempo por paquete para que nunca
-      se convierta en la violación del watchdog que existe para prevenir.
-      <code>security-monitor</code> ve lo que los paquetes no ven: si una conexión RDP tuvo éxito o
-      falló. Úselos juntos a través de <code>WPShield.Integration</code> para que una IP atrapada
-      fallando inicios de sesión sea descartada a nivel de paquete antes de que lo intente otra vez.
+      <code>network-filter</code> es la propia protección de capa de red del proyecto, hecha para
+      que eso no pueda pasar: el tráfico normal nunca pasa por WPShield, los bloqueos son filtros
+      DROP de WinDivert que aplica el driver, y un bloqueo dura exactamente lo que dura el proceso
+      (<a href="https://github.com/peopleworks/WPShield/blob/main/docs/es/adr/0006-bloqueo-en-capa-de-red.md">ADR 0006</a>,
+      Propuesto). <code>security-monitor</code> ve lo que los paquetes no ven: si un inicio de sesión
+      falló. Los dos todavía no están conectados; eso espera a que el monitor lea solo eventos nuevos.
     </div>
   </section>
 

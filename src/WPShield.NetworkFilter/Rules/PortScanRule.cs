@@ -1,84 +1,64 @@
-using System.Collections.Generic;
-using System.Linq;
 using WPShield.Abstractions;
 
 namespace WPShield.NetworkFilter.Rules;
 
 /// <summary>
-/// Detects likely port scans: many distinct destination ports from one source IP
-/// within a short window, with little or no payload.
-///
-/// This is a heuristic rule: legitimate clients rarely connect to dozens of ports
-/// in seconds. A high score suggests scanning or probing.
+/// <c>WP-NET-003</c>: distinct destination ports one source tried in the last minute.
 /// </summary>
+/// <remarks>
+/// A SYN reaches the observer whether or not anything listens on the port, so a sweep across closed
+/// ports counts too. Score 60 (observe) at the threshold, 80 at twice it, 100 at three times it. Like
+/// <see cref="RateLimitRule"/>, the evidence is a SYN, so a Block recommendation becomes a block only
+/// with <c>--syn-rules-may-block</c>.
+/// </remarks>
 public sealed class PortScanRule : INetworkInspectionRule
 {
-    private readonly Dictionary<string, List<(int Port, DateTimeOffset Time)>> _portsByIp = new();
-    private readonly object _lock = new();
-    private readonly int _maxDistinctPorts;
+    public const string Id = "WP-NET-003";
+    public const int DefaultThreshold = 20;
 
-    public string RuleId => "WP-NET-003";
+    private static readonly TimeSpan Window = TimeSpan.FromMinutes(1);
 
-    public PortScanRule(int maxDistinctPortsPerMinute = 20)
+    private readonly int _threshold;
+    private readonly int _retained;
+    private readonly BoundedSourceTable<Dictionary<int, DateTimeOffset>> _ports;
+    private readonly object _gate = new();
+
+    public PortScanRule(int maxDistinctPortsPerMinute = DefaultThreshold, int maximumSources = RateLimitRule.DefaultMaximumSources)
     {
-        _maxDistinctPorts = maxDistinctPortsPerMinute;
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxDistinctPortsPerMinute, 1);
+        _threshold = maxDistinctPortsPerMinute;
+        _retained = (maxDistinctPortsPerMinute * 3) + 1;
+        _ports = new BoundedSourceTable<Dictionary<int, DateTimeOffset>>(maximumSources);
     }
 
-    public NetworkInspectionResult Inspect(
-        NetworkInspectionContext context,
-        CancellationToken cancellationToken = default)
+    public string RuleId => Id;
+
+    public NetworkInspectionResult Inspect(NetworkInspectionContext context, CancellationToken cancellationToken = default)
     {
-        lock (_lock)
+        ArgumentNullException.ThrowIfNull(context);
+
+        int distinct;
+        lock (_gate)
         {
-            var now = context.Timestamp;
-
-            if (!_portsByIp.TryGetValue(context.SourceIp, out var entries))
+            var ports = _ports.GetOrAdd(context.SourceIp, () => []);
+            foreach (var stale in ports.Where(pair => context.Timestamp - pair.Value > Window).Select(pair => pair.Key).ToList())
             {
-                entries = new List<(int, DateTimeOffset)>();
-                _portsByIp[context.SourceIp] = entries;
+                ports.Remove(stale);
             }
 
-            entries.RemoveAll(e => now - e.Time > TimeSpan.FromMinutes(1));
-            entries.Add((context.DestinationPort, now));
-
-            int distinctPorts = entries.Select(e => e.Port).Distinct().Count();
-
-            int score;
-            if (distinctPorts >= 50)
+            if (ports.ContainsKey(context.DestinationPort) || ports.Count < _retained)
             {
-                score = 100;
-            }
-            else if (distinctPorts >= 30)
-            {
-                score = 80;
-            }
-            else if (distinctPorts >= _maxDistinctPorts)
-            {
-                score = 60;
-            }
-            else
-            {
-                score = 0;
+                ports[context.DestinationPort] = context.Timestamp;
             }
 
-            return new NetworkInspectionResult
-            {
-                RuleId = RuleId,
-                Score = score,
-                Action = score switch
-                {
-                    0 => WPShield.Abstractions.NetworkInspectionAction.Allow,
-                    >= 80 => WPShield.Abstractions.NetworkInspectionAction.Block,
-                    _ => WPShield.Abstractions.NetworkInspectionAction.Observe
-                },
-                MessageKey = "Findings.NetworkPortScan",
-                Evidence = new Dictionary<string, object>
-                {
-                    ["source_ip"] = context.SourceIp,
-                    ["distinct_ports_last_minute"] = distinctPorts,
-                    ["threshold"] = _maxDistinctPorts
-                }
-            };
+            distinct = ports.Count;
         }
+
+        var score = distinct >= _threshold * 3 ? 100 : distinct >= _threshold * 2 ? 80 : distinct >= _threshold ? 60 : 0;
+        return NetworkFinding.Create(Id, score, "Findings.NetworkPortScan", context, new Dictionary<string, object>
+        {
+            ["distinct_ports_last_minute"] = distinct,
+            ["threshold"] = _threshold,
+        });
     }
 }

@@ -15,4 +15,12 @@
     <ProjectReference Include="../../src/WPShield.Integration/WPShield.Integration.csproj" />
   </ItemGroup>
 
+  <!--
+    The fake driver and its reference filter evaluator are shared with WPShield.NetworkFilter.Tests by
+    link rather than copied, so the two suites cannot drift into disagreeing about what a filter means.
+  -->
+  <ItemGroup>
+    <Compile Include="../WPShield.NetworkFilter.Tests/Support/*.cs" Link="Support/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>

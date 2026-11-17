@@ -131,9 +131,9 @@ the cap to 100. In the default `Monitor` mode the recommended action is `Observe
 | [T6](#t6--executable-content-under-a-harmless-name) | Executable content under a harmless name, and declared-type mismatch | `PHP-CONTENT-001`, `FILE-TYPE-001`, `PHP-CONTENT-002` | Partial — sample-bounded, multipart only |
 | [T7](#t7--host-header-confusion-in-a-multi-site-deployment) | Host-header confusion in a multi-site deployment | Explicit host map, HTTP 421 | Shipped |
 | [T8](#t8--forwarding-header-and-path-override-spoofing) | Forwarding-header and path-override spoofing | `WPShieldTransformer` header sweep | Shipped |
-| [T9](#t9--unbounded-or-oversized-request-bodies) | Unbounded or oversized request bodies | 6 MiB default, 64 MiB ceiling, HTTP 413, bounded multipart structure | Partial — concurrency is unbounded, M3 |
-| [T10](#t10--automated-probing-and-repeated-abusive-requests) | Automated probing and repeated abusive requests | None | **Unmitigated — M3** |
-| [T11](#t11--secret-disclosure-through-logs-and-evidence) | Secret disclosure through logs and evidence | Logging discipline in code review | Partial — automated tests are M4 |
+| [T9](#t9--unbounded-or-oversized-request-bodies) | Unbounded or oversized request bodies | 6 MiB default, 64 MiB ceiling, HTTP 413, bounded multipart structure | Bounded retained buffers; shared capacity and other resources remain |
+| [T10](#t10--automated-probing-and-repeated-abusive-requests) | Automated probing and repeated abusive requests | Configured per-client/site/rule fixed windows | Partial — configured paths only |
+| [T11](#t11--secret-disclosure-through-logs-and-evidence) | Secret disclosure through logs and evidence | Logging discipline in code review | Automated redaction tests; normalized request paths |
 | [T12](#t12--the-gateway-as-new-attack-surface-and-single-point-of-failure) | The gateway as new attack surface and single point of failure | Fail-closed startup validation, loopback-only, bypass by rule toggle | Partial — M7 |
 | [T13](#t13--supply-chain-dependencies-and-community-rule-packages) | Supply chain: dependencies and community rule packages | Pinned versions, CodeQL, SHA-pinned actions | Partial — rule packages are M8 |
 
@@ -267,7 +267,7 @@ after the GIF trailer, after PNG `IEND`, after JPEG `EOI`, or beyond a BMP or RI
 `Content-Type` from the same extension, and curl, wp-cli, mobile applications and the plupload
 fallback all legitimately send `application/octet-stream`, so a rule that fired on that disagreement
 would fire on every non-browser client. Content matching also stays bounded to a sample by design —
-WPShield never holds a complete upload for inspection — so a marker placed past the sample window is
+rules receive only a leading sample, even though forwarding retains the bounded body — so a marker placed past the sample window is
 not seen, and `PHP-CONTENT-002` proves only the minimal-carrier polyglot, because on a real
 photograph the JPEG `EOI` sits far past that window. Archive contents are never opened.
 `FILE-TYPE-001` is also silent on bytes it does not recognize, which is what keeps it quiet on the
@@ -309,21 +309,19 @@ own values, so the sweep can never remove what it just produced. Removed: `Forwa
 too; the client-address family `X-Real-IP`, `X-Client-IP`, `X-Cluster-Client-IP`, `True-Client-IP`,
 `CF-Connecting-IP`, `Fastly-Client-IP`, `X-Azure-ClientIP`, `X-Azure-SocketIP`; the path-override
 headers `X-Original-URL`, `X-Rewrite-URL`, `X-Original-Host`; and WPShield's own
-`X-WPShield-Request-ID`. Only then does it set `X-Forwarded-For` from the real connection,
+`X-WPShield-Request-ID`. Only then does it set `X-Forwarded-For` from the resolved client,
 `X-Forwarded-Proto`, `X-Forwarded-Host` and a fresh request ID.
 
 Stripping the inbound `X-WPShield-Request-ID` is **load-bearing, not cosmetic**: ADR 0001's
 loop-prevention rewrite rule skips requests that already carry it. If a client could set it, a client
 could skip inspection entirely.
 
-**Unmitigated, and it changes at M7.** Today the gateway is the only hop, so discarding everything is
-correct. Under ADR 0001 the real client address arrives in `X-Forwarded-For` from a local proxy, and
-discarding it would make every visitor appear to be `127.0.0.1` — which would make T10's per-IP rate
-limiting throttle all visitors as one and make logged evidence useless. The invariant becomes *trust
-forwarding headers only from a configured trusted proxy, never otherwise*. `Gateway:TrustedProxies`
-does not exist yet; it must default to empty, so an incomplete configuration keeps today's
-strip-everything behaviour, and the path-override and client-address families stay unconditionally
-stripped from every peer. **This design must land before M3.**
+**Trusted proxies.** `Gateway:TrustedProxies` exists and defaults to an empty list. Only exact peer
+IP addresses are accepted. A trusted peer can supply `X-Forwarded-For` and `X-Forwarded-Proto`;
+the rightmost address wins without skipping trusted entries, and the scheme resolves to canonical
+`http` or `https`. All other forwarding and path-override headers remain stripped from every peer.
+The client is resolved once and reused for forwarding, logs and rate limits. Multi-hop trust chains
+are unsupported; the operator must configure only the intended single proxy hop.
 
 ### T9 — Unbounded or oversized request bodies
 
@@ -355,28 +353,28 @@ than a silent forward: `Monitor` forwards the body intact and logs a warning, `B
 `ReadTimeoutSeconds` is answered with **HTTP 408** in every mode, `Monitor` included, because
 forwarding a partial body would hand WordPress less than its declared `Content-Length`.
 
-**Unmitigated, and this is a new exposure rather than an old one.** Inspecting a multipart body means
-holding it. Before M2 the gateway streamed everything and held no per-request body memory; a
-multipart request now pins roughly 6.15 MiB at the defaults for up to `ReadTimeoutSeconds`, and
-**nothing bounds how many may be held at once**. `KestrelServerLimits.MaxConcurrentConnections`
-defaults to unlimited and the gateway sets only `MaxRequestBodySize`. `Gateway:MaximumRequestBytes`
-divides the worst case directly and `Gateway:Multipart:ReadTimeoutSeconds` shortens the hold, but an
-explicit bound on concurrent buffered inspections is M3 work. Non-multipart requests still stream and
-still hold nothing, and slow-read exhaustion on those is bounded only by the forwarder activity
-timeout.
+**Concurrent buffer control.** `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10,
+accepts 1 through 50, and holds each slot until its buffer is disposed, including during forwarding.
+At capacity, Monitor forwards without upload inspection and logs a warning; Block returns HTTP 429
+`multipart_concurrent_limit_exceeded`. No queue is created. Read cancellation and failure release
+both buffer and slot. `ReadTimeoutSeconds` covers reading and inspection; forwarding has its own
+activity timeout. This is not a bound on total process memory or all connections. Capacity is shared
+across sites, so one site's uploads can consume another site's inspection capacity.
 
 ### T10 — Automated probing and repeated abusive requests
 
 **The attack.** Credential stuffing against `wp-login.php`, amplification through `xmlrpc.php`,
 enumeration of plugin paths, repeated upload attempts to find a rule's edge.
 
-**Control today: none.** This is stated plainly because the absence is the finding.
+**Control.** `Gateway:RateLimit` applies fixed-window budgets to configured paths, partitioned by
+resolved client address, site and rule. Windows-normalized aliases and the extra percent-decode view
+share the same budget. Monitor records excess requests and forwards; Block returns HTTP 429
+`rate_limited` with `Retry-After`. Disabled sites skip this control. Paths not named by a rule have
+no budget. Rules match whole normalized paths, not arbitrary prefixes.
 
-**Unmitigated — M3.** Per-IP and per-site burst control, separate policies for login, XML-RPC,
-uploads, REST and administrative AJAX, and expiring temporary blocks are all M3. M3 cannot start
-before T8's trusted-proxy design lands, because per-IP limiting is meaningless when every request
-appears to come from the proxy. WPShield will not provide volumetric DDoS mitigation at any
-milestone.
+**Remaining limits.** This does not provide a site-wide total budget, arbitrary-path coverage or
+volumetric DDoS mitigation. Correct client attribution depends on the trusted-proxy configuration.
+A shared client address can cause legitimate visitors to share a budget.
 
 ### T11 — Secret disclosure through logs and evidence
 
@@ -385,17 +383,17 @@ session cookies, nonces, tokens, authorization headers and full query strings �
 reset and API keys — into a file that is backed up, shipped to a log aggregator, and pasted into a
 support ticket.
 
-**Control.** Request logging records the request ID, site ID, method and `Path.Value` — the path
+**Control.** Request logging records the request ID, site ID, method and the normalized path
 without its query string — and never headers or bodies. Rule evidence records normalized values and
 anomaly kinds, never the raw attacker-supplied name. Error responses carry only an error code and the
 request ID. [SECURITY.md](SECURITY.md) treats a secret appearing in a log as a vulnerability rather
 than a rough edge.
 
-**Unmitigated.** The discipline is enforced by code review, not by tests: automated redaction tests
-are M4, along with structured JSON Lines output, rotation, retention and restricted directory
-permissions. A captured gateway log is a sensitive artifact and must not be committed. If WPShield
-is placed behind IIS at M7, IIS's own logs are outside WPShield's control and record the full query
-string by default.
+**Validation and residual risk.** Automated redaction tests cover sensitive headers, query strings,
+upload content and normalized request paths. JSON Lines rotation and retention are implemented;
+restricted directory permissions are part of installation. Tests do not prove the absence of every
+possible secret. Captured logs remain sensitive and must not be committed. IIS logs are outside
+WPShield's control and may record full query strings.
 
 ### T12 — The gateway as new attack surface and single point of failure
 
@@ -465,6 +463,33 @@ answer before it is opened, not after. Transitive package versions are not centr
 transitive bump can arrive unreviewed. Releases are not code-signed; that is an M6 item. Dependabot
 *security* alerts are a repository setting that is not yet enabled.
 
+### T14 — The network filter as a lever against the host
+
+**The attack.** `wpshield network-filter` (M2.7, [ADR 0006](docs/en/adr/0006-network-layer-blocking.md),
+Proposed) can drop packets for every site on the host, so it is worth more to an attacker than any
+single rule. Four ways to turn it against its operator: get a legitimate address blocked by forging
+the evidence; get the administrator blocked out of the session that would undo it; stall the
+process so traffic stops; or plant a DLL that an elevated process will load.
+
+**Control.**
+
+| Threat | Control |
+| --- | --- |
+| Forged evidence blocks a third party | A SYN's source can be forged, so `WP-NET-002` and `WP-NET-003` block only with `--syn-rules-may-block`. Security-log findings may block: a logon fails after a completed handshake. |
+| The administrator is locked out | Allow-list applied at insertion and again at filter build; Block refuses with an empty allow-list or an unlisted address on the RDP port read from the registry, and every new dynamic block is refused for an address holding an RDP connection at that moment. Monitor is the default and never opens a DROP handle. |
+| A stalled or crashed process stops traffic | Normal traffic never passes through the process: blocks are kernel DROP filters, observation is on copies. A block is a handle, so process exit lifts every block. |
+| A planted `WinDivert.dll` runs elevated | Every import resolves the DLL from the assembly directory only. WinDivert is not bundled; the operator copies the official release. |
+| A filter means something other than intended | Filters are written from parsed addresses only; a self-test against the real library's compile and evaluate helpers gates Block mode. |
+| A forged-source flood exhausts memory | Per-source state is capped with least-recently-seen eviction; findings are logged once per source and threshold. |
+
+**Unmitigated.** A process that hangs without exiting keeps its current blocks until it is killed,
+and cannot expire dynamic ones meanwhile; those blocks can only cover non-allow-listed addresses.
+WinDivert's own kernel code is on the packet path for the traffic its filters match, and WPShield
+trusts that third-party driver. Its EV signature was issued to a company other than WinDivert's
+author, so the operator checks the files by SHA-256 against the network filter design rather than by
+signer. The self-test has passed against the real library; the filter has not yet run against a real
+driver.
+
 ---
 
 ## Required safeguards
@@ -477,7 +502,7 @@ The safeguards this project holds itself to, and where each one actually stands.
 | Unknown hosts fail closed | **Held.** HTTP 421, no default backend. |
 | Request bodies are bounded | **Held.** 6 MiB default, 64 MiB ceiling, declared and streamed. |
 | Uploads are never written to disk, never buffered unbounded, and buffered in memory only for `multipart/form-data` | **Held.** `PooledRequestBuffer` references `ArrayPool<byte>` and no file API at all, so disk-freedom is structural rather than a threshold value; `RequestBodyLimitStream` bounds the drain before a byte is buffered; every non-multipart request still streams. Two tests hold it — one runs bodies of every shape with the framework temporary directories redirected and requires them to stay empty, the other scans the gateway assembly for any referenced type that can write a file. |
-| Logs redact authorization, cookies, tokens and submitted secrets | **Partial.** Enforced by code review and by what the code chooses to log; automated redaction tests are M4. |
+| Logs redact authorization, cookies, tokens and submitted secrets | **Tested.** Automated checks cover sensitive values and normalized request paths; they do not prove that every possible secret is absent. |
 | Rule packages are versioned and reviewed | **M8.** No external rule loading exists yet. |
 | Production deployments have a documented bypass and rollback procedure | **Documented in ADR 0001, not yet exercised.** Timing the bypass is an M7 validation item. |
 | Real hostnames, internal ports and deployment topology stay out of the repository | **Held by convention and by a startup check.** Configuration uses RFC 2606 placeholders; real values live in the gitignored `appsettings.Local.json`. |
@@ -496,12 +521,10 @@ uninspected; form field parts inside a multipart body are counted and never samp
 archive contents are never opened, which leaves plugin and theme installation — a genuine WordPress
 upload path — undetected; and only the leading `SampleBytes` of each file are read.
 
-The second is **memory**, and it is a regression rather than a limit. Buffering is what makes Block
-mode possible at all, and it means a multipart request now pins roughly 6.15 MiB at the defaults for
-up to the read timeout, with nothing bounding how many may be held at once — see T9. The
-loopback-only restriction has therefore changed character: it used to be a statement about project
-maturity, and it is now also the only thing bounding this memory. An explicit bound is M3 work, and
-it is a prerequisite for M7 rather than a nicety.
+The second is **memory and capacity**. Retained multipart buffers are bounded through forwarding
+by the concurrency limit described in T9. At capacity Monitor deliberately forwards without upload
+inspection, whereas Block refuses. Pools, connections and backend resources remain outside this
+buffer-count guarantee; shared capacity can still affect other sites.
 
 Underneath both sits the deployment position itself. Through M1 and M2 the gateway listens only on loopback
 and does not replace the public IIS bindings on ports 80 and 443, which is enforced at startup rather
