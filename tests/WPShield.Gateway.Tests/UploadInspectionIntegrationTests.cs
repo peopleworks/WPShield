@@ -103,7 +103,7 @@ public sealed class UploadInspectionIntegrationTests
         // Observe, not Block: the engine owns the Monitor downgrade and the gateway reads its
         // decision rather than re-deriving one from the thresholds.
         Assert.Contains("Action=Observe", harness.LogText, StringComparison.Ordinal);
-        Assert.Contains("Disposition=forwarded", harness.LogText, StringComparison.Ordinal);
+        Assert.Contains("Decision=forward", harness.LogText, StringComparison.Ordinal);
 
         // The one field that answers "what happens if I turn Block on here?" from logs an operator
         // already has. Running Monitor first is pointless without it.
@@ -247,7 +247,7 @@ public sealed class UploadInspectionIntegrationTests
         Assert.Empty(harness.SiteTwo.Requests);
 
         Assert.Contains("Action=Block", harness.LogText, StringComparison.Ordinal);
-        Assert.Contains("Disposition=blocked", harness.LogText, StringComparison.Ordinal);
+        Assert.Contains("Decision=reject", harness.LogText, StringComparison.Ordinal);
 
         // Warning, not Error. A blocked upload is WPShield working; an operator alerting on Error
         // must not be paged because somebody tried to upload web.config.
@@ -492,7 +492,7 @@ public sealed class UploadInspectionIntegrationTests
             record => record.Level == LogLevel.Warning &&
                       record.Text.Contains("Multipart body could not be fully inspected.", StringComparison.Ordinal) &&
                       record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
-                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+                      record.Text.Contains("ForwardPermitted=True", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -544,7 +544,7 @@ public sealed class UploadInspectionIntegrationTests
             harness.Records,
             record => record.Level == LogLevel.Warning &&
                       record.Text.Contains("Reason=limit_exceeded", StringComparison.Ordinal) &&
-                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+                      record.Text.Contains("ForwardPermitted=True", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -724,7 +724,7 @@ public sealed class UploadInspectionIntegrationTests
                       record.Text.Contains(
                           "Multipart body could not be fully inspected.", StringComparison.Ordinal) &&
                       record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
-                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+                      record.Text.Contains("ForwardPermitted=True", StringComparison.Ordinal));
         Assert.NotNull(caseName);
     }
 
@@ -793,7 +793,7 @@ public sealed class UploadInspectionIntegrationTests
             harness.Records,
             record => record.Level == LogLevel.Warning &&
                       record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
-                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+                      record.Text.Contains("ForwardPermitted=True", StringComparison.Ordinal));
     }
 
     /// <summary>
@@ -883,7 +883,7 @@ public sealed class UploadInspectionIntegrationTests
             harness.Records,
             record => record.Level == LogLevel.Warning &&
                       record.Text.Contains("Reason=malformed", StringComparison.Ordinal) &&
-                      record.Text.Contains("Forwarded=True", StringComparison.Ordinal));
+                      record.Text.Contains("ForwardPermitted=True", StringComparison.Ordinal));
     }
 
     #endregion

@@ -127,9 +127,11 @@ internal sealed class UploadInspectionService(
         ArgumentNullException.ThrowIfNull(gatewayOptions);
         ArgumentNullException.ThrowIfNull(multipartOptions);
         ArgumentNullException.ThrowIfNull(logger);
+        var evidence = context.Features.Get<RequestEvidence>();
 
         if (!multipartOptions.Enabled)
         {
+            evidence?.Upload.Skip("inspection_disabled");
             return UploadInspectionDecision.NotInspected;
         }
 
@@ -137,6 +139,7 @@ internal sealed class UploadInspectionService(
         // contract; this one is what avoids the memory cost of buffering a body nobody will look at.
         if (site.Mode == ProtectionMode.Disabled)
         {
+            evidence?.Upload.Skip("disabled");
             return UploadInspectionDecision.NotInspected;
         }
 
@@ -146,6 +149,7 @@ internal sealed class UploadInspectionService(
         // knowable until it has been drained; that case is handled after the drain.
         if (context.Request.ContentLength == 0)
         {
+            evidence?.Upload.Skip("empty_body");
             return UploadInspectionDecision.NotInspected;
         }
 
@@ -165,6 +169,7 @@ internal sealed class UploadInspectionService(
         // a parser that rejects a value it dislikes must never be allowed to answer that one.
         if (!hasBoundary && !MultipartInspectionReader.DeclaresMultipartFormData(context.Request))
         {
+            evidence?.Upload.Skip("non_multipart");
             return UploadInspectionDecision.NotInspected;
         }
 
@@ -189,6 +194,7 @@ internal sealed class UploadInspectionService(
             // burst of simultaneous uploads could exhaust memory one buffered body at a time.
             if (!_limiter.TryEnter())
             {
+                evidence?.Upload.Skip("capacity_exhausted");
                 logger.LogWarning(
                     "Concurrent multipart inspection limit reached. RequestId={RequestId} SiteId={SiteId} " +
                     "MaxConcurrentInspections={MaxConcurrentInspections} Mode={Mode} Action={Action}",
@@ -196,7 +202,7 @@ internal sealed class UploadInspectionService(
                     site.Id,
                     _limiter.MaxConcurrentInspections,
                     site.Mode,
-                    site.Mode == ProtectionMode.Block ? "Refused" : "ForwardedUninspected");
+                    site.Mode == ProtectionMode.Block ? "Refuse" : "ForwardUninspected");
 
                 if (site.Mode == ProtectionMode.Block)
                 {
@@ -213,6 +219,7 @@ internal sealed class UploadInspectionService(
             }
 
             enteredConcurrentLimiter = true;
+            evidence?.Upload.Start();
 
             buffer = new PooledRequestBuffer(gatewayOptions.MaximumRequestBytes, _limiter);
             // The slot follows the memory, including while the caller forwards the body.
@@ -227,6 +234,7 @@ internal sealed class UploadInspectionService(
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                evidence?.Upload.Partial("read_timeout");
                 logger.LogWarning(
                     "Multipart body did not arrive within the read deadline. RequestId={RequestId} SiteId={SiteId} BufferedBytes={BufferedBytes} TimeoutSeconds={TimeoutSeconds}",
                     context.TraceIdentifier,
@@ -248,6 +256,7 @@ internal sealed class UploadInspectionService(
             // on as the empty body it is.
             if (buffer.Length == 0)
             {
+                evidence?.Upload.Skip("empty_body");
                 return UploadInspectionDecision.NotInspected;
             }
 
@@ -287,7 +296,24 @@ internal sealed class UploadInspectionService(
                 outcome = new MultipartInspectionOutcome([], 0, MultipartReadStatus.Malformed);
             }
 
+            if (evidence is not null)
+            {
+                evidence.FilesRead = outcome.Files.Count;
+            }
             var assessment = await InspectFilesAsync(context, site, outcome, logger, cancellationToken);
+            if (outcome.Status == MultipartReadStatus.Complete)
+            {
+                evidence?.Upload.Complete("sampled_scope");
+            }
+            else
+            {
+                evidence?.Upload.Partial(outcome.Status switch
+                {
+                    MultipartReadStatus.Malformed => "malformed",
+                    MultipartReadStatus.TimedOut => "parse_timeout",
+                    _ => "limit_exceeded"
+                });
+            }
             var decision = Decide(context, site, outcome, assessment, buffer, logger);
 
             if (decision.Body is not null)
@@ -299,6 +325,16 @@ internal sealed class UploadInspectionService(
             }
 
             return decision;
+        }
+        catch (RequestBodyTooLargeException)
+        {
+            evidence?.Upload.Partial("request_too_large");
+            throw;
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            evidence?.Upload.Partial("request_cancelled");
+            throw;
         }
         finally
         {
@@ -362,6 +398,12 @@ internal sealed class UploadInspectionService(
                 upload.Sample);
 
             var result = await engine.InspectAsync(inspectionContext, site, cancellationToken);
+            if (context.Features.Get<RequestEvidence>() is { } evidence)
+            {
+                evidence.Upload.Record(result);
+                evidence.FilesInspected++;
+                evidence.SampleBytesInspected += upload.Sample.Length;
+            }
 
             if (result.Score > maximumScore)
             {
@@ -504,7 +546,7 @@ internal sealed class UploadInspectionService(
         // operator alerting on Error should not be paged because someone tried to upload web.config.
         if (assessment.Action == InspectionAction.Block)
         {
-            LogSummary(context, site, outcome, assessment, buffer, logger, LogLevel.Warning, "blocked");
+            LogSummary(context, site, outcome, assessment, buffer, logger, LogLevel.Warning, "reject");
             return UploadInspectionDecision.Rejected(
                 new GatewayRejection(StatusCodes.Status403Forbidden, "upload_blocked", null, ruleIds));
         }
@@ -518,7 +560,7 @@ internal sealed class UploadInspectionService(
             };
 
             logger.LogWarning(
-                "Multipart body could not be fully inspected. RequestId={RequestId} SiteId={SiteId} Reason={Reason} Files={FileCount} Fields={FieldCount} BufferedBytes={BufferedBytes} RuleId={RuleId} Forwarded={Forwarded}",
+                "Multipart body could not be fully inspected. RequestId={RequestId} SiteId={SiteId} Reason={Reason} Files={FileCount} Fields={FieldCount} BufferedBytes={BufferedBytes} RuleId={RuleId} ForwardPermitted={ForwardPermitted}",
                 context.TraceIdentifier,
                 site.Id,
                 reason,
@@ -551,7 +593,7 @@ internal sealed class UploadInspectionService(
             buffer,
             logger,
             assessment.Action == InspectionAction.Allow ? LogLevel.Information : LogLevel.Warning,
-            "forwarded");
+            "forward");
 
         return UploadInspectionDecision.Inspected(buffer, assessment.Action, assessment.Score, ruleIds);
     }
@@ -573,7 +615,7 @@ internal sealed class UploadInspectionService(
         // control; the line between the two is exactly one careless refactor wide.
         logger.Log(
             level,
-            "Upload inspection complete. RequestId={RequestId} SiteId={SiteId} Method={Method} Path={Path} Files={FileCount} Fields={FieldCount} Status={Status} Score={Score} Action={Action} WouldBlock={WouldBlock} RuleIds={RuleIds} BufferedBytes={BufferedBytes} Disposition={Disposition}",
+            "Upload inspection complete. RequestId={RequestId} SiteId={SiteId} Method={Method} Path={Path} Files={FileCount} Fields={FieldCount} Status={Status} Score={Score} Action={Action} WouldBlock={WouldBlock} RuleIds={RuleIds} BufferedBytes={BufferedBytes} Decision={Decision}",
             context.TraceIdentifier,
             site.Id,
             context.Request.Method,

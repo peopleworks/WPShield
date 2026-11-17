@@ -51,12 +51,15 @@ internal sealed class RequestPathInspectionService(RequestPathEngine engine)
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(site);
         ArgumentNullException.ThrowIfNull(logger);
+        var evidence = context.Features.Get<RequestEvidence>()?.Path;
 
         if (site.Mode == ProtectionMode.Disabled)
         {
+            evidence?.Skip("disabled");
             return null;
         }
 
+        evidence?.Start();
         // Path only, never Path + QueryString, for the same reason the forwarding log line takes
         // only the path: satisfying "never log a full query string" at the source is more durable
         // than remembering to redact one later.
@@ -67,6 +70,8 @@ internal sealed class RequestPathInspectionService(RequestPathEngine engine)
             context.Request.Path.Value ?? "/");
 
         var result = await engine.InspectAsync(inspectionContext, site, cancellationToken);
+        evidence?.Record(result);
+        evidence?.Complete();
 
         if (result.Findings.Count == 0)
         {

@@ -27,6 +27,7 @@ the same set.
 | Triage tool · Herramienta de triage | [Triage tool](en/triage-tool.md) | [Herramienta de triage](es/herramienta-de-triage.md) |
 | Preflight · Verificación previa | [Preflight](en/preflight.md) | [Verificación previa](es/verificacion-previa.md) |
 | Deployment · Despliegue | [Deployment](en/deployment.md) | [Despliegue](es/despliegue.md) |
+| Request evidence · Evidencia de solicitudes | [Traceability and completeness](en/request-evidence.md) | [Trazabilidad y completitud](es/evidencia-solicitudes.md) |
 | TelltaleDNS evaluation (proposal) · Evaluación (propuesta) | [Evaluation](en/telltaledns-evaluation.md) | [Evaluación](es/evaluacion-telltaledns.md) |
 | Reader-1 evaluation plan (proposal) · Plan de evaluación (propuesta) | [Evaluation plan](en/reader-1-evaluation-plan.md) | [Plan de evaluación](es/plan-evaluacion-reader-1.md) |
 | ADR 0001 — production traffic path · Ruta de tráfico en producción | [Production traffic path](en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](es/adr/0001-ruta-de-trafico-en-produccion.md) |
