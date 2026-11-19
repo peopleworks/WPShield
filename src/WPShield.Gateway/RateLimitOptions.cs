@@ -24,6 +24,8 @@ namespace WPShield.Gateway;
 /// </remarks>
 public sealed class RateLimitOptions
 {
+    private readonly RateLimitRuleOptions[] _rules = [];
+
     /// <summary>The most rules one gateway will carry, so a configuration mistake is bounded.</summary>
     public const int AbsoluteMaximumRules = 32;
 
@@ -48,7 +50,13 @@ public sealed class RateLimitOptions
     /// configuration set, which produced two identical listeners and a gateway that could not start
     /// at all. A non-empty default here would duplicate every shipped rule instead.
     /// </remarks>
-    public RateLimitRuleOptions[] Rules { get; init; } = [];
+    public RateLimitRuleOptions[] Rules
+    {
+        get => [.. _rules];
+        init => _rules = [.. value];
+    }
+
+    internal ReadOnlySpan<RateLimitRuleOptions> ActiveRules => _rules;
 }
 
 /// <summary>
@@ -56,6 +64,8 @@ public sealed class RateLimitOptions
 /// </summary>
 public sealed class RateLimitRuleOptions
 {
+    private readonly string[] _paths = [];
+
     /// <summary>
     /// The identifier that appears in the log. Not <c>required</c> on purpose: the configuration
     /// binder's message for a missing required property names the type, while
@@ -73,7 +83,13 @@ public sealed class RateLimitRuleOptions
     /// Matching more than the operator wrote is how a limiter starts refusing traffic nobody asked
     /// it to look at.
     /// </remarks>
-    public string[] Paths { get; init; } = [];
+    public string[] Paths
+    {
+        get => [.. _paths];
+        init => _paths = [.. value];
+    }
+
+    internal ReadOnlySpan<string> ActivePaths => _paths;
 
     /// <summary>How many requests one client may make to those paths inside the window.</summary>
     public int PermitLimit { get; init; } = 10;

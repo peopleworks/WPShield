@@ -10,6 +10,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using WPShield.Abstractions;
 using WPShield.Core;
 using WPShield.Logging;
@@ -267,6 +268,93 @@ public sealed class RequestEvidenceTests
     }
 
     [Fact]
+    public async Task ReloadDuringRequest_KeepsValidatedOptionsAndRevisionForEveryReader()
+    {
+        var backend = new Backend(holdFirst: true);
+        await using var harness = await Harness.StartAsync("Monitor", backend, new()
+        {
+            ["Gateway:Multipart:SampleBytes"] = "512",
+            ["Gateway:TrustedProxies:0"] = "192.0.2.1",
+            ["Gateway:RateLimit:Enabled"] = "true",
+            ["Gateway:RateLimit:Rules:0:Id"] = "synthetic-budget",
+            ["Gateway:RateLimit:Rules:0:Paths:0"] = "/budget",
+            ["Gateway:RateLimit:Rules:0:PermitLimit"] = "1"
+        });
+        var app = harness.Application;
+        var monitor = app.Services.GetRequiredService<IOptionsMonitor<GatewayOptions>>();
+        var active = monitor.CurrentValue;
+        var pending = harness.Client.GetAsync("/budget");
+        try
+        {
+            await backend.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            app.Configuration["Gateway:Multipart:SampleBytes"] = "invalid";
+            app.Configuration["Sites:0:Mode"] = "Block";
+            app.Configuration["Sites:0:Hosts:0"] = "candidate.example";
+            ((IConfigurationRoot)app.Configuration).Reload();
+
+            using var scope = app.Services.CreateScope();
+            Assert.Same(active, scope.ServiceProvider.GetRequiredService<IOptionsSnapshot<GatewayOptions>>().Value);
+            Assert.Same(active, app.Services.GetRequiredService<IOptions<GatewayOptions>>().Value);
+            Assert.Same(active, monitor.CurrentValue);
+            Assert.Equal(512, active.Multipart.SampleBytes);
+            active.RateLimit.Rules[0].Paths[0] = "/candidate";
+            active.RateLimit.Rules[0] = new RateLimitRuleOptions();
+            active.TrustedProxies[0] = "192.0.2.2";
+            active.Urls[0] = "invalid";
+            Assert.Equal("192.0.2.1", Assert.Single(active.TrustedProxies));
+            Assert.Equal("http://127.0.0.1:0", Assert.Single(active.Urls));
+            var sites = app.Services.GetRequiredService<IReadOnlyList<SiteOptions>>();
+            Assert.Throws<NotSupportedException>(() => ((IList<SiteOptions>)sites)[0] = sites[0]);
+            sites[0].Hosts[0] = "candidate.example";
+            Assert.Equal("one.example", Assert.Single(sites[0].Hosts));
+
+            using var later = await harness.Client.GetAsync("/budget").WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.Equal(HttpStatusCode.OK, later.StatusCode);
+            var decision = await harness.NextAsync();
+            Assert.Equal("Monitor", decision["Mode"]);
+            Assert.Equal("forwarded", decision["Disposition"]);
+            Assert.Equal("synthetic-budget", decision["RateLimitRuleId"]);
+            Assert.Equal(512, decision["SampleLimitBytes"]);
+            backend.Release.TrySetResult();
+            using var original = await pending;
+            Assert.Equal(HttpStatusCode.OK, original.StatusCode);
+            Assert.Equal(decision["ConfigurationRevision"], (await harness.NextAsync())["ConfigurationRevision"]);
+        }
+        finally
+        {
+            backend.Release.TrySetResult();
+        }
+    }
+
+    [Fact]
+    public async Task Restart_RefusesInvalidSettings_ThenActivatesValidChangesWithANewRevision()
+    {
+        object? oldRevision;
+        await using (var first = await Harness.StartAsync("Monitor"))
+        {
+            using var request = Upload();
+            using var response = await first.Client.SendAsync(request);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            oldRevision = (await first.NextAsync())["ConfigurationRevision"];
+        }
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Harness.StartAsync("Block", settings: new()
+        {
+            ["Gateway:Multipart:SampleBytes"] = "0"
+        }));
+        await using var restarted = await Harness.StartAsync("Block", settings: new()
+        {
+            ["Gateway:Multipart:SampleBytes"] = "512"
+        });
+        using var second = Upload();
+        using var refused = await restarted.Client.SendAsync(second);
+        var decision = await restarted.NextAsync();
+        Assert.Equal(HttpStatusCode.Forbidden, refused.StatusCode);
+        Assert.Equal("Block", decision["Mode"]);
+        Assert.Equal(512, decision["SampleLimitBytes"]);
+        Assert.NotEqual(oldRevision, decision["ConfigurationRevision"]);
+    }
+
+    [Fact]
     public async Task ReadTimeout_RecordsPartialInspectionAndNoForward()
     {
         await using var harness = await Harness.StartAsync("Monitor", settings: new()
@@ -451,6 +539,7 @@ public sealed class RequestEvidenceTests
 
     private sealed class Harness(WebApplication app, EvidenceLogger logs) : IAsyncDisposable
     {
+        public WebApplication Application => app;
         public HttpClient Client { get; } = CreateClient(app);
         public EvidenceLogger Logs => logs;
         public EvidenceMetrics Metrics => app.Services.GetRequiredService<EvidenceMetrics>();

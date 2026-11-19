@@ -429,8 +429,15 @@ Gateway and site options are validated once at startup and captured for the life
 Editing `appsettings.json` on a running gateway has **no effect** and produces no warning. Restart
 the gateway to apply a change, and read the resolved site table to confirm it took effect.
 
-This is deliberate. A partially applied security configuration is more dangerous than one that
-requires a restart.
+The startup event and each final `request_completed` event carry the same `ConfigurationRevision`
+for one activation. Compare those values to identify which activation handled a request. Every
+successful restart gets a new identifier, even when the settings are identical. Invalid settings
+prevent startup.
+
+The default .NET options readers return the validated serving settings, including readers first
+opened after an edit. Reports and candidate previews run in the CLI against local evidence. The
+gateway can continue serving while that CLI is stopped or a candidate is rejected. Saving a policy
+for a future restart does not activate it in the running gateway.
 
 ## What must never be committed
 

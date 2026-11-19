@@ -446,8 +446,16 @@ toda la vida del proceso. Editar `appsettings.json` con el gateway en ejecución
 no genera ninguna advertencia. Reinicie el gateway para aplicar un cambio y lea la tabla de sitios
 resuelta para confirmarlo.
 
-Es una decisión deliberada. Una configuración de seguridad aplicada a medias es más peligrosa que
-una que exige un reinicio.
+El evento de arranque y cada evento final `request_completed` llevan la misma `ConfigurationRevision`
+durante una activación. Compare esos valores para saber qué activación atendió una solicitud. Cada
+reinicio correcto recibe un identificador nuevo, incluso si los ajustes son idénticos. Una
+configuración inválida impide el arranque.
+
+Los lectores de opciones predeterminadas de .NET devuelven los ajustes validados que usa el gateway,
+incluso al consultarlos por primera vez después de una edición. Los informes y las vistas previas
+se ejecutan en la CLI sobre evidencia local. El gateway puede seguir atendiendo solicitudes mientras
+la CLI está detenida o rechaza un candidato. Guardar una política para el próximo reinicio no la
+activa en el proceso actual.
 
 ## Lo que nunca debe commitearse
 

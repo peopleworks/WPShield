@@ -116,6 +116,11 @@ garantía de privacidad de una exportación.
 
 ### 4. Mantener el análisis independiente de la configuración en servicio — M4/M5
 
+Implementado para el gateway y las herramientas offline existentes. Las pruebas cubren una recarga
+durante el reenvío, la consulta de opciones después de editar y la activación al reiniciar. Otra
+prueba comprueba que el gateway se distribuya sin depender de la CLI ni del generador de PDF.
+[Configuración del operador](configuracion-operador.md#la-configuración-no-se-recarga-en-caliente)
+
 **Mecanismo inspeccionado en el proyecto de origen.** [pipeline.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale/src/pipeline.rs)
 utiliza `ArcSwap` para el estado compartido en servicio;
 [snapshot.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-filter/src/snapshot.rs) contiene manifiestos con versión y huellas de contenido. La

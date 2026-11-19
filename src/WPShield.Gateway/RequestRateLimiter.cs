@@ -39,7 +39,7 @@ internal sealed class RequestRateLimiter : IDisposable, IAsyncDisposable
         ArgumentNullException.ThrowIfNull(options);
         _options = options;
 
-        if (!options.Enabled || options.Rules.Length == 0)
+        if (!options.Enabled || options.ActiveRules.IsEmpty)
         {
             return;
         }
@@ -98,9 +98,9 @@ internal sealed class RequestRateLimiter : IDisposable, IAsyncDisposable
         // Otherwise equivalent spellings can reach the same login endpoint without spending permits.
         foreach (var view in NormalizedRequestPath.Create(path).Views)
         {
-            foreach (var rule in _options.Rules)
+            foreach (var rule in _options.ActiveRules)
             {
-                foreach (var configured in rule.Paths)
+                foreach (var configured in rule.ActivePaths)
                 {
                     if (string.Equals(view.Value, NormalizedRequestPath.Create(configured).Literal.Value,
                         StringComparison.Ordinal))

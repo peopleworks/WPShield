@@ -102,6 +102,11 @@ export's privacy promise.
 
 ### 4. Keep analysis independent of serving configuration — M4/M5
 
+Implemented for the gateway and existing offline tools. The regression tests exercise a configuration
+reload during forwarding, option readers opened after an edit, and activation on restart. The
+gateway runtime dependency test checks that the CLI and PDF renderer stay outside its dependency graph.
+[Operator configuration](operator-configuration.md#configuration-is-not-hot-reloaded)
+
 **Inspected upstream mechanism.** [pipeline.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale/src/pipeline.rs)
 uses `ArcSwap` for shared serving state; [snapshot.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-filter/src/snapshot.rs)
 contains versioned manifests and content hashes. The

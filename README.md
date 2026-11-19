@@ -178,7 +178,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,512 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,516 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -416,7 +416,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,512 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 266 for the CLI, 464 for the gateway, 23 for the network sensor, 14 for the network filter, 8 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,516 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 266 for the CLI, 468 for the gateway, 23 for the network sensor, 14 for the network filter, 8 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -515,7 +515,7 @@ The gateway reads `Gateway` and `Sites` sections from `src/WPShield.Gateway/apps
 ```
 
 > [!IMPORTANT]
-> Configuration is **not** hot-reloaded. Gateway and site options are validated once at startup and captured for the lifetime of the process; editing the file on a running gateway has no effect. The gateway prints its resolved site table on every start — read it to confirm which hosts are actually active. See [operator configuration](docs/en/operator-configuration.md) for the local overlay, the JSON array-merge caveat, and what must never be committed.
+> Configuration is **not** hot-reloaded. Gateway and site options are validated once at startup and captured for the lifetime of the process; editing the file on a running gateway has no effect. Compare the startup log’s `ConfigurationRevision` with the final request event to identify the active policy. The gateway uses the same validated settings throughout that activation, including while an offline preview runs. The resolved site table at startup lists the active hosts. See [operator configuration](docs/en/operator-configuration.md) for the local overlay, the JSON array-merge caveat, and what must never be committed.
 
 | Setting | Purpose |
 | --- | --- |
@@ -605,7 +605,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,512 tests
+|-- tests/                            xUnit test projects, 1,516 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/
