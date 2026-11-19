@@ -734,6 +734,26 @@ permiten identificar huecos conocidos. La [exportación comunitaria](vista-previ
 resume un sitio con una etiqueta sintética.
 El resto de esta sección sigue siendo planificación; prevalece el [roadmap publicado](../../ROADMAP.md).
 
+### Monitor de tráfico del servidor Windows (pendiente)
+
+- [ ] Ampliar el sensor pasivo con una vista local en vivo del tráfico TCP y UDP, tanto IPv4 como
+      IPv6, en las interfaces elegidas por el operador. Observar todos los puertos requerirá una
+      selección explícita. Mostrar interfaz, protocolo, IP y puerto local y remoto, última actividad
+      y bytes recibidos y enviados. En un servidor compartido, atribuir tráfico a un sitio solo
+      cuando exista evidencia independiente que lo identifique.
+- [ ] Distinguir las respuestas a conexiones entrantes de las conexiones iniciadas por el servidor.
+      Si la captura empieza a mitad de una conexión o los paquetes son insuficientes, indicar
+      «iniciador desconocido». Permitir filtrar por los puertos de IIS, SQL Server y Escritorio
+      remoto configurados por el operador, incluidos los no estándar. Usar, cuando estén disponibles,
+      los registros de IIS, la auditoría de SQL Server o los eventos de inicio de sesión de Windows
+      para corroborar el servicio y el resultado de autenticación. El puerto por sí solo es insuficiente.
+- [ ] Verificar con tráfico sintético que una conexión HTTPS entrante y sus respuestas aparecen
+      juntas, que una conexión saliente independiente también se ve y que, si falta la auditoría,
+      el resultado del inicio de sesión figura como desconocido. Limitar la retención de flujos
+      e indicar los descartes o la falta de contadores de captura. El monitor será opcional y de
+      solo lectura. Registrará únicamente metadatos de flujo y excluirá contenido de paquetes,
+      sentencias SQL, credenciales y datos de sesión. Las observaciones no activarán bloqueos automáticos.
+
 ### Eventos
 
 ```text
