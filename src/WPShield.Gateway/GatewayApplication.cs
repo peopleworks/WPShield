@@ -4,6 +4,7 @@ using System.Net;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting.WindowsServices;
+using Microsoft.Extensions.Options;
 using WPShield.Abstractions;
 using WPShield.Core;
 using WPShield.Gateway.Logging;
@@ -78,12 +79,14 @@ public static class GatewayApplication
         // Attached before the host is built, because a configuration failure here must stop startup
         // rather than produce a gateway that runs with nowhere to record what it did.
         var logDirectory = builder.AddJsonLinesFileLogging();
-        builder.Services.Configure<GatewayOptions>(builder.Configuration.GetSection("Gateway"));
+        builder.Services.AddTransient<OptionsFactory<GatewayOptions>>();
+        builder.Services.AddTransient<IOptionsFactory<GatewayOptions>>(services =>
+            new StartupGatewayOptionsFactory(gatewayOptions, services.GetRequiredService<OptionsFactory<GatewayOptions>>()));
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter()));
         builder.Services.AddHttpForwarder();
         builder.Services.AddSingleton(new SiteResolver(sites));
-        builder.Services.AddSingleton<IReadOnlyList<SiteOptions>>(sites);
+        builder.Services.AddSingleton<IReadOnlyList<SiteOptions>>(Array.AsReadOnly(sites));
         builder.Services.AddSingleton(multipartOptions);
         builder.Services.AddSingleton(new RequestRateLimiter(gatewayOptions.RateLimit));
         builder.Services.AddSingleton(

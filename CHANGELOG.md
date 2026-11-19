@@ -27,6 +27,11 @@ must complete first.
 
 ### Changed
 
+- Default .NET gateway options now return the same immutable settings used by the request pipeline
+  throughout a startup activation. Reading options after an edit preserves the active policy and
+  its recorded revision. Site hosts, trusted peers and rate-limit arrays are protected from mutation
+  through configuration readers.
+
 - **Gateway evidence now separates inspection recommendations from actual request outcomes.**
   A versioned `request_completed` event correlates findings with build versions, a configuration
   activation identifier, per-stage completeness and forwarding, refusal, cancellation or failure.

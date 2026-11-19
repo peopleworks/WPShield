@@ -324,17 +324,17 @@ public static class GatewayConfigurationValidator
             return;
         }
 
-        if (options.Rules.Length > RateLimitOptions.AbsoluteMaximumRules)
+        if (options.ActiveRules.Length > RateLimitOptions.AbsoluteMaximumRules)
         {
             throw new InvalidOperationException(
-                $"Gateway:RateLimit:Rules holds {options.Rules.Length} rules, and the maximum is " +
+                $"Gateway:RateLimit:Rules holds {options.ActiveRules.Length} rules, and the maximum is " +
                 $"{RateLimitOptions.AbsoluteMaximumRules}.");
         }
 
         var ruleIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var claimedPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var rule in options.Rules)
+        foreach (var rule in options.ActiveRules)
         {
             if (string.IsNullOrWhiteSpace(rule.Id))
             {
@@ -349,7 +349,7 @@ public static class GatewayConfigurationValidator
                     $"Gateway:RateLimit:Rules contains more than one rule with Id '{rule.Id}'.");
             }
 
-            if (rule.Paths.Length == 0)
+            if (rule.ActivePaths.Length == 0)
             {
                 throw new InvalidOperationException(
                     $"Rate limit rule '{rule.Id}' lists no paths, so it can never fire. Remove it, or " +
@@ -357,14 +357,14 @@ public static class GatewayConfigurationValidator
                     "rather than global.");
             }
 
-            if (rule.Paths.Length > RateLimitOptions.AbsoluteMaximumPathsPerRule)
+            if (rule.ActivePaths.Length > RateLimitOptions.AbsoluteMaximumPathsPerRule)
             {
                 throw new InvalidOperationException(
-                    $"Rate limit rule '{rule.Id}' lists {rule.Paths.Length} paths, and the maximum is " +
+                    $"Rate limit rule '{rule.Id}' lists {rule.ActivePaths.Length} paths, and the maximum is " +
                     $"{RateLimitOptions.AbsoluteMaximumPathsPerRule}.");
             }
 
-            foreach (var path in rule.Paths)
+            foreach (var path in rule.ActivePaths)
             {
                 if (string.IsNullOrWhiteSpace(path) || !path.StartsWith('/'))
                 {

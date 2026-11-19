@@ -2,6 +2,9 @@ namespace WPShield.Gateway;
 
 public sealed class GatewayOptions
 {
+    private readonly string[] _urls = [];
+    private readonly string[] _trustedProxies = [];
+
     public const long AbsoluteMaximumRequestBytes = 64L * 1024 * 1024;
 
     /// <summary>
@@ -34,7 +37,11 @@ public sealed class GatewayOptions
     /// mistake made by hand is a named error at startup instead of a socket error naming a free port.
     /// </para>
     /// </remarks>
-    public string[] Urls { get; init; } = [];
+    public string[] Urls
+    {
+        get => [.. _urls];
+        init => _urls = [.. value ?? []];
+    }
     public bool AllowRemoteHealthChecks { get; init; }
 
     /// <summary>
@@ -55,7 +62,11 @@ public sealed class GatewayOptions
     /// the local proxy, so a range buys nothing and a typo costs everything.
     /// </para>
     /// </remarks>
-    public string[] TrustedProxies { get; init; } = [];
+    public string[] TrustedProxies
+    {
+        get => [.. _trustedProxies];
+        init => _trustedProxies = [.. value ?? []];
+    }
 
     public int ActivityTimeoutSeconds { get; init; } = 100;
     public long MaximumRequestBytes { get; init; } = 6L * 1024 * 1024;
