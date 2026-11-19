@@ -29,9 +29,7 @@ public sealed class InspectionEngine(IEnumerable<IInspectionRule> rules)
         }
 
         var score = Math.Min(100, findings.Sum(f => Math.Max(0, f.Score)));
-        var action = score >= site.BlockThreshold
-            ? site.Mode == ProtectionMode.Block ? InspectionAction.Block : InspectionAction.Observe
-            : score >= site.ObserveThreshold ? InspectionAction.Observe : InspectionAction.Allow;
+        var action = InspectionPolicy.Recommend(score, site.Mode, site.ObserveThreshold, site.BlockThreshold);
 
         return new InspectionResult(site.Id, score, action, findings);
     }

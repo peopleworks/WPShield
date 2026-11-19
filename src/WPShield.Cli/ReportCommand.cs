@@ -42,7 +42,7 @@ internal static class ReportCommand
                             current directory.
 
         The report counts what the gateway wrote down - findings, verdicts, and inspected uploads -
-        not total traffic, because a clean non-upload request is never logged. The evidence appendix
+        not total traffic: this view does not aggregate final request_completed events. The evidence appendix
         hashes every source file with SHA-256, so the report can be tied to the exact log it
         summarised.
 

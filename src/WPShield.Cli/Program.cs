@@ -66,6 +66,7 @@ internal static class ProgramMain
                 "site" => SiteCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? "list"),
                 "watch" => WatchCommand.Run(options, Console.Out),
                 "report" => ReportCommand.Run(options, Console.Out),
+                "preview" => PreviewCommand.Run(options, Console.Out),
                 "network-monitor" => NetworkMonitorCommand.Run(options, Console.Out),
                 "network-filter" => NetworkFilterCommand.Run(options, Console.Out),
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
@@ -148,6 +149,10 @@ internal static class ProgramMain
                 Console.WriteLine(ReportCommand.Help);
                 return 0;
 
+            case "preview":
+                Console.WriteLine(PreviewCommand.Help);
+                return 0;
+
             case "network-monitor":
                 Console.WriteLine(NetworkMonitorCommand.Help);
                 return 0;
@@ -215,6 +220,11 @@ internal static class ProgramMain
                           rule and by site, and a SHA-256 evidence appendix. Reads only.
                           [--log-dir <dir>] [--log-file <file>] [--host <names>] [--since 7d]
                           [--out report.pdf]
+
+              preview     Compare historical inspection scores with a candidate policy. Offline;
+                          prints JSON, applies no changes. See 'wpshield preview --help' for limits.
+                          --log-file <file.jsonl> --site <id> [--mode Monitor|Block]
+                          [--observe-threshold 30] [--block-threshold 80]
 
               network-monitor
                           Live passive capture of HTTP metadata on operator-named ports (for

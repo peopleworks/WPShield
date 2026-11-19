@@ -1,5 +1,9 @@
 # Evidencia de solicitudes: trazabilidad y completitud de la inspección
 
+Estos eventos ya pueden alimentar la [vista previa offline de políticas](vista-previa-politicas.md)
+para comparar modo y umbrales sobre puntuaciones registradas. La evidencia ausente sigue siendo
+desconocida; no se reproduce contenido.
+
 Implementado: el gateway emite un evento final `request_completed` por cada solicitud que entra en
 su endpoint de reenvío. Es la primera entrega de la [evaluación de TelltaleDNS](evaluacion-telltaledns.md),
 implementada de forma independiente en .NET. WPShield sigue siendo una versión de investigación,

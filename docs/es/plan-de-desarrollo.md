@@ -723,6 +723,10 @@ Reducir ataques repetitivos sin intentar resolver DDoS volumétrico.
 
 ## M4 — Observabilidad
 
+**Vista previa offline implementada:** [comparación acotada de políticas](vista-previa-politicas.md)
+con `wpshield preview`, puntuaciones históricas, umbrales candidatos Monitor/Block y exclusiones
+explícitas. No aplica políticas ni reproduce reglas de contenido modificadas.
+
 **Primera entrega implementada:** [evidencia final de solicitudes](evidencia-solicitudes.md), con
 versiones, identificador de activación de configuración, completitud por etapa y resultado real del
 reenvío. No garantiza entrega durable de logs ni implementa nuevas métricas de pérdida.

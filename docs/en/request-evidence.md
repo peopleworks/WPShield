@@ -1,5 +1,8 @@
 # Request evidence: traceability and inspection completeness
 
+These events can now feed the [offline policy preview](policy-preview.md) for mode/threshold
+comparisons over recorded scores. Missing evidence remains unknown; content is not replayed.
+
 Implemented: the gateway emits a final `request_completed` event for each request that enters its
 forwarding endpoint. This is the first delivery from the [TelltaleDNS evaluation](telltaledns-evaluation.md),
 implemented independently in .NET. WPShield remains a research preview, not approved for production

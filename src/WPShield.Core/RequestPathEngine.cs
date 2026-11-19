@@ -59,12 +59,8 @@ public sealed class RequestPathEngine(IEnumerable<IRequestPathRule> rules)
 
         var score = Math.Min(100, findings.Sum(finding => Math.Max(0, finding.Score)));
 
-        // The Monitor downgrade lives here and nowhere else, exactly as it does for uploads. A
-        // second implementation in the gateway is where a future edit forgets it and Monitor
-        // silently starts refusing traffic.
-        var action = score >= site.BlockThreshold
-            ? site.Mode == ProtectionMode.Block ? InspectionAction.Block : InspectionAction.Observe
-            : score >= site.ObserveThreshold ? InspectionAction.Observe : InspectionAction.Allow;
+        // Serving and offline policy preview use the same Monitor downgrade and threshold mapping.
+        var action = InspectionPolicy.Recommend(score, site.Mode, site.ObserveThreshold, site.BlockThreshold);
 
         return new InspectionResult(site.Id, score, action, findings);
     }
