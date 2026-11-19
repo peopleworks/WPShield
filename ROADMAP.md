@@ -283,7 +283,9 @@ not read as more than they claim:
 
 ## M4 — Observability
 
-- [x] Emit versioned final request evidence with build/configuration activation identifiers, separate path/upload completeness, and actual forwarding/refusal/failure outcomes. See [request evidence](docs/en/request-evidence.md); this does not guarantee durable log delivery or implement loss metrics.
+- [x] Emit versioned final request evidence with build/configuration activation identifiers, separate path/upload completeness, and actual forwarding/refusal/failure outcomes. See [request evidence](docs/en/request-evidence.md).
+- [x] Measure observed evidence loss independently of file logging, report source coverage and provide a per-site community export. See [metrics and limits](docs/en/request-evidence.md#measuring-evidence-loss).
+- [x] Add bounded offline comparison of recorded inspection scores against candidate Monitor/Block thresholds, with per-site coverage and explicit exclusions. See [policy preview](docs/en/policy-preview.md); content-rule replay, policy application and durable-log completeness remain outside this feature.
 - [ ] Emit structured gateway, routing, inspection, rule, backend, and configuration events.
 - [ ] Add per-site request, action, rule, byte, error, and duration metrics.
 - [x] Store privacy-safe JSON Lines with rotation, size limits and retention. **Restricted permissions are not done here**: the gateway creates the log directory but does not set its ACL, because logs carry real hostnames, real paths and real client addresses, and locking that down belongs to the M6 installation procedure rather than to configuration. Documented in [operator configuration](docs/en/operator-configuration.md#log-files).

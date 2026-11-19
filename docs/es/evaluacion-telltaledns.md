@@ -1,6 +1,6 @@
 # TelltaleDNS: ideas que conviene evaluar para WPShield
 
-Estado: investigación revisada el 2026-11-14; primera entrega de evidencia implementada el 2026-11-17,
+Estado: investigación revisada el 2026-11-14; entregas de evidencia y vista previa offline implementadas el 2026-11-17,
 según se indica abajo. Los demás puntos son propuestas. Esta nota no aprueba integrar el proyecto de
 origen ni afirma que WPShield esté listo para producción.
 
@@ -31,7 +31,7 @@ en .NET, sin copiar implementaciones.
 añade un evento final versionado, versiones de compilación, un identificador de activación de la
 configuración, completitud por etapa y resultado real. Los contratos portables de reglas permanecen
 iguales: el gateway conoce el resultado del transporte. Quedan pendientes las explicaciones offline,
-las instantáneas persistidas de configuración y una vista específica en la CLI.
+las instantáneas persistidas de configuración y una vista específica en vivo en la CLI.
 
 **Mecanismo inspeccionado en el proyecto de origen.** [explain.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-filter/src/explain.rs)
 devuelve las reglas que coinciden, su precedencia, la regla ganadora, la versión de la instantánea
@@ -58,6 +58,12 @@ a Reader-1 una base explícita para abstenerse cuando la evidencia sea incomplet
 
 ### 2. Vista previa acotada de políticas — segundo, M3/M4; M5 puede mostrarla
 
+**Primera entrega implementada (2026-11-17).** La [vista previa offline](vista-previa-politicas.md)
+compara puntuaciones registradas con umbrales candidatos Monitor/Block usando el cálculo de política
+del gateway. Lee una entrada JSONL acotada para un sitio, agrupa resultados por activación y versiones
+de origen y muestra exclusiones e impacto desconocido explícitamente. No lee ni cambia configuración
+activa. No simula reglas de contenido modificadas, presupuestos de tasa, límites del parser ni aplicación automática.
+
 **Mecanismo inspeccionado en el proyecto de origen.** [simulate.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale/src/simulate.rs)
 reproduce registros de consultas conservados contra políticas candidatas, con límites de filas y
 tiempo y resultados explícitos de parcial, ocupado y no disponible. Reutiliza el evaluador de reglas
@@ -81,6 +87,9 @@ usan datos sintéticos inofensivos; no se añade retención de cuerpos para hace
 Una vista previa es una estimación histórica, no un pronóstico ni una autorización para activar Block.
 
 ### 3. Métricas de pérdida de evidencia y límites explícitos de privacidad — tercero, M4
+
+Implementado en el gateway, el PDF del operador y la vista previa offline. Consulte las [métricas de pérdida](evidencia-solicitudes.md#medir-la-pérdida-de-evidencia)
+y el [formato de exportación comunitaria](vista-previa-politicas.md#exportación-comunitaria).
 
 **Mecanismo inspeccionado en el proyecto de origen.** [ring.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-telemetry/src/ring.rs)
 emite un registro completo o lo descarta cuando el búfer circular acotado está lleno, e incrementa

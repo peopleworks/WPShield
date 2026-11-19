@@ -27,10 +27,12 @@ namespace WPShield.Cli;
 internal sealed class CliOptions
 {
     private readonly Dictionary<string, string?> _values;
+    private readonly bool _hasRepeatedOptions;
 
-    private CliOptions(Dictionary<string, string?> values)
+    private CliOptions(Dictionary<string, string?> values, bool hasRepeatedOptions)
     {
         _values = values;
+        _hasRepeatedOptions = hasRepeatedOptions;
     }
 
     public static CliOptions Parse(IReadOnlyList<string> args)
@@ -38,6 +40,7 @@ internal sealed class CliOptions
         ArgumentNullException.ThrowIfNull(args);
 
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+        var repeated = false;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -50,10 +53,12 @@ internal sealed class CliOptions
             var separator = token.IndexOf('=', StringComparison.Ordinal);
             if (separator > 2)
             {
+                repeated |= values.ContainsKey(token[..separator]);
                 values[token[..separator]] = token[(separator + 1)..];
                 continue;
             }
 
+            repeated |= values.ContainsKey(token);
             if (index + 1 < args.Count && !args[index + 1].StartsWith("--", StringComparison.Ordinal))
             {
                 values[token] = args[index + 1];
@@ -66,7 +71,12 @@ internal sealed class CliOptions
             values[token] = null;
         }
 
-        return new CliOptions(values);
+        return new CliOptions(values, repeated);
+    }
+
+    public void RejectRepeated()
+    {
+        if (_hasRepeatedOptions) throw new CliArgumentException("Repeated options are not supported by this command.");
     }
 
     public bool Has(string name) => _values.ContainsKey(name);

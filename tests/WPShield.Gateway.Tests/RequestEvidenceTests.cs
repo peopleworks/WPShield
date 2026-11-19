@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using WPShield.Abstractions;
 using WPShield.Core;
+using WPShield.Logging;
 
 namespace WPShield.Gateway.Tests;
 
@@ -39,6 +40,10 @@ public sealed class RequestEvidenceTests
         Assert.Equal(disposition == "forwarded", evidence["ForwardingAttempted"]);
         Assert.Equal(mode == "Disabled" ? "not_inspected" : "complete", evidence["PathStatus"]);
         Assert.Equal(mode, evidence["Mode"]);
+        var metrics = EvidenceMetricSnapshot.Read(harness.Metrics);
+        Assert.Equal(mode == "Disabled" ? 2 : 0, metrics["wpshield.evidence.skipped_stages"]);
+        Assert.Equal(0, metrics["wpshield.evidence.degraded"]);
+        Assert.Equal(0, metrics["wpshield.evidence.file_enabled"]);
         Assert.Equal("one", evidence["SiteId"]);
         Assert.Equal(Assert.Single(response.Headers.GetValues("X-WPShield-Request-ID")), evidence["RequestId"]);
         Assert.Equal(1, evidence["SchemaVersion"]);
@@ -448,6 +453,7 @@ public sealed class RequestEvidenceTests
     {
         public HttpClient Client { get; } = CreateClient(app);
         public EvidenceLogger Logs => logs;
+        public EvidenceMetrics Metrics => app.Services.GetRequiredService<EvidenceMetrics>();
         public Task<Dictionary<string, object?>> NextAsync() => logs.Pending.Reader.ReadAsync().AsTask().WaitAsync(TimeSpan.FromSeconds(10));
         public Task<HttpContext> SendContextAsync(Action<HttpContext> configure) => app.GetTestServer().SendAsync(context =>
         {

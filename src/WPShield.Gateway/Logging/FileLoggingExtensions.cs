@@ -46,6 +46,7 @@ internal static class FileLoggingExtensions
         // first asking whether file logging happens to be on.
         var reporter = new LogWriteFailureReporter();
         builder.Services.AddSingleton(reporter);
+        builder.Services.AddSingleton(_ => new EvidenceMetrics(options.Enabled));
 
         if (!options.Enabled)
         {
@@ -64,7 +65,8 @@ internal static class FileLoggingExtensions
         JsonLinesLogWriter.EnsureDirectoryIsWritable(directory);
 
         builder.Services.AddSingleton<ILoggerProvider>(
-            _ => new JsonLinesFileLoggerProvider(options, contentRoot, timeProvider: null, reporter.Report));
+            services => new JsonLinesFileLoggerProvider(options, contentRoot, timeProvider: null, reporter.Report,
+                services.GetRequiredService<EvidenceMetrics>()));
 
         return directory;
     }

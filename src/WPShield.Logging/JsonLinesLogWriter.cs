@@ -69,7 +69,9 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
     private FileStream? _file;
     private long _currentFileBytes;
     private DateOnly _currentFileDate;
-    private int _droppedSinceLastReport;
+    private readonly EvidenceMetrics? _metrics;
+    private long _droppedSinceLastReport;
+    private long _failedSinceLastReport;
     private bool _failing;
 
     /// <param name="reportFailure">
@@ -81,12 +83,14 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
         FileLogOptions options,
         string contentRootPath,
         TimeProvider? timeProvider = null,
-        Action<string>? reportFailure = null)
+        Action<string>? reportFailure = null,
+        EvidenceMetrics? metrics = null)
     {
         ArgumentNullException.ThrowIfNull(options);
         ArgumentNullException.ThrowIfNull(contentRootPath);
 
         _options = options;
+        _metrics = metrics;
         _timeProvider = timeProvider ?? TimeProvider.System;
         _reportFailure = reportFailure ?? Console.Error.WriteLine;
         _directory = ResolveDirectory(options, contentRootPath);
@@ -96,6 +100,10 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
             SingleReader = true,
             SingleWriter = false,
             FullMode = BoundedChannelFullMode.DropWrite
+        }, itemDropped: _ =>
+        {
+            Interlocked.Increment(ref _droppedSinceLastReport);
+            _metrics?.RecordDrop();
         });
 
         _drain = Task.Run(DrainAsync);
@@ -200,10 +208,7 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
     /// </summary>
     public void Write(byte[] entry)
     {
-        if (!_queue.Writer.TryWrite(entry))
-        {
-            Interlocked.Increment(ref _droppedSinceLastReport);
-        }
+        _queue.Writer.TryWrite(entry);
     }
 
     private async Task DrainAsync()
@@ -230,9 +235,13 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
 
     private void WriteBatch(List<byte[]> batch)
     {
+        var dropped = Interlocked.Exchange(ref _droppedSinceLastReport, 0);
         try
         {
-            ReportDroppedEntries();
+            if (dropped > 0)
+                WriteEntry(LogEntryFormatter.FormatDroppedNotice(_timeProvider.GetUtcNow(), dropped));
+            if (_failedSinceLastReport > 0)
+                WriteEntry(LogEntryFormatter.FormatWriteFailureNotice(_timeProvider.GetUtcNow(), _failedSinceLastReport));
 
             foreach (var entry in batch)
             {
@@ -240,10 +249,14 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
             }
 
             _file?.Flush();
+            _failedSinceLastReport = 0;
             _failing = false;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or NotSupportedException)
         {
+            Interlocked.Add(ref _droppedSinceLastReport, dropped);
+            _failedSinceLastReport++;
+            _metrics?.RecordFailedBatch();
             // Close the handle so the next batch reopens rather than writing through a stream that is
             // already broken. The streak flag keeps a failing disk from producing one stderr line per
             // batch, which would be its own denial of service against whoever is reading.
@@ -270,29 +283,6 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
         _currentFileBytes += entry.Length + 1;
     }
 
-    /// <summary>
-    /// Reports entries lost to a full queue, into the log itself.
-    /// </summary>
-    /// <remarks>
-    /// A gap in a security log that nobody is told about is worse than the gap. This runs at the
-    /// start of a batch, which is exactly when the pressure has cleared enough for the line to be
-    /// written and to be true.
-    /// </remarks>
-    private void ReportDroppedEntries()
-    {
-        var dropped = Interlocked.Exchange(ref _droppedSinceLastReport, 0);
-        if (dropped == 0)
-        {
-            return;
-        }
-
-        var notice = LogEntryFormatter.FormatDroppedNotice(_timeProvider.GetUtcNow(), dropped);
-        EnsureFile(notice.Length + 1);
-        _file!.Write(notice);
-        _file.WriteByte((byte)'\n');
-        _currentFileBytes += notice.Length + 1;
-    }
-
     private void EnsureFile(int incomingBytes)
     {
         var today = DateOnly.FromDateTime(_timeProvider.GetUtcNow().UtcDateTime);
@@ -304,7 +294,9 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
             return;
         }
 
-        Close();
+        // Disposal flushes the rotating file. Let a flush failure reach the batch loss counter.
+        _file?.Dispose();
+        _file = null;
         System.IO.Directory.CreateDirectory(_directory);
 
         var path = NextFilePath(today);
@@ -404,7 +396,6 @@ public sealed class JsonLinesLogWriter : IAsyncDisposable
     {
         try
         {
-            _file?.Flush();
             _file?.Dispose();
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)

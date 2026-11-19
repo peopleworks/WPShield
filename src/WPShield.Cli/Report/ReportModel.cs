@@ -17,6 +17,10 @@ internal sealed record EvidenceSource
     public required string Sha256 { get; init; }
     public required int TotalLines { get; init; }
     public required int ParsedEvents { get; init; }
+    public int InvalidLines { get; init; }
+    public int LossNotices { get; init; }
+    public bool ReadFailed { get; init; }
+    public bool KnownGap => ReadFailed || InvalidLines > 0 || LossNotices > 0;
 }
 
 /// <summary>One rule's contribution across the window.</summary>

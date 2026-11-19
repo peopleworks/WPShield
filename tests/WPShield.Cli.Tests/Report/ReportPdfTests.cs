@@ -13,6 +13,37 @@ namespace WPShield.Cli.Tests.Report;
 /// </summary>
 public sealed class ReportPdfTests
 {
+    [Fact]
+    public void SiteScopedReport_PreservesGlobalCoverageGapsAndHashesBytesRead()
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            File.WriteAllLines(path,
+            [
+                """{"timestamp":"2026-01-01T00:00:00Z","message":"Log entries were dropped"}""",
+                """{"timestamp":"2026-01-03T00:00:00Z","message":"Log entries were dropped"}""",
+                """{"timestamp":"2026-01-03T00:00:01Z","level":"Error","category":"WPShield.Gateway.Logging","message":"Log writes failed in earlier batches."}""",
+                """{"timestamp":"2026-01-03T00:00:02Z","message":"Upload finding.","state":{"SiteId":"other"}}""",
+                "{"
+            ]);
+            var (source, events) = ReportCommand.ReadSource(path, ["one"], new DateTimeOffset(2026, 1, 2, 0, 0, 0, TimeSpan.Zero));
+            Assert.Empty(events);
+            Assert.True(source.KnownGap);
+            Assert.False(source.ReadFailed);
+            Assert.Equal(2, source.LossNotices);
+            Assert.Equal(1, source.InvalidLines);
+            var bytes = File.ReadAllBytes(path);
+            Assert.Equal(bytes.Length, source.SizeBytes);
+            Assert.Equal(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(bytes)), source.Sha256);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+        Assert.True(ReportCommand.ReadSource(path, [], null).Source.ReadFailed);
+    }
+
     private static EvidenceEvent Finding(string host, string rules, int score, string? path = null) => new()
     {
         Timestamp = new DateTimeOffset(2026, 9, 10, 9, 5, 0, TimeSpan.Zero),

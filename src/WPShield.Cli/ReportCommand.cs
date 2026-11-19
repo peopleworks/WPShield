@@ -42,7 +42,7 @@ internal static class ReportCommand
                             current directory.
 
         The report counts what the gateway wrote down - findings, verdicts, and inspected uploads -
-        not total traffic, because a clean non-upload request is never logged. The evidence appendix
+        not total traffic: this view does not aggregate final request_completed events. The evidence appendix
         hashes every source file with SHA-256, so the report can be tied to the exact log it
         summarised.
 
@@ -99,31 +99,34 @@ internal static class ReportCommand
     }
 
     /// <summary>Reads one file: its fixity, and the events it contributes after the host and window filters.</summary>
-    private static (EvidenceSource Source, List<EvidenceEvent> Events) ReadSource(
+    internal static (EvidenceSource Source, List<EvidenceEvent> Events) ReadSource(
         string path,
         IReadOnlyList<string> hosts,
         DateTimeOffset? cutoff)
     {
         var events = new List<EvidenceEvent>();
         var totalLines = 0;
+        var invalidLines = 0;
+        var lossNotices = 0;
+        var readFailed = false;
         long size = 0;
         var hash = "unreadable";
 
         try
         {
-            size = new FileInfo(path).Length;
-            hash = HashFile(path);
-
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-            using var reader = new StreamReader(stream, Encoding.UTF8);
+            using var sha = SHA256.Create();
+            using var hashed = new CryptoStream(stream, sha, CryptoStreamMode.Read);
+            using var reader = new StreamReader(hashed, Encoding.UTF8);
 
             string? line;
             while ((line = reader.ReadLine()) is not null)
             {
                 totalLines++;
                 var evidence = EvidenceParser.Parse(line);
-                if (evidence is null || evidence.Kind == EvidenceKind.Other)
+                if (evidence is null)
                 {
+                    invalidLines++;
                     continue;
                 }
 
@@ -131,6 +134,11 @@ internal static class ReportCommand
                 {
                     continue;
                 }
+
+                if (evidence.IsLoggingError || evidence.Kind == EvidenceKind.DroppedNotice)
+                    lossNotices++;
+                if (evidence.Kind == EvidenceKind.Other)
+                    continue;
 
                 if (hosts.Count > 0 &&
                     (evidence.Host is null ||
@@ -141,9 +149,12 @@ internal static class ReportCommand
 
                 events.Add(evidence);
             }
+            size = stream.Position;
+            hash = Convert.ToHexStringLower(sha.Hash!);
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
+            readFailed = true;
             // A file that cannot be read is still recorded in the appendix, marked unreadable, rather
             // than dropped: a report that silently omits a source it could not open is a report that
             // hides its own gap.
@@ -155,17 +166,13 @@ internal static class ReportCommand
             SizeBytes = size,
             Sha256 = hash,
             TotalLines = totalLines,
-            ParsedEvents = events.Count
+            ParsedEvents = events.Count,
+            InvalidLines = invalidLines,
+            LossNotices = lossNotices,
+            ReadFailed = readFailed
         };
 
         return (source, events);
-    }
-
-    private static string HashFile(string path)
-    {
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
-        var hash = SHA256.HashData(stream);
-        return Convert.ToHexStringLower(hash);
     }
 
     /// <summary>

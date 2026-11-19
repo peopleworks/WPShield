@@ -1,6 +1,6 @@
 # TelltaleDNS: ideas worth evaluating for WPShield
 
-Status: research reviewed 2026-11-14; first evidence delivery implemented 2026-11-17, as noted below.
+Status: research reviewed 2026-11-14; evidence and offline policy preview deliveries implemented 2026-11-17, as noted below.
 Remaining items are proposals. This note does not approve an upstream integration or claim production readiness.
 
 ## Evidence and limits
@@ -27,7 +27,7 @@ notices. This review proposes independent .NET designs, with no copied implement
 **First delivery implemented (2026-11-17).** [Request evidence](request-evidence.md) adds a versioned
 final event, build versions, a configuration activation identifier, per-stage inspection completeness,
 and actual outcome. The portable rule contracts remain unchanged: the gateway owns transport outcomes.
-Rich offline explanations, persisted configuration snapshots and dedicated CLI consumption remain future work.
+Rich offline explanations, persisted configuration snapshots and a dedicated live CLI view remain future work.
 
 **Inspected upstream mechanism.** [explain.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-filter/src/explain.rs)
 returns matching rules, precedence, winner, snapshot version and source line attribution. It also
@@ -51,6 +51,12 @@ path. This also gives Reader-1 an explicit basis for abstaining when evidence is
 
 ### 2. Bounded policy preview — second, M3/M4; M5 may display it
 
+**First delivery implemented (2026-11-17).** [Offline policy preview](policy-preview.md) compares
+recorded scores with candidate Monitor/Block thresholds using the serving policy calculation.
+It reads one bounded JSONL input for one site, groups results by source activation/build metadata,
+and reports exclusions and unknown impact explicitly. No live configuration is read or changed.
+Changed content rules, rate budgets, parser limits and automatic application are not simulated.
+
 **Inspected upstream mechanism.** [simulate.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale/src/simulate.rs)
 replays retained query records against candidate policies with bounded rows/time and explicit partial,
 busy and unavailable outcomes. It reuses the serving matcher and builds separate candidate data.
@@ -70,6 +76,9 @@ harmless synthetic fixtures for such changes; do not add body retention to make 
 A preview is a historical estimate, not a forecast or authorization to enable Block.
 
 ### 3. Evidence-loss metrics and explicit privacy limits — third, M4
+
+Implemented in the gateway, operator PDF and offline preview. See [evidence loss](request-evidence.md#measuring-evidence-loss)
+and the [community export schema](policy-preview.md#community-export).
 
 **Inspected upstream mechanism.** [ring.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-telemetry/src/ring.rs)
 emits a whole record or drops it when a bounded ring is full, and increments a dropped counter.
