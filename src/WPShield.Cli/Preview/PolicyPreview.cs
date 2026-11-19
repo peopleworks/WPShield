@@ -129,7 +129,9 @@ internal static class PolicyPreview
                 return;
             }
             if (Text(root, "category") == "WPShield.Gateway.Logging" &&
-                (Number(state, "DroppedEntries") > 0 || Text(root, "level") == "Error"))
+                (state.ValueKind == JsonValueKind.Object && state.TryGetProperty("DroppedEntries", out var drops) &&
+                 drops.ValueKind == JsonValueKind.Number && drops.TryGetInt64(out var count) && count > 0 ||
+                 Text(root, "level") == "Error"))
             {
                 report.EvidenceLossNotices++;
                 return;

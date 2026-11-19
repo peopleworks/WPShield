@@ -38,6 +38,8 @@ internal sealed class PreviewReport(string siteId, CandidatePolicy candidate, Pr
     public string Scope => "historical_score_policy_comparison";
     public bool AppliesChanges => false;
     public bool ProvesLogCompleteness => false;
+    public string SourceCoverage => Status == "unavailable" ? "unavailable"
+        : InvalidLines > 0 || EvidenceLossNotices > 0 || StopReason != "end_of_input" ? "partial" : "unknown";
     public string SiteId { get; } = siteId;
     public CandidatePolicy Candidate { get; } = candidate;
     public string CandidatePolicyId => FormattableString.Invariant($"score-policy-v1/{Candidate.Mode}/{Candidate.ObserveThreshold}/{Candidate.BlockThreshold}");

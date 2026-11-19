@@ -462,6 +462,45 @@ public sealed class JsonLinesFileLoggingTests : IDisposable
         return Path.Combine(blocker, "logs");
     }
 
+    [Fact]
+    public async Task FullQueueAndDiskFailure_AreObservableBeforeRecoveryAndRecordedAfterwards()
+    {
+        using var metrics = new EvidenceMetrics(true);
+        var directory = BlockedDirectory();
+        var options = new FileLogOptions { Enabled = true, Directory = directory, MaximumQueuedEntries = 2 };
+        var failed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var resume = new ManualResetEventSlim();
+        await using (var writer = new JsonLinesLogWriter(options, _root, reportFailure: _ =>
+        {
+            failed.TrySetResult();
+            resume.Wait(TimeSpan.FromSeconds(15));
+        }, metrics: metrics))
+        {
+            writer.Write("{}"u8.ToArray());
+            await failed.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            try
+            {
+                for (var index = 0; index < 5; index++)
+                    writer.Write("{}"u8.ToArray());
+                var snapshot = EvidenceMetricSnapshot.Read(metrics);
+                Assert.Equal(3, snapshot["wpshield.evidence.queue_drops"]);
+                Assert.Equal(1, snapshot["wpshield.evidence.failed_batches"]);
+                Assert.Equal(1, snapshot["wpshield.evidence.degraded"]);
+                Assert.Equal(1, snapshot["wpshield.evidence.file_enabled"]);
+                File.Delete(Path.Combine(_root, "blocked"));
+            }
+            finally
+            {
+                resume.Set();
+            }
+        }
+        var lines = File.ReadAllLines(Assert.Single(Directory.GetFiles(directory, "*.jsonl")));
+        Assert.Equal(4, lines.Length);
+        Assert.Contains(lines, line => line.Contains("\"DroppedEntries\":3", StringComparison.Ordinal));
+        Assert.Contains(lines, line => line.Contains("\"FailedBatches\":1", StringComparison.Ordinal));
+        Assert.Equal(1, EvidenceMetricSnapshot.Read(metrics)["wpshield.evidence.degraded"]);
+    }
+
     private JsonLinesFileLoggerProvider CreateProvider(
         long? maximumFileBytes = null,
         int? retainedFileCount = null,

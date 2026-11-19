@@ -78,6 +78,7 @@ internal static class EvidenceParser
                 Timestamp = timestamp,
                 Level = level,
                 Kind = kind,
+                IsLoggingError = level == "Error" && GetString(root, "category") == "WPShield.Gateway.Logging",
                 Message = message,
                 Host = GetStateString(state, "SiteId"),
                 Rules = ReadRules(state),

@@ -18,6 +18,8 @@ internal static class PreviewCommand
           --max-lines <n>           Scan at most this many input lines, 1..100000. Default: 10000.
           --max-bytes <n>           Scan at most this many bytes, 1..67108864. Default: 16777216.
           --timeout-seconds <n>     Time budget, 1..60 seconds. Default: 10.
+          --format <operator|community>  Default: operator. Community emits only site aggregates
+                                    under a synthetic label and omits source identifiers and times.
 
         Prints a JSON report to stdout; writes no files and never loads or changes live configuration.
         Selects one exact SiteId from schema-1 request_completed events. Missing, partial, duplicate
@@ -32,7 +34,7 @@ internal static class PreviewCommand
     private static readonly string[] KnownOptions =
     [
         "--log-file", "--site", "--mode", "--observe-threshold", "--block-threshold",
-        "--max-lines", "--max-bytes", "--timeout-seconds"
+        "--max-lines", "--max-bytes", "--timeout-seconds", "--format"
     ];
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -54,6 +56,9 @@ internal static class PreviewCommand
                 throw new CliArgumentException($"{option} requires a value.");
         }
         var path = arguments.Get("--log-file");
+        var format = arguments.Get("--format", "operator");
+        if (format is not ("operator" or "community"))
+            throw new CliArgumentException("--format must be operator or community.");
         var site = arguments.Get("--site");
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(site))
             throw new CliArgumentException("preview requires --log-file and --site.");
@@ -85,7 +90,25 @@ internal static class PreviewCommand
             // Never print an exception carrying a sensitive path or line from the source log.
             report = new PreviewReport(site, candidate, limits) { Status = "unavailable", StopReason = "open_failed" };
         }
-        await output.WriteLineAsync(JsonSerializer.Serialize(report, JsonOptions).AsMemory(), cancellationToken);
+        // The community schema is an allowlist. New operator fields stay private by default.
+        var json = format == "community"
+            ? JsonSerializer.Serialize(new
+            {
+                report.SchemaVersion,
+                Site = "site-1",
+                report.Status,
+                report.SourceCoverage,
+                report.ProvesLogCompleteness,
+                Candidate = new { candidate.Mode, candidate.ObserveThreshold, candidate.BlockThreshold },
+                report.EligibleRecords,
+                report.ExcludedRecords,
+                report.NewlyRefused,
+                report.NewlyPermitted,
+                report.ChangedRecommendations,
+                report.UnchangedRecommendations
+            }, JsonOptions)
+            : JsonSerializer.Serialize(report, JsonOptions);
+        await output.WriteLineAsync(json.AsMemory(), cancellationToken);
         return report.Status switch { "complete" => 0, "partial" => 2, "cannot_evaluate" => 3, _ => 1 };
     }
 }

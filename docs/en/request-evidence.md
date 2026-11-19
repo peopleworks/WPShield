@@ -77,7 +77,7 @@ The existing finding and summary prefixes stay unchanged. Upload summaries now u
 Incomplete-multipart warnings use `ForwardPermitted` instead of `Forwarded`; capacity warnings use
 `ForwardUninspected` instead of `ForwardedUninspected`. Consumers requiring actual outcome must read
 the final event. `wpshield watch` still shows its existing finding/summary view; a dedicated final-event
-view and metrics are future work. Portable `RuleFinding` and `InspectionResult` contracts are unchanged.
+view is future work. Portable `RuleFinding` and `InspectionResult` contracts are unchanged.
 
 The new event adds no paths, filenames, hosts, headers, query strings, body content or samples.
 Its client address, configured site ID and request ID are still operational data: this is not an
@@ -88,10 +88,30 @@ One final log call is made per forwarding-endpoint invocation, including early r
 Health/reserved endpoints, requests rejected by the HTTP server before this endpoint, process crashes,
 log filtering, queue saturation and storage failures are outside that guarantee. Keep Information
 enabled for `WPShield.Gateway.Evidence` to retain these events. A missing event is **unknown**, never
-evidence of a successful forward or an inspected request. Existing logging loss notices still apply;
-durable completeness, new loss metrics, and offline explanation/replay are not delivered by this change.
+evidence of a successful forward or an inspected request.
 
 No deployment setting or infrastructure changes are needed. Applying a build still requires a restart;
 configuration does not hot-reload. For a deployed gateway, bypass remains the IIS rewrite rule:
 stopping the service while that rule forwards to WPShield takes the site down. This work makes no
 IIS, DNS, certificate, firewall, service or public-port changes and does not integrate Reader-1.
+
+## Measuring evidence loss
+
+With local .NET diagnostics access, read the running gateway's meter using
+`dotnet-counters monitor --process-id <PID> --counters WPShield.Evidence`. The meter remains
+available while the file destination is disabled or failing. All values are untagged and reset on restart.
+
+| Instrument (prefix `wpshield.evidence.`) | Interpretation |
+| --- | --- |
+| `queue_drops` | Individual log entries discarded when the file queue was full. |
+| `failed_batches` | File write batches that failed. A batch can be partially written. |
+| `skipped_stages` | Path or upload stages ending as `not_started` or `not_inspected`, up to two per forwarding request. Ordinary non-multipart traffic can contribute one. |
+| `file_enabled` | 1 when the JSONL destination is configured, otherwise 0. |
+| `degraded` | 1 after the first queue drop or failed batch in this process. It stays set after recovery. Skipped inspections alone do not set it. |
+
+The writer attempts to record pending loss notices on a subsequent successful write. Notices can
+repeat after a failed flush. A crash, earlier rotation or a log filter can leave gaps with no notice.
+The operator PDF marks coverage **partial** for observed loss, unreadable input or invalid lines.
+Otherwise it reports **unknown** traffic coverage. Gateway-level notices in the time window apply
+even to a site-filtered report. Invalid lines have no reliable time or site and count across the file.
+Keep PDFs private. For sharing, use the [community preview format](policy-preview.md#community-export).

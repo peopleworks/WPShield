@@ -66,6 +66,7 @@ internal sealed record EvidenceEvent
     public required string Level { get; init; }
 
     public required EvidenceKind Kind { get; init; }
+    public bool IsLoggingError { get; init; }
 
     /// <summary>The site the line is about — the gateway's <c>SiteId</c>. Null on lines that carry none.</summary>
     public string? Host { get; init; }

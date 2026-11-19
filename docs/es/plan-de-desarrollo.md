@@ -729,7 +729,9 @@ explícitas. No aplica políticas ni reproduce reglas de contenido modificadas.
 
 **Primera entrega implementada:** [evidencia final de solicitudes](evidencia-solicitudes.md), con
 versiones, identificador de activación de configuración, completitud por etapa y resultado real del
-reenvío. No garantiza entrega durable de logs ni implementa nuevas métricas de pérdida.
+reenvío. Los [contadores de pérdida y la cobertura del PDF](evidencia-solicitudes.md#medir-la-pérdida-de-evidencia)
+permiten identificar huecos conocidos. La [exportación comunitaria](vista-previa-politicas.md#exportación-comunitaria)
+resume un sitio con una etiqueta sintética.
 El resto de esta sección sigue siendo planificación; prevalece el [roadmap publicado](../../ROADMAP.md).
 
 ### Eventos

@@ -14,6 +14,10 @@ must complete first.
 
 ### Added
 
+- The local `WPShield.Evidence` meter counts dropped entries, failed write batches and skipped
+  inspection stages. PDF reports identify observed gaps. The offline preview accepts
+  `--format community` to export the selected site's aggregate results under a fixed synthetic label.
+
 - **`wpshield preview` compares historical inspection decisions with candidate Monitor/Block
   thresholds offline.** It uses the same score-to-action policy as both serving engines, reads a
   bounded JSONL input for one site, and reports aggregate changes, source versions, coverage and

@@ -88,6 +88,9 @@ Una vista previa es una estimación histórica, no un pronóstico ni una autoriz
 
 ### 3. Métricas de pérdida de evidencia y límites explícitos de privacidad — tercero, M4
 
+Implementado en el gateway, el PDF del operador y la vista previa offline. Consulte las [métricas de pérdida](evidencia-solicitudes.md#medir-la-pérdida-de-evidencia)
+y el [formato de exportación comunitaria](vista-previa-politicas.md#exportación-comunitaria).
+
 **Mecanismo inspeccionado en el proyecto de origen.** [ring.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-telemetry/src/ring.rs)
 emite un registro completo o lo descarta cuando el búfer circular acotado está lleno, e incrementa
 un contador de descartes. [event.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-telemetry/src/event.rs) transforma registros según niveles de privacidad.

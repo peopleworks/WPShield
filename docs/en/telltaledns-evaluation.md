@@ -77,6 +77,9 @@ A preview is a historical estimate, not a forecast or authorization to enable Bl
 
 ### 3. Evidence-loss metrics and explicit privacy limits — third, M4
 
+Implemented in the gateway, operator PDF and offline preview. See [evidence loss](request-evidence.md#measuring-evidence-loss)
+and the [community export schema](policy-preview.md#community-export).
+
 **Inspected upstream mechanism.** [ring.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-telemetry/src/ring.rs)
 emits a whole record or drops it when a bounded ring is full, and increments a dropped counter.
 [event.rs](https://github.com/paimonsoror/telltaledns/blob/1928cea655b3c71d27857528135ee6d768274158/crates/telltale-telemetry/src/event.rs) transforms records for privacy levels.

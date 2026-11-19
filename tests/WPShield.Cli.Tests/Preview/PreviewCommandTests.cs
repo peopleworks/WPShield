@@ -9,6 +9,50 @@ namespace WPShield.Cli.Tests.Preview;
 public sealed class PreviewCommandTests
 {
     [Fact]
+    public async Task CommunityFormat_ExposesOnlyAllowlistedAggregatesForSelectedSite()
+    {
+        var selected = PolicyPreviewTests.Event();
+        selected["message"] = "private-query\n\u001b[31mprivate-body";
+        var state = PolicyPreviewTests.State(selected);
+        state["SiteId"] = "private-one";
+        state["GatewayVersion"] = "private-build";
+        state["Cookie"] = "private-cookie";
+        state["Authorization"] = "private-header";
+        var other = PolicyPreviewTests.Event();
+        PolicyPreviewTests.State(other)["SiteId"] = "private-two";
+        const string gap = """{"category":"WPShield.Gateway.Logging","level":"Warning","state":{"DroppedEntries":3000000000}}""";
+        using var files = new InputFiles(PolicyPreviewTests.Line(selected) + PolicyPreviewTests.Line(other) + gap + "\n");
+        using var output = new StringWriter();
+        var exit = await PreviewCommand.RunAsync(CliOptions.Parse(
+            ["--log-file", files.Input, "--site", "private-one", "--mode", "Block", "--format", "community"]), output);
+        Assert.Equal(2, exit);
+        using var json = JsonDocument.Parse(output.ToString());
+        var root = json.RootElement;
+        Assert.Equal(new[] { "schemaVersion", "site", "status", "sourceCoverage", "provesLogCompleteness", "candidate", "eligibleRecords",
+            "excludedRecords", "newlyRefused", "newlyPermitted", "changedRecommendations", "unchangedRecommendations" },
+            root.EnumerateObject().Select(x => x.Name));
+        Assert.Equal(new[] { "mode", "observeThreshold", "blockThreshold" },
+            root.GetProperty("candidate").EnumerateObject().Select(x => x.Name));
+        Assert.Equal("site-1", root.GetProperty("site").GetString());
+        Assert.Equal("partial", root.GetProperty("status").GetString());
+        Assert.Equal("partial", root.GetProperty("sourceCoverage").GetString());
+        Assert.False(root.GetProperty("provesLogCompleteness").GetBoolean());
+        Assert.Equal(1, root.GetProperty("eligibleRecords").GetInt32());
+        Assert.Equal(1, root.GetProperty("newlyRefused").GetInt32());
+        Assert.DoesNotContain("private-", output.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("001b", output.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task UnknownFormat_FailsBeforeWritingOperatorOutput()
+    {
+        using var output = new StringWriter();
+        await Assert.ThrowsAsync<CliArgumentException>(() => PreviewCommand.RunAsync(CliOptions.Parse(
+            ["--log-file", "synthetic.jsonl", "--site", "one", "--format", "comunity"]), output));
+        Assert.Equal("", output.ToString());
+    }
+
+    [Fact]
     public async Task OfflineCommand_ProducesAggregateJsonAndLeavesInputsUntouched()
     {
         var record = PolicyPreviewTests.Event();

@@ -79,7 +79,7 @@ Use a copied file for reproducibility. No source hash or authenticity proof is p
 
 Only aggregate comparison and allowlisted provenance are returned: no request IDs, client addresses,
 paths, filenames, headers, samples or message text are copied into the report. Site IDs and build/
-activation metadata remain operational data; the output is not an anonymized community export.
+activation metadata in the default operator output remain operational data.
 
 `complete` means every selected record in the scanned input was comparable, not that logs cover all
 traffic. Other log events are counted as ignored and never reconstructed as requests; legacy-only
@@ -88,3 +88,16 @@ can leave unseen gaps. Neither changed content rules nor new rate/size/parser li
 from these scores. This is a historical estimate over recorded sample scope, not a forecast, security
 certificate or authorization to enable Block. There is nothing to roll back: preview changes nothing.
 For an independently deployed gateway, bypass remains the IIS rewrite rule before stopping its service.
+
+## Community export
+
+Append `--format community` to a preview command to produce a local JSON summary for sharing.
+The output uses the literal label `site-1` for the selected site in every export. The schema includes
+the candidate mode and thresholds, comparison status, eligible and excluded counts and the four
+impact totals. Unknown impacts remain null. Counts can still disclose activity in small populations.
+Site names, other sites' counts, file paths, messages, request IDs, timestamps and build identifiers
+are excluded. This format requires no hashing key and sends nothing to an external service.
+
+In both formats, `sourceCoverage` is `partial` when the scan found a gap or stopped early,
+`unavailable` when the input could not be evaluated due to a read/open failure, and `unknown`
+otherwise. The comparison's `status` describes how much of the selected evidence was comparable.

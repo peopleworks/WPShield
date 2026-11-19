@@ -81,7 +81,7 @@ Los prefijos de hallazgos y resúmenes existentes se conservan. Los resúmenes d
 Las advertencias de multipart incompleto usan `ForwardPermitted` en lugar de `Forwarded`; las de
 capacidad usan `ForwardUninspected` en lugar de `ForwardedUninspected`. Para conocer el resultado
 real se debe leer el evento final. `wpshield watch` mantiene su vista de hallazgos y resúmenes;
-una vista específica del evento final y las métricas son trabajo futuro. Los contratos portables
+una vista específica del evento final queda pendiente. Los contratos portables
 `RuleFinding` e `InspectionResult` no cambian.
 
 El evento nuevo no añade rutas, nombres de archivo, hosts, cabeceras, consultas, cuerpos ni muestras.
@@ -95,10 +95,30 @@ tempranos y excepciones. Quedan fuera de esa garantía los endpoints de salud y 
 del servidor HTTP anteriores al endpoint, caídas del proceso, filtros de logging, saturación de la
 cola y fallos de almacenamiento. Mantenga Information habilitado para `WPShield.Gateway.Evidence`.
 La ausencia de un evento significa **desconocido**, nunca reenvío correcto ni solicitud inspeccionada.
-Siguen aplicándose los avisos existentes de pérdida de logs; esta entrega no incluye completitud
-durable, nuevas métricas de pérdida ni explicación o reproducción offline.
 
 No se necesitan cambios de despliegue ni infraestructura. Aplicar una compilación requiere reiniciar;
 la configuración no se recarga en caliente. En un gateway desplegado, el bypass sigue siendo la regla
 de reescritura de IIS: detener el servicio mientras esa regla apunta a WPShield deja el sitio caído.
 Este trabajo no modifica IIS, DNS, certificados, firewall, servicios ni puertos públicos y no integra Reader-1.
+
+## Medir la pérdida de evidencia
+
+Con acceso a los diagnósticos locales de .NET, consulte el proceso del gateway con
+`dotnet-counters monitor --process-id <PID> --counters WPShield.Evidence`. Las métricas siguen
+accesibles si el registro en archivo falla o está desactivado. Carecen de etiquetas y se reinician con el proceso.
+
+| Instrumento (prefijo `wpshield.evidence.`) | Interpretación |
+| --- | --- |
+| `queue_drops` | Entradas individuales descartadas al llenarse la cola del archivo. |
+| `failed_batches` | Lotes cuya escritura falló. Parte de un lote puede haber llegado al disco. |
+| `skipped_stages` | Etapas de ruta o carga que terminaron como `not_started` o `not_inspected`, hasta dos por solicitud de reenvío. Una solicitud ordinaria sin multipart puede sumar una. |
+| `file_enabled` | Vale 1 cuando el destino JSONL está habilitado y 0 cuando está desactivado. |
+| `degraded` | Pasa a 1 tras el primer descarte o fallo de lote y conserva ese valor al recuperarse el disco. Omitir una inspección por sí solo no lo activa. |
+
+El escritor intenta guardar los avisos pendientes cuando vuelve a poder escribir. Si falla el vaciado
+al disco, un aviso puede repetirse. Una caída, la rotación o un filtro pueden dejar huecos sin aviso.
+El PDF del operador indica cobertura **parcial** cuando detecta pérdidas, fallos de lectura o líneas
+inválidas. En los demás casos la cobertura del tráfico es **desconocida**. Los avisos del gateway
+dentro del periodo se muestran incluso al filtrar por sitio. Las líneas inválidas se cuentan en todo
+el archivo porque se desconoce su fecha y sitio. El PDF es privado. Para compartir resultados, use el
+[formato comunitario](vista-previa-politicas.md#exportación-comunitaria).

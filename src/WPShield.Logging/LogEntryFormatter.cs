@@ -78,7 +78,7 @@ public static class LogEntryFormatter
     /// The line that admits to a gap. It is written by the writer itself rather than through the
     /// logging pipeline, because the pipeline is exactly what was full.
     /// </summary>
-    public static byte[] FormatDroppedNotice(DateTimeOffset timestamp, int droppedEntries)
+    public static byte[] FormatDroppedNotice(DateTimeOffset timestamp, long droppedEntries)
     {
         return Format(
             timestamp,
@@ -89,6 +89,11 @@ public static class LogEntryFormatter
             [new KeyValuePair<string, object?>("DroppedEntries", droppedEntries)],
             exception: null);
     }
+
+    public static byte[] FormatWriteFailureNotice(DateTimeOffset timestamp, long failedBatches) =>
+        Format(timestamp, LogLevel.Error, "WPShield.Gateway.Logging", default,
+            "Log writes failed in earlier batches. Some records may be missing.",
+            [new KeyValuePair<string, object?>("FailedBatches", failedBatches)], exception: null);
 
     private static void WriteState(Utf8JsonWriter writer, IReadOnlyList<KeyValuePair<string, object?>>? state)
     {

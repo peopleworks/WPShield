@@ -7,6 +7,7 @@ using Microsoft.Extensions.Hosting.WindowsServices;
 using WPShield.Abstractions;
 using WPShield.Core;
 using WPShield.Gateway.Logging;
+using WPShield.Logging;
 using WPShield.Rules.Windows;
 using WPShield.Rules.WordPress;
 using Yarp.ReverseProxy.Forwarder;
@@ -97,6 +98,7 @@ public static class GatewayApplication
         builder.WebHost.UseUrls(gatewayOptions.Urls);
 
         var app = builder.Build();
+        var evidenceMetrics = app.Services.GetRequiredService<EvidenceMetrics>();
         var loggerFactory = app.Services.GetRequiredService<ILoggerFactory>();
         loggerFactory.CreateLogger("WPShield.Gateway.Configuration").LogInformation(
             "Request evidence activated. SchemaVersion={SchemaVersion} ConfigurationRevision={ConfigurationRevision}",
@@ -206,6 +208,10 @@ public static class GatewayApplication
             }
             finally
             {
+                if (evidence.Path.Status is "not_started" or "not_inspected")
+                    evidenceMetrics.RecordSkippedStage();
+                if (evidence.Upload.Status is "not_started" or "not_inspected")
+                    evidenceMetrics.RecordSkippedStage();
                 evidence.Log(requestLoggerFactory.CreateLogger("WPShield.Gateway.Evidence"),
                     context, evidenceIdentity, multipartOptions.SampleBytes);
             }

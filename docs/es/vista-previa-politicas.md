@@ -80,8 +80,8 @@ No se genera una huella del archivo ni una prueba de autenticidad.
 
 Solo se devuelven la comparación agregada y los campos de procedencia permitidos: no se copian IDs de
 solicitud, direcciones de cliente, rutas, nombres de archivo, cabeceras, muestras ni texto de mensajes.
-Los IDs de sitio y metadatos de compilación/activación siguen siendo datos operativos; el resultado
-no es una exportación anonimizada para la comunidad.
+Los IDs de sitio y los metadatos de compilación y activación de la salida predeterminada del operador
+siguen siendo datos operativos.
 
 `complete` significa que todos los registros seleccionados de la entrada recorrida fueron comparables,
 no que los logs cubran todo el tráfico. Los demás eventos cuentan como ignorados y nunca se reconstruyen
@@ -91,3 +91,17 @@ puntuaciones no permiten simular reglas de contenido modificadas ni límites nue
 parser. Es una estimación histórica sobre las muestras registradas, no una predicción, certificado de
 seguridad ni autorización para activar Block. No hay nada que revertir: preview no cambia nada.
 En un gateway desplegado por separado, el bypass sigue siendo la regla de reescritura de IIS antes de detener el servicio.
+
+## Exportación comunitaria
+
+Añada `--format community` al comando de vista previa para generar un resumen JSON local que pueda
+compartir. El sitio seleccionado lleva la etiqueta fija `site-1` en cada exportación. El esquema
+incluye modo y umbrales candidatos, estado de la comparación, recuentos de registros elegibles y
+excluidos y los cuatro totales de impacto. Los impactos desconocidos conservan el valor null. En
+grupos pequeños, los recuentos aún pueden revelar actividad. Se excluyen nombres de sitios,
+recuentos de otros sitios, rutas, mensajes, IDs de solicitudes, fechas y versiones. El formato
+prescinde de claves de hash y genera el resultado sin enviarlo a ningún servicio externo.
+
+En ambos formatos, `sourceCoverage` vale `partial` si se detectó un hueco o se interrumpió la
+lectura, `unavailable` si un fallo de apertura o lectura impidió evaluar la entrada y `unknown` en
+los demás casos. El campo `status` indica qué parte de la evidencia seleccionada pudo compararse.

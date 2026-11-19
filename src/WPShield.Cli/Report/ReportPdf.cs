@@ -42,7 +42,9 @@ internal sealed class ReportPdf(ReportModel model) : IDocument
         {
             page.Size(PageSizes.A4);
             page.Margin(36);
-            page.DefaultTextStyle(text => text.FontSize(9.5f).FontColor(Ink).LineHeight(1.25f));
+            // Preserve searchable words in the PDF text layer, including "partial" and "notices".
+            page.DefaultTextStyle(text => text.FontSize(9.5f).FontColor(Ink).LineHeight(1.25f)
+                .DisableFontFeature(FontFeatures.StandardLigatures));
 
             page.Header().Element(Header);
             page.Content().Element(Content);
@@ -92,6 +94,10 @@ internal sealed class ReportPdf(ReportModel model) : IDocument
             column.Spacing(14);
 
             Title(column);
+            column.Item().Text(_model.Sources.Any(source => source.KnownGap)
+                ? "Evidence coverage is partial. See the source appendix for known gaps."
+                : "Traffic coverage is unknown. The supplied logs cannot establish that every request was recorded.")
+                .SemiBold().FontColor(Amber);
             ExecutiveSummary(column);
             Counters(column);
             HonestyNote(column);
@@ -99,9 +105,7 @@ internal sealed class ReportPdf(ReportModel model) : IDocument
             if (_model.Empty)
             {
                 column.Item().Text(
-                    "No findings or verdicts were recorded in this window. In Monitor mode the log is " +
-                    "the only artefact WPShield produces, so an empty window means either a quiet period " +
-                    "or a gateway that is not in the traffic path — 'wpshield status' tells which.")
+                    "The supplied evidence contains no findings or verdicts in this window.")
                     .FontColor(Grey).Italic();
             }
             else
@@ -162,7 +166,8 @@ internal sealed class ReportPdf(ReportModel model) : IDocument
             Card(row, "observed", _model.Observed.ToString(CultureInfo.InvariantCulture), Amber);
             Card(row, "blocked", _model.Blocked.ToString(CultureInfo.InvariantCulture), Red);
             Card(row, "clean uploads", _model.AllowedUploads.ToString(CultureInfo.InvariantCulture), Green);
-            Card(row, "dropped log lines", _model.Dropped.ToString(CultureInfo.InvariantCulture), _model.Dropped > 0 ? Red : Grey);
+            var lossNotices = _model.Sources.Sum(source => (long)source.LossNotices);
+            Card(row, "gateway loss notices", lossNotices.ToString(CultureInfo.InvariantCulture), lossNotices > 0 ? Red : Grey);
         });
     }
 
@@ -184,10 +189,8 @@ internal sealed class ReportPdf(ReportModel model) : IDocument
             {
                 text.Span("What this does not count. ").SemiBold().FontColor(Ink);
                 text.Span(
-                    "These totals are what the gateway wrote down, not total traffic. A clean request " +
-                    "that is not a multipart upload is never logged, and only an upload records a clean " +
-                    "pass, so there is no request rate here — only findings, verdicts, and the uploads " +
-                    "that were inspected and allowed.")
+                    "The totals count recorded findings and verdicts. A request can contribute more " +
+                    "than one event. Only an upload verdict contributes to the clean upload count.")
                     .FontColor(Grey);
             });
         });
@@ -302,6 +305,9 @@ internal sealed class ReportPdf(ReportModel model) : IDocument
                         .FontSize(8).FontColor(Grey);
                 });
                 entry.Item().Text(source.Sha256).FontFamily(Fonts.Consolas).FontSize(8).FontColor(Ink);
+                entry.Item().Text($"Read {(source.ReadFailed ? "failed" : "finished")} · " +
+                    $"{Plural(source.InvalidLines, "invalid line")} in source · {Plural(source.LossNotices, "gateway loss notice")} in window")
+                    .FontSize(8).FontColor(Grey);
             });
         }
     }
