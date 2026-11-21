@@ -9,16 +9,10 @@ using SharpPcap;
 /// The capture is read-only: it never injects, modifies, or blocks packets. It extracts
 /// TCP payloads and hands them to the HTTP metadata parser. Full bodies, credentials,
 /// cookies, and query strings are never retained.
-///
-/// The SharpPcap API surface used here is accessed through <c>dynamic</c> because the
-/// 4.1.0 NuGet package ships concrete device types in platform-specific sub-assemblies
-/// (SharpPcap.WinPcap, SharpPcap.LibPcap) while the base package exposes only the
-/// <c>ICaptureDevice</c> interface. Using <c>dynamic</c> keeps this project independent of
-/// the underlying capture backend while remaining type-safe at the boundaries we control.
 /// </summary>
 public sealed class PcapCapture : IDisposable
 {
-    private readonly List<dynamic> _devices = [];
+    private readonly List<ICaptureDevice> _devices = [];
     private readonly HashSet<int> _ports;
     private readonly bool _promiscuousMode;
     private readonly Action<byte[], int, int> _onTcpPayload;
@@ -32,12 +26,14 @@ public sealed class PcapCapture : IDisposable
         IReadOnlyList<int> ports,
         bool promiscuousMode,
         Action<byte[], int, int> onTcpPayload)
+        : this(CaptureDeviceList.Instance, interfaces, ports, promiscuousMode, onTcpPayload) { }
+
+    internal PcapCapture(IEnumerable<ICaptureDevice> allDevices, IReadOnlyList<string> interfaces,
+        IReadOnlyList<int> ports, bool promiscuousMode, Action<byte[], int, int> onTcpPayload)
     {
         _ports = new HashSet<int>(ports);
         _promiscuousMode = promiscuousMode;
         _onTcpPayload = onTcpPayload ?? throw new ArgumentNullException(nameof(onTcpPayload));
-
-        var allDevices = CaptureDeviceList.Instance;
 
         // If no interfaces are named, capture from all adapters that have an IP address.
         var candidateDevices = interfaces.Count > 0
@@ -65,8 +61,7 @@ public sealed class PcapCapture : IDisposable
     {
         foreach (var device in _devices)
         {
-            var handler = new Action<object, dynamic>(OnPacketArrival);
-            device.OnPacketArrival += handler;
+            device.OnPacketArrival += OnPacketArrival;
             device.StartCapture();
         }
     }
@@ -86,17 +81,16 @@ public sealed class PcapCapture : IDisposable
             {
                 // Stopping is best-effort during shutdown.
             }
-            var handler = new Action<object, dynamic>(OnPacketArrival);
-            device.OnPacketArrival -= handler;
+            device.OnPacketArrival -= OnPacketArrival;
         }
     }
 
-    private void TryOpenDevice(dynamic device)
+    private void TryOpenDevice(ICaptureDevice device)
     {
         try
         {
             // Open in capture mode. The read timeout is short so StopCapture can break the loop.
-            device.Open();
+            device.Open(new DeviceConfiguration { Mode = _promiscuousMode ? DeviceModes.Promiscuous : DeviceModes.None, ReadTimeout = 100 });
 
             // Build a BPF filter for the configured ports: "tcp port 80 or tcp port 443"
             var filter = BuildBpfFilter();
@@ -105,7 +99,6 @@ public sealed class PcapCapture : IDisposable
                 device.Filter = filter;
             }
 
-            device.PromiscuousMode = _promiscuousMode;
             _devices.Add(device);
         }
         catch
@@ -126,19 +119,12 @@ public sealed class PcapCapture : IDisposable
         return string.Join(" or ", parts);
     }
 
-    private void OnPacketArrival(object sender, dynamic e)
+    private void OnPacketArrival(object sender, PacketCapture e)
     {
         try
         {
-            // Cast from dynamic to concrete types so the compiler can perform nullability analysis.
-            var data = (byte[])e.Packet.Data;
-            if (data is null || data.Length == 0)
-            {
-                return;
-            }
-
-            var linkLayer = (PacketDotNet.LinkLayers)e.Packet.LinkLayerType;
-            var packet = Packet.ParsePacket(linkLayer, data);
+            if (e.Data.IsEmpty) return;
+            var packet = Packet.ParsePacket(e.Device.LinkType, e.Data.ToArray());
             var tcpPacket = packet.Extract<TcpPacket>();
             if (tcpPacket is null)
             {

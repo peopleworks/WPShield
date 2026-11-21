@@ -26,7 +26,7 @@
       four platform-independent projects (Abstractions, Core, Rules.Windows, Rules.WordPress) do
       not reference them, so the Linux CI leg is unaffected.
     -->
-    <PackageVersion Include="SharpPcap" Version="4.1.0" />
+    <PackageVersion Include="SharpPcap" Version="6.3.1" />
     <PackageVersion Include="PacketDotNet" Version="1.4.9-pre53" />
   </ItemGroup>
 </Project>

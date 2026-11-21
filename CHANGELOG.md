@@ -14,6 +14,10 @@ must complete first.
 
 ### Added
 
+- `wpshield network-monitor --flows` displays local and remote TCP/UDP endpoints, observed IP
+  bytes per direction, TCP initiator and capture counters on one selected adapter. Flow mode
+  supports both console and JSON Lines output. The Windows sensor now uses SharpPcap 6.3.1.
+
 - The local `WPShield.Evidence` meter counts dropped entries, failed write batches and skipped
   inspection stages. PDF reports identify observed gaps. The offline preview accepts
   `--format community` to export the selected site's aggregate results under a fixed synthetic label.

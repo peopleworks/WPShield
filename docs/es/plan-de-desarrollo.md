@@ -734,25 +734,18 @@ permiten identificar huecos conocidos. La [exportación comunitaria](vista-previ
 resume un sitio con una etiqueta sintética.
 El resto de esta sección sigue siendo planificación; prevalece el [roadmap publicado](../../ROADMAP.md).
 
-### Monitor de tráfico del servidor Windows (pendiente)
+### Monitor de tráfico del servidor Windows
 
-- [ ] Ampliar el sensor pasivo con una vista local en vivo del tráfico TCP y UDP, tanto IPv4 como
-      IPv6, en las interfaces elegidas por el operador. Observar todos los puertos requerirá una
-      selección explícita. Mostrar interfaz, protocolo, IP y puerto local y remoto, última actividad
-      y bytes recibidos y enviados. En un servidor compartido, atribuir tráfico a un sitio solo
-      cuando exista evidencia independiente que lo identifique.
-- [ ] Distinguir las respuestas a conexiones entrantes de las conexiones iniciadas por el servidor.
-      Si la captura empieza a mitad de una conexión o los paquetes son insuficientes, indicar
-      «iniciador desconocido». Permitir filtrar por los puertos de IIS, SQL Server y Escritorio
-      remoto configurados por el operador, incluidos los no estándar. Usar, cuando estén disponibles,
-      los registros de IIS, la auditoría de SQL Server o los eventos de inicio de sesión de Windows
-      para corroborar el servicio y el resultado de autenticación. El puerto por sí solo es insuficiente.
-- [ ] Verificar con tráfico sintético que una conexión HTTPS entrante y sus respuestas aparecen
-      juntas, que una conexión saliente independiente también se ve y que, si falta la auditoría,
-      el resultado del inicio de sesión figura como desconocido. Limitar la retención de flujos
-      e indicar los descartes o la falta de contadores de captura. El monitor será opcional y de
-      solo lectura. Registrará únicamente metadatos de flujo y excluirá contenido de paquetes,
-      sentencias SQL, credenciales y datos de sesión. Las observaciones no activarán bloqueos automáticos.
+- [x] Implementar una vista pasiva de flujos TCP/UDP para un adaptador elegido por el operador.
+      La [vista local](diseno-sensor-red.md#vista-de-flujos-del-servidor) incluye selección explícita
+      de puertos, sentido, bytes IP observados, retención acotada y contadores de captura.
+- [x] Verificar con tráfico sintético que una conexión entrante al puerto HTTPS y sus respuestas
+      comparten una fila, que una conexión saliente aparece por separado y que el iniciador figura
+      como desconocido para UDP y para TCP observado desde mitad de sesión.
+- [ ] Validar la captura en vivo en Windows Server con Npcap y los puertos de los servicios elegidos.
+- [ ] Corroborar actividad y autenticación con evidencia disponible de IIS, auditoría de SQL Server
+      y eventos de inicio de sesión de Windows. El resultado será desconocido si faltan los registros.
+      En un servidor compartido, la atribución a un sitio requiere evidencia independiente.
 
 ### Eventos
 

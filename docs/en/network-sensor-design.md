@@ -5,6 +5,34 @@ network metadata on operator-named ports (for example `80` and `443`) so an oper
 see what traffic reaches the host. It is **not** the HTTP gateway, it is **not** in the
 request path, and it never modifies IIS.
 
+## Host flow view
+
+Run the CLI locally with administrator privileges and Npcap installed. Use the name of one
+Windows adapter and the actual service ports on that host. These examples use common ports.
+
+```powershell
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 443,1433,3389
+wpshield network-monitor --flows --interfaces "Ethernet" --all-ports --json
+```
+
+Every two seconds the console shows up to 40 most recently active flows, with local and remote
+endpoints, protocol, last activity in UTC, and observed IP bytes received and sent (including IP and
+transport headers and retransmissions). Both directions share one row. An observed opening TCP SYN
+identifies the local or remote initiator. UDP and TCP first seen midstream show `unknown`. A port
+filter can match either endpoint. Service identity, site attribution and authentication outcomes
+require separate evidence. Ctrl+C stops the capture and prints a final snapshot.
+
+JSON includes every retained flow. The table holds at most 4,096 flows and expires entries after 60 seconds of inactivity. The display
+includes the active count, packets skipped during decoding or direction assignment, packets dropped
+at table capacity and the driver's reported drop counter (null in JSON when unavailable). A zero
+driver counter cannot establish complete coverage. [Npcap capture statistics](https://npcap.com/guide/wpcap/pcap_stats.html)
+
+The capture requests at most 160 bytes per frame and retains only flow metadata. TCP/UDP over
+IPv4 and basic IPv6 are supported. VLAN encapsulation, IP fragments and IPv6 extension headers are
+outside this version's coverage. Both-local and neither-local traffic cannot be assigned a remote
+endpoint. Filters can exclude frames before software counters see them. Only addresses assigned to
+the selected adapter at startup are used for direction. Output is local and includes IP addresses.
+
 ## Why it must be separate
 
 | Concern | WPShield.Gateway (M1/M2) | WPShield.NetworkSensor (proposed) |
@@ -20,7 +48,7 @@ Mixing a packet capture driver into the HTTP gateway would break the loopback-on
 require kernel privileges inside the request path, and tempt the implementation to inspect
 full bodies — all prohibited by AGENTS.md and THREAT_MODEL.md.
 
-## Responsibilities
+## HTTP metadata mode responsibilities
 
 1. **Capture only metadata.** Source/destination IP, source/destination port, HTTP method,
    request path (query string stripped), response status code, body size, timestamp, network

@@ -1,4 +1,5 @@
 using System.Security.Principal;
+using System.Text.Json;
 using System.Threading;
 using WPShield.NetworkSensor;
 
@@ -32,9 +33,19 @@ namespace WPShield.Cli;
 internal static class NetworkMonitorCommand
 {
     public const string Help = """
-        wpshield network-monitor - live passive capture of HTTP metadata on named ports. Reads only.
+        wpshield network-monitor - observe host TCP/UDP flows or HTTP metadata. Reads only.
 
         Usage: wpshield network-monitor [options]
+
+        Host flow view (local console, administrator and Npcap required):
+          wpshield network-monitor --flows --interfaces Ethernet --ports 443,1433,3389
+          wpshield network-monitor --flows --interfaces Ethernet --all-ports
+          Select exactly one adapter. Shows TCP/UDP endpoints, observed IP bytes in each
+          direction, initiator and capture counters every two seconds. Add --json for JSON Lines.
+          The console shows 40 recent rows. JSON includes all retained rows (up to 4096).
+          Ctrl+C prints the final snapshot and stops capture.
+
+        HTTP metadata mode:
 
           --ports <numbers>   Comma-separated TCP ports to capture. Required. Example: 80,443.
           --interfaces <names> Comma-separated network interface names. Default: all interfaces
@@ -49,9 +60,8 @@ internal static class NetworkMonitorCommand
           --rotation-retention-days <n> Purge rotated files older than this many days.
                               Default: 30.
 
-        What it shows: one JSON line per observed HTTP request or response, with timestamp, source
-        and destination IP/port, method, path (query string stripped), status code, body size, and
-        TLS flag. Nothing else - no bodies, no credentials, no cookies, no query strings.
+        HTTP mode emits recognizable plaintext HTTP metadata. Use --flows for transport endpoints
+        and byte counts, including encrypted connections.
 
         What it does NOT do: block traffic, modify IIS, install Npcap, or capture in promiscuous
         mode unless --promiscuous is passed. Npcap must be installed separately by the operator;
@@ -75,6 +85,8 @@ internal static class NetworkMonitorCommand
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
 
+        if (arguments.Has("--flows"))
+            return RunFlows(arguments, output);
         arguments.RejectUnknown(KnownOptions);
 
         if (!IsElevated())
@@ -163,6 +175,65 @@ internal static class NetworkMonitorCommand
             output.WriteLine($"ERROR: {exception.Message}");
             return 1;
         }
+    }
+
+    private static int RunFlows(CliOptions arguments, TextWriter output)
+    {
+        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json");
+        arguments.RejectRepeated();
+        if (arguments.Get("--flows") is not null || arguments.Get("--all-ports") is not null || arguments.Get("--json") is not null)
+            throw new CliArgumentException("--flows, --all-ports and --json take no value.");
+        var interfaces = arguments.List("--interfaces");
+        if (interfaces.Count != 1 || interfaces[0].Any(char.IsControl))
+            throw new CliArgumentException("--flows requires one named --interfaces adapter.");
+        var allPorts = arguments.Has("--all-ports");
+        var ports = arguments.IntegerList("--ports", []);
+        if (arguments.Has("--ports") == allPorts || !allPorts && ports.Count == 0 ||
+            ports.Count > 64 || ports.Any(port => port is < 1 or > 65535))
+            throw new CliArgumentException("Specify --ports with 1..64 ports in 1..65535, or --all-ports.");
+        if (!IsElevated())
+        {
+            output.WriteLine("ERROR: flow monitoring requires an Administrator token.");
+            return 1;
+        }
+        using var stop = new CancellationTokenSource();
+        ConsoleCancelEventHandler cancel = (_, e) => { e.Cancel = true; stop.Cancel(); };
+        Console.CancelKeyPress += cancel;
+        try
+        {
+            var json = arguments.Has("--json");
+            HostFlowMonitor.Run(interfaces[0], ports, allPorts,
+                snapshot => WriteSnapshot(output, snapshot, json), stop.Token, includeAllRows: json);
+            return 0;
+        }
+        catch (Exception ex) when (ex.GetBaseException() is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
+        {
+            output.WriteLine("ERROR: a compatible Npcap installation is required for live flow monitoring.");
+            return 1;
+        }
+        catch (Exception ex) when (ex is InvalidOperationException or SharpPcap.PcapException)
+        {
+            output.WriteLine($"ERROR: {ex.Message}");
+            return 1;
+        }
+        catch (OperationCanceledException) when (stop.IsCancellationRequested) { return 0; }
+        finally { Console.CancelKeyPress -= cancel; }
+    }
+
+    internal static void WriteSnapshot(TextWriter output, FlowSnapshot snapshot, bool json)
+    {
+        if (json)
+        {
+            output.WriteLine(JsonSerializer.Serialize(snapshot));
+            return;
+        }
+        var driver = snapshot.DriverDrops?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable";
+        output.WriteLine($"{snapshot.Timestamp:u}  {snapshot.Interface}  Showing {snapshot.Flows.Count}/{snapshot.ActiveFlows} flows");
+        output.WriteLine($"Skipped packets: {snapshot.SkippedPackets}  Table capacity drops: {snapshot.CapacityDrops}  Driver drop counter: {driver}");
+        output.WriteLine("UTC LAST SEEN  PROTO  INITIATOR  RECEIVED (B)  SENT (B)  LOCAL  <->  REMOTE");
+        foreach (var flow in snapshot.Flows)
+            output.WriteLine($"{flow.LastSeen.UtcDateTime:HH:mm:ss}       {flow.Protocol,-5}  {flow.Initiator,-8}  {flow.ReceivedBytes,12}  {flow.SentBytes,8}  {flow.Local}  <->  {flow.Remote}");
+        output.WriteLine();
     }
 
     /// <summary>
