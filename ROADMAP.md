@@ -293,22 +293,18 @@ not read as more than they claim:
 - [x] Store privacy-safe JSON Lines with rotation, size limits and retention. **Restricted permissions are not done here**: the gateway creates the log directory but does not set its ACL, because logs carry real hostnames, real paths and real client addresses, and locking that down belongs to the M6 installation procedure rather than to configuration. Documented in [operator configuration](docs/en/operator-configuration.md#log-files).
 - [x] Add automated redaction tests for sensitive headers, secrets, forms, query strings, and upload content. Request log paths use normalized values so control characters cannot reach log consumers.
 
-### Planned host traffic monitor for Windows Server
+### Host traffic monitor for Windows Server
 
-- [ ] Extend the passive sensor with a local live view of IPv4 and IPv6 TCP/UDP traffic on
-      operator-selected interfaces. Make all-port observation an explicit choice. Show the
-      interface, protocol, local and remote endpoints, last activity and bytes in each direction.
-      On shared hosts, keep flows scoped to the server unless independent evidence identifies a site.
-- [ ] Distinguish replies to incoming connections from connections initiated by the server. Show
-      an unknown initiator when capture begins midstream or the available packets are inconclusive.
-      Include filters for the operator's IIS, SQL Server and Remote Desktop ports, including
-      nonstandard ports. Use available IIS, SQL Server audit or Windows logon events to corroborate
-      service activity and authentication outcomes. A port match alone is insufficient evidence.
-- [ ] Verify with synthetic traffic that an incoming HTTPS connection and its replies appear as
-      one flow, a separate outbound connection is visible, and missing audit records leave the
-      login outcome unknown. Bound flow retention and display capture drops or unavailable counters.
-      Keep the monitor opt-in and read-only. Record only flow metadata and exclude packet contents,
-      SQL statements, credentials and session data. Observations never trigger automatic blocking.
+- [x] Add a passive TCP/UDP flow view for one operator-selected adapter. Explicit port selection,
+      read-only local display, direction, observed IP bytes, bounded retention and capture counters
+      are implemented in [the flow view](docs/en/network-sensor-design.md#host-flow-view).
+- [x] Verify with synthetic traffic that an incoming HTTPS-port connection and its replies share
+      a flow, a separately initiated outbound connection appears independently and midstream TCP
+      and UDP report an unknown initiator.
+- [ ] Validate live capture on Windows Server with Npcap and named service ports.
+- [ ] Corroborate service activity and authentication outcomes with available IIS, SQL Server audit
+      and Windows logon evidence. Keep the outcome unknown when the records are missing. On shared
+      hosts, site attribution requires independent evidence.
 
 ## M5 — Local multilingual dashboard
 

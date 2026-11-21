@@ -5,6 +5,35 @@ metadatos de red en los puertos que el operador nombre (por ejemplo `80` y `443`
 operador pueda ver qué tráfico llega al host. **No es** el gateway HTTP, **no está** en el camino
 de las solicitudes y **nunca** modifica IIS.
 
+## Vista de flujos del servidor
+
+Ejecute la CLI localmente como administrador y con Npcap instalado. Indique el nombre de un
+adaptador de Windows y los puertos reales de sus servicios. Los ejemplos usan puertos habituales.
+
+```powershell
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 443,1433,3389
+wpshield network-monitor --flows --interfaces "Ethernet" --all-ports --json
+```
+
+Cada dos segundos la consola muestra hasta 40 flujos recientes, con los extremos local y remoto,
+protocolo, última actividad en UTC y bytes IP recibidos y enviados (incluidas las cabeceras IP y
+de transporte y las retransmisiones). Ambos sentidos comparten una fila. El SYN inicial observado
+identifica al iniciador TCP como `local` o `remote`. En UDP y en conexiones TCP observadas desde
+mitad de sesión aparece `unknown`. El filtro de puertos se aplica a ambos extremos. Identificar
+el servicio, el sitio o el resultado de un inicio de sesión requiere evidencia adicional. Ctrl+C
+detiene la captura e imprime el último resumen.
+
+El JSON incluye todos los flujos retenidos. La tabla conserva hasta 4.096 flujos y caduca tras 60 segundos de inactividad por flujo. La salida
+indica cuántos están activos, cuántos paquetes se omitieron al interpretar la trama o el sentido,
+cuántos se descartaron por capacidad y qué contador de descartes comunicó el controlador (null en
+JSON si está indisponible). Un cero no demuestra cobertura completa. [Contadores de Npcap](https://npcap.com/guide/wpcap/pcap_stats.html)
+
+La captura solicita un máximo de 160 bytes por trama y conserva únicamente metadatos del flujo.
+Esta versión cubre TCP/UDP sobre IPv4 e IPv6 básico. Quedan fuera las tramas VLAN, los fragmentos
+IP y las cabeceras de extensión IPv6. Si ambos extremos son locales o ninguno lo es, no se puede
+asignar un extremo remoto. Los filtros pueden excluir tramas antes de que lleguen a los contadores.
+El sentido se determina con las direcciones del adaptador al arrancar. La salida local contiene IP.
+
 ## Por qué debe ser separado
 
 | Preocupación | WPShield.Gateway (M1/M2) | WPShield.NetworkSensor (propuesto) |
@@ -20,7 +49,7 @@ Mezclar un controlador de captura de paquetes dentro del gateway HTTP rompería 
 loopback-only, requeriría privilegios de kernel dentro del camino de solicitud y tentaría a
 inspeccionar cuerpos completos — todo prohibido por AGENTS.md y THREAT_MODEL.md.
 
-## Responsabilidades
+## Responsabilidades del modo de metadatos HTTP
 
 1. **Capturar solo metadatos.** IP origen/destino, puerto origen/destino, método HTTP, ruta de
    solicitud (cadena de consulta eliminada), código de estado de respuesta, tamaño del cuerpo,

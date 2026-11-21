@@ -227,9 +227,8 @@ internal static class ProgramMain
                           [--observe-threshold 30] [--block-threshold 80]
 
               network-monitor
-                          Live passive capture of HTTP metadata on operator-named ports (for
-                          example 80, 443). Requires Administrator elevation and Npcap. Reads only;
-                          never touches IIS.
+                          Passive HTTP metadata or live TCP/UDP flows. Requires Administrator and Npcap.
+                          --flows --interfaces <adapter> (--ports <numbers> | --all-ports) [--json]
                           --ports <numbers> [--interfaces <names>] [--output <file>]
                           [--max-events-per-second <n>] [--promiscuous]
                           [--rotation-max-size-bytes <n>] [--rotation-retention-days <n>]

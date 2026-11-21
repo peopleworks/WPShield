@@ -8,7 +8,6 @@
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <AnalysisLevel>latest</AnalysisLevel>
-    <NoWarn>NU1701</NoWarn>
 
     <!--
       WPShield.NetworkSensor is Windows-only because it depends on Npcap/SharpPcap for live packet
@@ -19,14 +18,11 @@
 
       never the reverse. This keeps the platform-independent projects buildable and testable on
       Linux, exactly as AGENTS.md requires.
-
-      NU1701 is suppressed because SharpPcap 4.1.0 ships .NET Framework targets and resolves
-      through compatibility shims on net10.0-windows. The package works at runtime on .NET 10;
-      the warning is a packaging metadata issue, not a runtime incompatibility.
     -->
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="WPShield.NetworkSensor.Tests" />
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
   </ItemGroup>
 
