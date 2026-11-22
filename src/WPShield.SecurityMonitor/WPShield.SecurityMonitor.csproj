@@ -26,6 +26,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Diagnostics.EventLog" />
+    <InternalsVisibleTo Include="WPShield.SecurityMonitor.Tests" />
   </ItemGroup>
 
 </Project>

@@ -302,9 +302,22 @@ not read as more than they claim:
       a flow, a separately initiated outbound connection appears independently and midstream TCP
       and UDP report an unknown initiator.
 - [ ] Validate live capture on Windows Server with Npcap and named service ports.
-- [ ] Corroborate service activity and authentication outcomes with available IIS, SQL Server audit
-      and Windows logon evidence. Keep the outcome unknown when the records are missing. On shared
+- [x] Correlate observed incoming Remote Desktop flows with local Windows Security logon events
+      and show the matching record IDs. Missing or ambiguous evidence leaves the outcome unknown.
+- [ ] Corroborate service activity and authentication outcomes with IIS and SQL Server audit
+      evidence. Keep the outcome unknown when the records are missing. On shared
       hosts, site attribution requires independent evidence.
+
+### Windows service protection benchmark
+
+- [ ] Compare WPShield with RdpGuard across the 14 service surfaces in the
+      [benchmark plan](docs/en/host-protection-benchmark.md). Prioritize Remote Desktop, SQL Server
+      and IIS web logins because those are the services the operator needs to defend first.
+- [ ] Publish results by service and version for attribution, false positives, time to detection,
+      resource use and recovery. Record observation, detection and verified prevention separately.
+      A packet seen on a service port does not establish an authentication outcome.
+- [ ] Evaluate host-wide enforcement separately under [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md).
+      The monitoring benchmark starts in Monitor mode and leaves firewall policy under operator control.
 
 ## M5 — Local multilingual dashboard
 

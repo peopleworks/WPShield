@@ -5,7 +5,10 @@ using PacketDotNet;
 namespace WPShield.NetworkSensor;
 
 public sealed record FlowRow(string Protocol, string Local, string Remote, string Initiator,
-    long ReceivedBytes, long SentBytes, DateTimeOffset LastSeen);
+    long ReceivedBytes, long SentBytes, DateTimeOffset LastSeen)
+{
+    public DateTimeOffset? FirstSeen { get; init; }
+}
 
 public sealed record FlowSnapshot(string Interface, DateTimeOffset Timestamp, int ActiveFlows,
     long SkippedPackets, long CapacityDrops, uint? DriverDrops, IReadOnlyList<FlowRow> Flows);
@@ -20,8 +23,9 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
     private long _capacityDrops;
 
     private readonly record struct Key(byte Protocol, IPEndPoint Local, IPEndPoint Remote);
-    private sealed class Totals
+    private sealed class Totals(DateTimeOffset firstSeen)
     {
+        public DateTimeOffset FirstSeen = firstSeen;
         public long Received;
         public long Sent;
         public DateTimeOffset LastSeen;
@@ -66,12 +70,12 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
                 _capacityDrops++;
                 return;
             }
-            totals = new Totals();
+            totals = new Totals(seen);
             _flows.Add(key, totals);
         }
         else if (seen - totals.LastSeen >= TimeSpan.FromMinutes(1))
         {
-            totals = new Totals();
+            totals = new Totals(seen);
             _flows[key] = totals;
         }
         if (protocol == 6 && (transport[13] & 0x17) == 0x02)
@@ -82,6 +86,7 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
             {
                 // A fresh opening on a reused tuple starts a new observation.
                 totals.Received = totals.Sent = 0;
+                totals.FirstSeen = seen;
                 totals.OpeningSequence = sequence;
                 totals.Initiator = initiator;
             }
@@ -99,7 +104,8 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
         var rows = _flows.OrderByDescending(pair => pair.Value.LastSeen).Take(includeAllRows ? Capacity : 40)
             .Select(pair => new FlowRow(pair.Key.Protocol == 6 ? "TCP" : "UDP",
                 pair.Key.Local.ToString(), pair.Key.Remote.ToString(), pair.Value.Initiator,
-                pair.Value.Received, pair.Value.Sent, pair.Value.LastSeen)).ToArray();
+                pair.Value.Received, pair.Value.Sent, pair.Value.LastSeen)
+            { FirstSeen = pair.Value.FirstSeen }).ToArray();
         return new(device, now, _flows.Count, _skipped, _capacityDrops, driverDrops, rows);
     }
 

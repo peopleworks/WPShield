@@ -743,9 +743,21 @@ El resto de esta sección sigue siendo planificación; prevalece el [roadmap pub
       comparten una fila, que una conexión saliente aparece por separado y que el iniciador figura
       como desconocido para UDP y para TCP observado desde mitad de sesión.
 - [ ] Validar la captura en vivo en Windows Server con Npcap y los puertos de los servicios elegidos.
-- [ ] Corroborar actividad y autenticación con evidencia disponible de IIS, auditoría de SQL Server
-      y eventos de inicio de sesión de Windows. El resultado será desconocido si faltan los registros.
+- [x] Correlacionar los flujos entrantes de Escritorio Remoto con eventos de inicio de sesión de
+      Windows e indicar los números de registro. Si falta evidencia o es ambigua, mostrar `unknown`.
+- [ ] Corroborar actividad y autenticación con evidencia de IIS y auditoría de SQL Server.
+      El resultado será desconocido si faltan los registros.
       En un servidor compartido, la atribución a un sitio requiere evidencia independiente.
+
+### Comparación con RdpGuard
+
+- [ ] Evaluar los 14 servicios del [plan comparativo](evaluacion-proteccion-servidor.md).
+      Empezar por Escritorio Remoto, SQL Server y accesos web de IIS, los servicios prioritarios del operador.
+- [ ] Publicar resultados por servicio y versión sobre atribución, falsos positivos, tiempo de detección,
+      consumo de recursos y recuperación. Medir por separado el tráfico observado, la detección y la
+      prevención verificada. Un paquete en el puerto del servicio no acredita un inicio de sesión.
+- [ ] Evaluar la intervención sobre todo el servidor conforme al [ADR 0002](../en/adr/0002-host-level-brute-force-defence.md).
+      La evaluación inicial usa Monitor y mantiene la política de firewall bajo control del operador.
 
 ### Eventos
 

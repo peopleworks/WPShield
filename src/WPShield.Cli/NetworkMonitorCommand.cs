@@ -2,6 +2,7 @@ using System.Security.Principal;
 using System.Text.Json;
 using System.Threading;
 using WPShield.NetworkSensor;
+using WPShield.SecurityMonitor;
 
 namespace WPShield.Cli;
 
@@ -43,6 +44,8 @@ internal static class NetworkMonitorCommand
           Select exactly one adapter. Shows TCP/UDP endpoints, observed IP bytes in each
           direction, initiator and capture counters every two seconds. Add --json for JSON Lines.
           The console shows 40 recent rows. JSON includes all retained rows (up to 4096).
+          Add --rdp-port <port> to match remote interactive logon records from the local
+          Security log against observed TCP flows. Include the local RDP port in the capture.
           Ctrl+C prints the final snapshot and stops capture.
 
         HTTP metadata mode:
@@ -179,7 +182,7 @@ internal static class NetworkMonitorCommand
 
     private static int RunFlows(CliOptions arguments, TextWriter output)
     {
-        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json");
+        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json", "--rdp-port");
         arguments.RejectRepeated();
         if (arguments.Get("--flows") is not null || arguments.Get("--all-ports") is not null || arguments.Get("--json") is not null)
             throw new CliArgumentException("--flows, --all-ports and --json take no value.");
@@ -191,6 +194,13 @@ internal static class NetworkMonitorCommand
         if (arguments.Has("--ports") == allPorts || !allPorts && ports.Count == 0 ||
             ports.Count > 64 || ports.Any(port => port is < 1 or > 65535))
             throw new CliArgumentException("Specify --ports with 1..64 ports in 1..65535, or --all-ports.");
+        int? rdpPort = null;
+        if (arguments.Has("--rdp-port"))
+        {
+            rdpPort = arguments.Integer("--rdp-port", 0);
+            if (rdpPort is < 1 or > 65535 || !allPorts && !ports.Contains(rdpPort.Value))
+                throw new CliArgumentException("--rdp-port requires a local TCP port from 1..65535 included in the capture.");
+        }
         if (!IsElevated())
         {
             output.WriteLine("ERROR: flow monitoring requires an Administrator token.");
@@ -203,7 +213,13 @@ internal static class NetworkMonitorCommand
         {
             var json = arguments.Has("--json");
             HostFlowMonitor.Run(interfaces[0], ports, allPorts,
-                snapshot => WriteSnapshot(output, snapshot, json), stop.Token, includeAllRows: json);
+                snapshot =>
+                {
+                    if (rdpPort is int port)
+                        WriteAuditedSnapshot(output, snapshot, json, port, RdpAuditReader.Read(snapshot.Timestamp));
+                    else
+                        WriteSnapshot(output, snapshot, json);
+                }, stop.Token, includeAllRows: json || rdpPort.HasValue);
             return 0;
         }
         catch (Exception ex) when (ex.GetBaseException() is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
@@ -218,6 +234,26 @@ internal static class NetworkMonitorCommand
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { return 0; }
         finally { Console.CancelKeyPress -= cancel; }
+    }
+
+    internal static void WriteAuditedSnapshot(TextWriter output, FlowSnapshot snapshot, bool json, int port, RdpAuditWindow audit)
+    {
+        var report = RdpFlowReport.Create(snapshot, port, audit);
+        if (json)
+        {
+            output.WriteLine(JsonSerializer.Serialize(new { Traffic = snapshot, RdpAudit = report }));
+            return;
+        }
+        var visible = snapshot.Flows.Take(40).ToArray();
+        WriteSnapshot(output, snapshot with { Flows = visible }, false);
+        output.WriteLine($"Remote interactive logons on TCP {port} | Security log: {report.AuditStatus}");
+        var endpoints = visible.Where(f => f.Protocol == "TCP").Select(f => (f.Local, f.Remote)).ToHashSet();
+        foreach (var row in report.Flows.Where(f => endpoints.Contains((f.Local, f.Remote))))
+        {
+            output.WriteLine($"  {row.Local}  <->  {row.Remote}  {row.Outcome}");
+            foreach (var match in row.Events)
+                output.WriteLine($"    {match.Timestamp:u}  Event {match.EventId}  Security record {match.RecordId}");
+        }
     }
 
     internal static void WriteSnapshot(TextWriter output, FlowSnapshot snapshot, bool json)

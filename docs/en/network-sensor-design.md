@@ -33,6 +33,40 @@ outside this version's coverage. Both-local and neither-local traffic cannot be 
 endpoint. Filters can exclude frames before software counters see them. Only addresses assigned to
 the selected adapter at startup are used for direction. Output is local and includes IP addresses.
 
+### Remote Desktop logon evidence
+
+On the monitored server, specify its configured local Remote Desktop TCP port. The account running
+the command needs read access to the Windows Security log. Whether Windows records successes and
+failures depends on the host's existing Audit Logon policy.
+
+```powershell
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 443,1433,3389 --rdp-port 3389
+```
+
+For each snapshot WPShield reads up to 256 recent RemoteInteractive (type 10) events from the past
+60 seconds, newest first. A match requires the same client IP and source port, a recorded time
+between the first and last packet observed for that flow, and a unique candidate on the selected
+adapter and local TCP port with an observed incoming SYN. Windows records a successful logon in
+event 4624 and a failed attempt in 4625. Each match includes its UTC time and Security record ID
+for lookup in Event Viewer. [Event 4624](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4624) · [Event 4625](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4625)
+
+- `success`, `failure` and `mixed` summarize the matching audit records in this snapshot.
+  `unknown` covers missing source ports, midstream captures, ambiguous flows and absent evidence.
+  Failures recorded under other logon types are outside this view.
+- `AuditStatus` is `read` when the query completes, `limited` when it reaches its record or polling
+  budget, and `unavailable` when Windows denies access or the query fails. Traffic remains visible.
+- With `--json`, each line contains `Traffic` and `RdpAudit`. A record may reappear in successive
+  snapshots. Use its Security record ID to count it once within the same log. Output contains
+  endpoint addresses but omits account names and event messages. A match concerns a logon on the
+  host. The audit record omits the destination endpoint, so uniqueness applies only to the captured
+  flows. Site attribution and activity inside a desktop session require other evidence.
+
+To validate on a Windows Server test host with Npcap, start the command before an authorized
+Remote Desktop sign-in. In Event Viewer, open **Windows Logs → Security** and compare the record
+ID, UTC time, source IP and source port with the displayed flow. Record whether the audit read
+completed and whether capture drops occurred. If Windows omits the source port, the expected
+result is `unknown`. That run exercises missing evidence and leaves a positive match unverified.
+
 ## Why it must be separate
 
 | Concern | WPShield.Gateway (M1/M2) | WPShield.NetworkSensor (proposed) |
