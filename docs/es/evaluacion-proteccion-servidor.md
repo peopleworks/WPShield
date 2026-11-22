@@ -19,7 +19,7 @@ filtro de paquetes. Falta verificar la prevención de extremo a extremo para cad
 | Servicio | Qué documenta RdpGuard | Qué debe demostrar WPShield |
 | --- | --- | --- |
 | Escritorio Remoto | Fallos de autenticación RDP. [Guía](https://rdpguard.com/rdp-protection-settings.aspx) | Validar `--rdp-port` con eventos reales de tipo 10 y una sesión autorizada. Medir aparte los fallos de NLA que quedan fuera de esa vista. |
-| Microsoft SQL Server | Fallos de inicio de sesión 18456. [Guía](https://rdpguard.com/mssql-server-protection.aspx) | Próximo conector. Identificar la instancia y el fallo. Conservar por separado el resultado auditado y el grado de certeza sobre el flujo; si falta el extremo cliente, la conexión queda sin atribuir. |
+| Microsoft SQL Server | Fallos de inicio de sesión 18456. [Guía](https://rdpguard.com/mssql-server-protection.aspx) | El lector de Aplicación identifica éxitos y fallos por instancia. Las pruebas sintéticas verifican el aislamiento de proveedores. Falta contrastar un registro conocido en Windows Server y medir omisiones. [Evidencia SQL](diseno-sensor-red.md#evidencia-de-inicios-de-sesión-de-sql-server) |
 | IIS Web Login | Fallos de Basic, Digest y NTLM. [Guía](https://rdpguard.com/iis-web-login-protection.aspx) | Corroborar un fallo con evidencia de autenticación. Probar dos sitios en un mismo listener y la negociación normal que incluye un 401. |
 | HTTP | Patrones de solicitudes en registros de acceso. [Guía](https://rdpguard.com/http-vulnerability-scan-protection.aspx) | Evaluar por separado los hallazgos HTTP en rutas WordPress y el análisis de registros web. |
 | FTP | Intentos de acceso FTP fallidos. [Guía](https://rdpguard.com/ftp-bruteforce-protection.aspx) | Elegir un servidor y una fuente de auditoría. Verificar el rechazo y el reintento legítimo, también bajo FTPS cuando exista registro del servidor. |
@@ -33,8 +33,9 @@ filtro de paquetes. Falta verificar la prevención de extremo a extremo para cad
 | SSH | Fallos de OpenSSH para Windows. [Guía](https://rdpguard.com/openssh-brute-force-protection.aspx) | Normalizar eventos del proveedor OpenSSH y probar métodos de acceso por clave y contraseña. |
 | Microsoft VPN (RRAS) | Eventos RemoteAccess 20271 e IPsec 4652. [Guía](https://rdpguard.com/ms-vpn-rras-brute-force-protection.aspx) | Confirmar proveedor, tipo de VPN y origen identificable. Un error de negociación requiere interpretación propia. |
 
-La secuencia propuesta comienza con RDP, Microsoft SQL Server e IIS Web Login. Para SQL Server se
-evaluarán el error 18456 y los grupos de auditoría de inicios de sesión. Para IIS se partirá de
+La secuencia propuesta comienza con RDP, Microsoft SQL Server e IIS Web Login. El primer lector
+de SQL Server cubre el evento 18456 en Aplicación. Queda por evaluar qué evidencia adicional
+aportan los grupos de auditoría de inicio de sesión de SQL Server. Para IIS se partirá de
 registros separados por sitio y del mecanismo de autenticación habilitado. Se anotarán los campos
 disponibles en la versión probada antes de decidir qué se puede correlacionar.
 [Auditoría de SQL Server](https://learn.microsoft.com/en-us/sql/relational-databases/security/auditing/sql-server-audit-action-groups-and-actions) · [Configuración de registros de IIS](https://learn.microsoft.com/en-us/iis/manage/provisioning-and-managing-iis/configure-logging-in-iis)

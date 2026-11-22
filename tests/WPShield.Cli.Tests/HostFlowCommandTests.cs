@@ -18,6 +18,11 @@ public sealed class HostFlowCommandTests
     [InlineData("--flows --interfaces Ethernet --ports 443 --rdp-port 3389")]
     [InlineData("--flows --interfaces Ethernet --all-ports --rdp-port")]
     [InlineData("--flows --interfaces Ethernet --all-ports --rdp-port 65536")]
+    [InlineData("--flows --interfaces Ethernet --all-ports --sql-instance")]
+    [InlineData("--sql-instance Test --json=true")]
+    [InlineData("--sql-instance Test --ports 1433")]
+    [InlineData("--sql-instance First --sql-instance Second")]
+    [InlineData("--sql-instance server.example\\Example")]
     public void InvalidScopeFailsBeforeElevationOrDriverLookup(string arguments)
     {
         Assert.Throws<CliArgumentException>(() => NetworkMonitorCommand.Run(
@@ -55,7 +60,7 @@ public sealed class HostFlowCommandTests
         var snapshot = Snapshot(Incoming);
         var audit = new RdpAuditWindow("read", [new(4625, 123, Start, Peer), new(4624, 125, Incoming.LastSeen, Peer)]);
         using var output = new StringWriter();
-        NetworkMonitorCommand.WriteAuditedSnapshot(output, snapshot, true, 3390, audit);
+        NetworkMonitorCommand.WriteSnapshot(output, snapshot, true, RdpFlowReport.Create(snapshot, 3390, audit));
         using var json = JsonDocument.Parse(output.ToString());
         var auditRow = json.RootElement.GetProperty("RdpAudit").GetProperty("Flows")[0];
         Assert.Equal("mixed", auditRow.GetProperty("Outcome").GetString());
@@ -72,8 +77,9 @@ public sealed class HostFlowCommandTests
         var rows = new[] { Incoming }.Concat(Enumerable.Repeat(unrelated, 39))
             .Append(Incoming with { Local = "192.0.2.2:3390", Initiator = "unknown" }).ToArray();
         using var display = new StringWriter();
-        NetworkMonitorCommand.WriteAuditedSnapshot(display, Snapshot(rows), false, 3390,
-            new("read", [new(4625, 123, Start, Peer)]));
+        var snapshot = Snapshot(rows);
+        var report = RdpFlowReport.Create(snapshot, 3390, new("read", [new(4625, 123, Start, Peer)]));
+        NetworkMonitorCommand.WriteSnapshot(display, snapshot, false, report);
         Assert.Contains("Showing 40/41", display.ToString());
         Assert.Contains("unknown", display.ToString());
         Assert.DoesNotContain("Security record 123", display.ToString());
@@ -102,5 +108,46 @@ public sealed class HostFlowCommandTests
         var report = RdpFlowReport.Create(Snapshot(Incoming), 3390, new(status, []));
         Assert.Equal(status, report.AuditStatus);
         Assert.Equal("unknown", Assert.Single(report.Flows).Outcome);
+    }
+
+    [Theory]
+    [InlineData("read", 0)]
+    [InlineData("limited", 2)]
+    [InlineData("unavailable", 1)]
+    public void StandaloneSqlAuditDistinguishesEmptyPartialAndUnreadableWindows(string status, int exitCode)
+    {
+        var sql = new SqlLoginAuditWindow("MSSQLSERVER", Start, status, []);
+        using var output = new StringWriter();
+        Assert.Equal(exitCode, NetworkMonitorCommand.WriteStandaloneSqlAudit(output, sql, true));
+        using var json = JsonDocument.Parse(output.ToString());
+        Assert.Equal(status, json.RootElement.GetProperty("AuditStatus").GetString());
+        Assert.Equal("unknown", json.RootElement.GetProperty("ObservedOutcome").GetString());
+        using var console = new StringWriter();
+        Assert.Equal(exitCode, NetworkMonitorCommand.WriteStandaloneSqlAudit(console, sql, false));
+        Assert.Contains($"Application log: {status}", console.ToString());
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SqlAuditIsInstanceScopedEvenWhenTheCapturedFlowUsesTheSqlPort(bool includeRdp)
+    {
+        var snapshot = Snapshot(Incoming with { Local = "192.0.2.1:1433" });
+        var sql = new SqlLoginAuditWindow("MSSQL$Example", Start, "limited", [new(18456, 431, Start, "failure")]);
+        var rdp = includeRdp ? RdpFlowReport.Create(snapshot, 3389, new("read", [])) : null;
+        using var output = new StringWriter();
+        NetworkMonitorCommand.WriteSnapshot(output, snapshot, true, rdp, sql);
+        using var json = JsonDocument.Parse(output.ToString());
+        Assert.Equal(includeRdp, json.RootElement.TryGetProperty("RdpAudit", out _));
+        var section = json.RootElement.GetProperty("SqlAudit");
+        Assert.Equal("unknown", section.GetProperty("FlowAttribution").GetString());
+        Assert.Equal("limited", section.GetProperty("AuditStatus").GetString());
+        Assert.Equal(431, section.GetProperty("Events")[0].GetProperty("RecordId").GetInt32());
+        var traffic = json.RootElement.GetProperty("Traffic").GetProperty("Flows")[0];
+        Assert.False(traffic.TryGetProperty("Outcome", out _));
+        using var console = new StringWriter();
+        NetworkMonitorCommand.WriteSnapshot(console, snapshot, false, rdp, sql);
+        Assert.Contains("MSSQL$Example", console.ToString());
+        Assert.Contains("failure  Event 18456  Application record 431", console.ToString());
     }
 }

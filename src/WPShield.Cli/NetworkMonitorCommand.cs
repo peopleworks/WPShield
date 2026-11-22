@@ -46,7 +46,13 @@ internal static class NetworkMonitorCommand
           The console shows 40 recent rows. JSON includes all retained rows (up to 4096).
           Add --rdp-port <port> to match remote interactive logon records from the local
           Security log against observed TCP flows. Include the local RDP port in the capture.
+          Add --sql-instance <name> to show Database Engine login events for one local instance.
           Ctrl+C prints the final snapshot and stops capture.
+
+        SQL Server audit snapshot (Application log read permission, no Npcap required):
+          wpshield network-monitor --sql-instance MSSQLSERVER [--json]
+          Use MSSQLSERVER for the default instance or the instance name as shown in Event Viewer.
+          Reads the last minute. Events identify the instance; flow attribution is unknown.
 
         HTTP metadata mode:
 
@@ -74,7 +80,8 @@ internal static class NetworkMonitorCommand
 
         Exit codes:
           0   stopped cleanly
-          1   an argument was wrong, Npcap is missing, or elevation is absent
+          1   invalid arguments, capture unavailable, or standalone SQL audit unavailable
+          2   standalone SQL audit returned a partial window
         """;
 
     private static readonly string[] KnownOptions =
@@ -90,6 +97,14 @@ internal static class NetworkMonitorCommand
 
         if (arguments.Has("--flows"))
             return RunFlows(arguments, output);
+        if (arguments.Has("--sql-instance"))
+        {
+            arguments.RejectUnknown("--sql-instance", "--json");
+            arguments.RejectRepeated();
+            if (arguments.Get("--json") is not null) throw new CliArgumentException("--json takes no value.");
+            var sql = SqlLoginAuditReader.Read(RequiredSqlInstance(arguments), DateTimeOffset.UtcNow);
+            return WriteStandaloneSqlAudit(output, sql, arguments.Has("--json"));
+        }
         arguments.RejectUnknown(KnownOptions);
 
         if (!IsElevated())
@@ -182,7 +197,7 @@ internal static class NetworkMonitorCommand
 
     private static int RunFlows(CliOptions arguments, TextWriter output)
     {
-        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json", "--rdp-port");
+        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json", "--rdp-port", "--sql-instance");
         arguments.RejectRepeated();
         if (arguments.Get("--flows") is not null || arguments.Get("--all-ports") is not null || arguments.Get("--json") is not null)
             throw new CliArgumentException("--flows, --all-ports and --json take no value.");
@@ -201,6 +216,7 @@ internal static class NetworkMonitorCommand
             if (rdpPort is < 1 or > 65535 || !allPorts && !ports.Contains(rdpPort.Value))
                 throw new CliArgumentException("--rdp-port requires a local TCP port from 1..65535 included in the capture.");
         }
+        var instance = arguments.Has("--sql-instance") ? RequiredSqlInstance(arguments) : null;
         if (!IsElevated())
         {
             output.WriteLine("ERROR: flow monitoring requires an Administrator token.");
@@ -215,10 +231,9 @@ internal static class NetworkMonitorCommand
             HostFlowMonitor.Run(interfaces[0], ports, allPorts,
                 snapshot =>
                 {
-                    if (rdpPort is int port)
-                        WriteAuditedSnapshot(output, snapshot, json, port, RdpAuditReader.Read(snapshot.Timestamp));
-                    else
-                        WriteSnapshot(output, snapshot, json);
+                    var rdp = rdpPort is int port ? RdpFlowReport.Create(snapshot, port, RdpAuditReader.Read(snapshot.Timestamp)) : null;
+                    var sql = instance is null ? null : SqlLoginAuditReader.Read(instance, snapshot.Timestamp);
+                    WriteSnapshot(output, snapshot, json, rdp, sql);
                 }, stop.Token, includeAllRows: json || rdpPort.HasValue);
             return 0;
         }
@@ -236,17 +251,31 @@ internal static class NetworkMonitorCommand
         finally { Console.CancelKeyPress -= cancel; }
     }
 
-    internal static void WriteAuditedSnapshot(TextWriter output, FlowSnapshot snapshot, bool json, int port, RdpAuditWindow audit)
+    private static string RequiredSqlInstance(CliOptions arguments)
     {
-        var report = RdpFlowReport.Create(snapshot, port, audit);
-        if (json)
-        {
-            output.WriteLine(JsonSerializer.Serialize(new { Traffic = snapshot, RdpAudit = report }));
-            return;
-        }
-        var visible = snapshot.Flows.Take(40).ToArray();
-        WriteSnapshot(output, snapshot with { Flows = visible }, false);
-        output.WriteLine($"Remote interactive logons on TCP {port} | Security log: {report.AuditStatus}");
+        var name = arguments.Get("--sql-instance");
+        if (!SqlLoginAuditReader.IsValidInstance(name))
+            throw new CliArgumentException("--sql-instance requires MSSQLSERVER or a local instance name (1..16 characters, starting with a letter).");
+        return name;
+    }
+
+    internal static int WriteStandaloneSqlAudit(TextWriter output, SqlLoginAuditWindow sql, bool json)
+    {
+        if (json) output.WriteLine(JsonSerializer.Serialize(sql));
+        else WriteSqlAudit(output, sql);
+        return sql.AuditStatus switch { "read" => 0, "limited" => 2, _ => 1 };
+    }
+
+    private static void WriteSqlAudit(TextWriter output, SqlLoginAuditWindow sql)
+    {
+        output.WriteLine($"{sql.WindowEnd:u}  {sql.Provider}  Application log: {sql.AuditStatus}  Login records: {sql.Events.Count}  Observed outcome: {sql.ObservedOutcome}  Flow attribution: {sql.FlowAttribution}");
+        foreach (var item in sql.Events)
+            output.WriteLine($"  {item.Timestamp:u}  {item.Outcome}  Event {item.EventId}  Application record {item.RecordId}");
+    }
+
+    private static void WriteRdpAudit(TextWriter output, RdpFlowReport report, IReadOnlyList<FlowRow> visible)
+    {
+        output.WriteLine($"Remote interactive logons on TCP {report.LocalPort} | Security log: {report.AuditStatus}");
         var endpoints = visible.Where(f => f.Protocol == "TCP").Select(f => (f.Local, f.Remote)).ToHashSet();
         foreach (var row in report.Flows.Where(f => endpoints.Contains((f.Local, f.Remote))))
         {
@@ -256,20 +285,31 @@ internal static class NetworkMonitorCommand
         }
     }
 
-    internal static void WriteSnapshot(TextWriter output, FlowSnapshot snapshot, bool json)
+    internal static void WriteSnapshot(TextWriter output, FlowSnapshot snapshot, bool json,
+        RdpFlowReport? rdp = null, SqlLoginAuditWindow? sql = null)
     {
         if (json)
         {
-            output.WriteLine(JsonSerializer.Serialize(snapshot));
+            if (rdp is null && sql is null) output.WriteLine(JsonSerializer.Serialize(snapshot));
+            else
+            {
+                var sections = new Dictionary<string, object> { ["Traffic"] = snapshot };
+                if (rdp is not null) sections.Add("RdpAudit", rdp);
+                if (sql is not null) sections.Add("SqlAudit", sql);
+                output.WriteLine(JsonSerializer.Serialize(sections));
+            }
             return;
         }
         var driver = snapshot.DriverDrops?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable";
-        output.WriteLine($"{snapshot.Timestamp:u}  {snapshot.Interface}  Showing {snapshot.Flows.Count}/{snapshot.ActiveFlows} flows");
+        var visible = snapshot.Flows.Take(40).ToArray();
+        output.WriteLine($"{snapshot.Timestamp:u}  {snapshot.Interface}  Showing {visible.Length}/{snapshot.ActiveFlows} flows");
         output.WriteLine($"Skipped packets: {snapshot.SkippedPackets}  Table capacity drops: {snapshot.CapacityDrops}  Driver drop counter: {driver}");
         output.WriteLine("UTC LAST SEEN  PROTO  INITIATOR  RECEIVED (B)  SENT (B)  LOCAL  <->  REMOTE");
-        foreach (var flow in snapshot.Flows)
+        foreach (var flow in visible)
             output.WriteLine($"{flow.LastSeen.UtcDateTime:HH:mm:ss}       {flow.Protocol,-5}  {flow.Initiator,-8}  {flow.ReceivedBytes,12}  {flow.SentBytes,8}  {flow.Local}  <->  {flow.Remote}");
         output.WriteLine();
+        if (rdp is not null) WriteRdpAudit(output, rdp, visible);
+        if (sql is not null) WriteSqlAudit(output, sql);
     }
 
     /// <summary>
