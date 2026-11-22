@@ -67,6 +67,34 @@ ID, UTC time, source IP and source port with the displayed flow. Record whether 
 completed and whether capture drops occurred. If Windows omits the source port, the expected
 result is `unknown`. That run exercises missing evidence and leaves a positive match unverified.
 
+### SQL Server login evidence
+
+Read one minute of existing **Windows Logs → Application** events for one local Database Engine
+instance. The standalone command needs permission to read Application and runs independently of
+Npcap and SQL credentials. Use `MSSQLSERVER` for the default instance. For a named instance, copy
+the suffix of its `MSSQL$<name>` source from Event Viewer, preserving spelling and case.
+
+```powershell
+wpshield network-monitor --sql-instance MSSQLSERVER --json
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 1433,3389 --rdp-port 3389 --sql-instance Example
+```
+
+Events 18453, 18454 and 18455 indicate a successful login. Event 18456 records a failure.
+Availability depends on the server's auditing and logging configuration. The reader selects the
+instance provider and event metadata only. Each row gives the event ID, Application record ID,
+UTC time and outcome. The result applies to the instance. `FlowAttribution` stays `unknown`
+even if a single TCP flow used its usual port. Usernames, event messages and SQL statements are
+excluded. [SQL Server event IDs](https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/database-engine-events-and-errors-18000-to-18999) · [Windows Application providers](https://learn.microsoft.com/en-us/sql/relational-databases/performance/view-the-windows-application-log-windows-10)
+
+The newest 256 matching records fit in a snapshot, subject to a 500 ms polling budget.
+`ObservedOutcome` summarizes only the returned records as `success`, `failure`, `mixed` or
+`unknown`. A completed query with zero matches leaves the outcome unknown, including for an
+absent provider. Standalone exit codes are 0 for `read`, 2 for `limited` and 1 for
+`unavailable` or invalid arguments. With `--flows --json` the same fields appear under
+`SqlAudit` alongside `Traffic` and optional `RdpAudit`. Overlapping windows can repeat a record.
+For live validation compare the channel, provider, record ID and UTC time against a known login
+in Event Viewer on a test server with existing audits. The command leaves auditing untouched.
+
 ## Why it must be separate
 
 | Concern | WPShield.Gateway (M1/M2) | WPShield.NetworkSensor (proposed) |

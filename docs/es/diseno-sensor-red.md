@@ -71,6 +71,37 @@ Anote si la lectura del registro terminó y si hubo descartes en la captura. Si 
 el puerto de origen, el resultado esperado es `unknown`. Esa prueba verifica el caso de evidencia
 incompleta y deja pendiente la comprobación de una coincidencia positiva.
 
+### Evidencia de inicios de sesión de SQL Server
+
+La consulta lee el último minuto de **Registros de Windows → Aplicación** para una instancia local
+del motor de SQL Server. La consulta independiente solo requiere permiso de lectura del registro
+Aplicación. Funciona sin Npcap ni credenciales de SQL. Use `MSSQLSERVER` para la instancia
+predeterminada. Para otra instancia, copie el sufijo del origen `MSSQL$<nombre>` que muestra el
+Visor de eventos y respete las mayúsculas y minúsculas.
+
+```powershell
+wpshield network-monitor --sql-instance MSSQLSERVER --json
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 1433,3389 --rdp-port 3389 --sql-instance Example
+```
+
+Los eventos 18453, 18454 y 18455 acreditan un inicio de sesión exitoso. El 18456 acredita un
+fallo. Su disponibilidad depende de la auditoría y el registro configurados en el servidor. El
+lector selecciona el proveedor de la instancia y solo lee metadatos. Cada fila muestra el ID
+del evento, el número de registro de Aplicación, la hora UTC y el resultado. El resultado
+corresponde a la instancia. `FlowAttribution` queda como `unknown` incluso si solo un flujo TCP
+usó su puerto habitual. La salida omite usuarios, mensajes del evento y sentencias SQL.
+[Eventos de SQL Server](https://learn.microsoft.com/en-us/sql/relational-databases/errors-events/database-engine-events-and-errors-18000-to-18999) · [Proveedores del registro Aplicación](https://learn.microsoft.com/en-us/sql/relational-databases/performance/view-the-windows-application-log-windows-10)
+
+La ventana admite hasta 256 registros coincidentes, del más reciente al más antiguo, con un
+presupuesto de lectura de 500 ms. `ObservedOutcome` resume los registros obtenidos como
+`success`, `failure`, `mixed` o `unknown`. Si la consulta termina sin coincidencias, el
+resultado es desconocido, también si el proveedor está ausente. La consulta independiente
+devuelve 0 para `read`, 2 para `limited` y 1 para `unavailable` o argumentos inválidos.
+Con `--flows --json`, los datos aparecen bajo `SqlAudit`, junto a `Traffic` y el `RdpAudit`
+opcional. Un mismo registro puede aparecer en ventanas consecutivas. Para validar en un servidor
+de pruebas con auditoría existente, compare canal, proveedor, número de registro y hora UTC con
+un inicio de sesión conocido en el Visor de eventos. El comando conserva la configuración de auditoría.
+
 ## Por qué debe ser separado
 
 | Preocupación | WPShield.Gateway (M1/M2) | WPShield.NetworkSensor (propuesto) |

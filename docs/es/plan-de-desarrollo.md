@@ -745,7 +745,9 @@ El resto de esta sección sigue siendo planificación; prevalece el [roadmap pub
 - [ ] Validar la captura en vivo en Windows Server con Npcap y los puertos de los servicios elegidos.
 - [x] Correlacionar los flujos entrantes de Escritorio Remoto con eventos de inicio de sesión de
       Windows e indicar los números de registro. Si falta evidencia o es ambigua, mostrar `unknown`.
-- [ ] Corroborar actividad y autenticación con evidencia de IIS y auditoría de SQL Server.
+- [x] Leer los resultados de inicio de sesión de una instancia SQL Server local desde Aplicación
+      y conservar los números de registro. La atribución al flujo TCP queda como desconocida.
+- [ ] Corroborar actividad y autenticación con evidencia de IIS y fuentes adicionales de auditoría de SQL Server.
       El resultado será desconocido si faltan los registros.
       En un servidor compartido, la atribución a un sitio requiere evidencia independiente.
 

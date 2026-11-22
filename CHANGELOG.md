@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- `wpshield network-monitor --sql-instance` reads recent login outcomes for one SQL Server
+  instance from the local Windows Application log, standalone or alongside host flows.
+
 - The host flow monitor accepts `--rdp-port` to show matching remote interactive logon outcomes
   and Security record IDs from the local Windows audit log, including explicit unknown outcomes.
 

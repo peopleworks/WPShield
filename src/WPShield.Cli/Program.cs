@@ -227,8 +227,10 @@ internal static class ProgramMain
                           [--observe-threshold 30] [--block-threshold 80]
 
               network-monitor
-                          Passive HTTP metadata or live TCP/UDP flows. Requires Administrator and Npcap.
+                          Passive HTTP metadata or live TCP/UDP flows (Administrator and Npcap).
+                          --sql-instance <name> [--json] reads one local Application log snapshot.
                           --flows --interfaces <adapter> (--ports <numbers> | --all-ports) [--json]
+                          [--rdp-port <port>] [--sql-instance <name>]
                           --ports <numbers> [--interfaces <names>] [--output <file>]
                           [--max-events-per-second <n>] [--promiscuous]
                           [--rotation-max-size-bytes <n>] [--rotation-retention-days <n>]

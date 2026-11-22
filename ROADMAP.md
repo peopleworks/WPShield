@@ -304,7 +304,9 @@ not read as more than they claim:
 - [ ] Validate live capture on Windows Server with Npcap and named service ports.
 - [x] Correlate observed incoming Remote Desktop flows with local Windows Security logon events
       and show the matching record IDs. Missing or ambiguous evidence leaves the outcome unknown.
-- [ ] Corroborate service activity and authentication outcomes with IIS and SQL Server audit
+- [x] Read existing SQL Server login outcomes for a single local instance from the Windows
+      Application log. Preserve its record IDs and keep TCP flow attribution unknown.
+- [ ] Corroborate service activity and authentication outcomes with IIS and richer SQL Server audit
       evidence. Keep the outcome unknown when the records are missing. On shared
       hosts, site attribution requires independent evidence.
 
