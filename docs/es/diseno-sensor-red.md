@@ -34,6 +34,43 @@ IP y las cabeceras de extensión IPv6. Si ambos extremos son locales o ninguno l
 asignar un extremo remoto. Los filtros pueden excluir tramas antes de que lleguen a los contadores.
 El sentido se determina con las direcciones del adaptador al arrancar. La salida local contiene IP.
 
+### Evidencia de inicios de sesión por Escritorio Remoto
+
+Indique el puerto TCP local configurado para Escritorio Remoto en el servidor observado. La cuenta
+que ejecuta el comando necesita acceso de lectura al registro Seguridad de Windows. La directiva
+de auditoría de inicio de sesión del servidor determina si Windows registra los éxitos y los fallos.
+
+```powershell
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 443,1433,3389 --rdp-port 3389
+```
+
+En cada lectura, WPShield consulta hasta 256 eventos de tipo 10 (RemoteInteractive) del último
+minuto, empezando por el más reciente. Deben coincidir la IP y el puerto de origen del cliente.
+El evento debe ocurrir entre el primer y el último paquete observado, con un único flujo candidato
+en el adaptador y puerto TCP local seleccionados y un SYN entrante observado. Windows registra
+los éxitos en el evento 4624 y los fallos en el 4625. Cada coincidencia incluye la hora UTC y el
+número de registro para buscarla en el Visor de eventos. [Evento 4624](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4624) · [Evento 4625](https://learn.microsoft.com/en-us/previous-versions/windows/it-pro/windows-10/security/threat-protection/auditing/event-4625)
+
+- `success`, `failure` y `mixed` indican qué resultados constan en los eventos coincidentes de esa
+  lectura. Aparece `unknown` si falta el puerto de origen, la captura comienza a mitad de conexión,
+  hay varios candidatos o falta evidencia. Los fallos registrados con otros tipos de inicio de
+  sesión quedan fuera de esta vista.
+- `AuditStatus` indica `read` al terminar la consulta, `limited` al alcanzar el límite de eventos o
+  de tiempo de lectura y `unavailable` si falla la consulta o faltan permisos. El tráfico sigue visible.
+- Con `--json`, cada línea contiene `Traffic` y `RdpAudit`. El mismo evento puede aparecer en varias
+  lecturas. Su número de registro permite contarlo una sola vez dentro del mismo registro Seguridad.
+  La salida incluye las direcciones de los extremos y omite los nombres de cuenta y los mensajes
+  del evento. El registro de Windows omite el extremo de destino, de modo que la coincidencia es
+  única solo entre los flujos capturados. La actividad dentro de la sesión y la atribución a un
+  sitio IIS requieren otras fuentes.
+
+Para validarlo en un Windows Server de pruebas con Npcap, inicie el monitor antes de un acceso
+autorizado por Escritorio Remoto. Abra **Visor de eventos → Registros de Windows → Seguridad**
+y compare el número de registro, la hora UTC, la IP y el puerto de origen con el flujo mostrado.
+Anote si la lectura del registro terminó y si hubo descartes en la captura. Si Windows omite
+el puerto de origen, el resultado esperado es `unknown`. Esa prueba verifica el caso de evidencia
+incompleta y deja pendiente la comprobación de una coincidencia positiva.
+
 ## Por qué debe ser separado
 
 | Preocupación | WPShield.Gateway (M1/M2) | WPShield.NetworkSensor (propuesto) |

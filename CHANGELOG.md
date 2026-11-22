@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- The host flow monitor accepts `--rdp-port` to show matching remote interactive logon outcomes
+  and Security record IDs from the local Windows audit log, including explicit unknown outcomes.
+
 - `wpshield network-monitor --flows` displays local and remote TCP/UDP endpoints, observed IP
   bytes per direction, TCP initiator and capture counters on one selected adapter. Flow mode
   supports both console and JSON Lines output. The Windows sensor now uses SharpPcap 6.3.1.

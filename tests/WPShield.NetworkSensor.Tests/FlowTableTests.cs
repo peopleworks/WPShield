@@ -133,6 +133,21 @@ public sealed class FlowTableTests
     }
 
     [Fact]
+    public void ReusedTupleStartsANewAuditWindowWhileARetransmittedSynKeepsTheOpeningTime()
+    {
+        var table = new FlowTable([Local], new HashSet<int> { 3389 });
+        var frame = Frame(Remote, Local, 54000, 3389, flags: 2);
+        table.Observe(LinkLayers.Ethernet, frame, Now);
+        table.Observe(LinkLayers.Ethernet, frame, Now.AddSeconds(1));
+        Assert.Equal(Now, Assert.Single(table.Snapshot("synthetic", Now.AddSeconds(1), null).Flows).FirstSeen);
+        frame[^13] = 1; // Change the TCP initial sequence number.
+        table.Observe(LinkLayers.Ethernet, frame, Now.AddSeconds(2));
+        var flow = Assert.Single(table.Snapshot("synthetic", Now.AddSeconds(2), null).Flows);
+        Assert.Equal(Now.AddSeconds(2), flow.FirstSeen);
+        Assert.Equal(flow.LastSeen, flow.FirstSeen);
+    }
+
+    [Fact]
     public void FilterAndUnusablePackets_NeverProduceAnInventedFlow()
     {
         var table = new FlowTable([Local], new HashSet<int> { 443 });
