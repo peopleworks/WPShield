@@ -5,6 +5,22 @@ metadatos de red en los puertos que el operador nombre (por ejemplo `80` y `443`
 operador pueda ver qué tráfico llega al host. **No es** el gateway HTTP, **no está** en el camino
 de las solicitudes y **nunca** modifica IIS.
 
+## Monitor de escritorio
+
+Desde la raíz del repositorio, en Windows con el SDK de .NET 10 y el entorno de ejecución de escritorio, ejecute:
+
+```powershell
+dotnet run --project src/WPShield.Desktop -c Release -- --es
+```
+
+Seleccione TCP o UDP en la barra lateral o busque por dirección, puerto exacto, PID o nombre
+convencional del puerto. Las tarjetas muestran la hora de lectura, la cobertura y los recuentos
+de IPv4 e IPv6. Pase el puntero sobre un PID para ver la hora de esa segunda lectura o el motivo
+por el que se desconoce. Pulse **Actualizar** o active **Cada 5 s**. Al cerrar la ventana termina
+la consulta periódica. La vista lee las tablas locales en memoria y funciona sin Npcap ni servidor
+HTTP. Para ver bytes entrantes y salientes, use la [vista de flujos](#vista-de-flujos-del-servidor).
+Use `--en` para abrir la ventana en inglés.
+
 ## Inventario de puertos locales
 
 Este comando permite ver qué direcciones y puertos tienen un socket TCP en escucha o un socket UDP

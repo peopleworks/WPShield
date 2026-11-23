@@ -5,6 +5,21 @@ network metadata on operator-named ports (for example `80` and `443`) so an oper
 see what traffic reaches the host. It is **not** the HTTP gateway, it is **not** in the
 request path, and it never modifies IIS.
 
+## Desktop monitor
+
+From the repository root on Windows with the .NET 10 SDK and Desktop Runtime, run:
+
+```powershell
+dotnet run --project src/WPShield.Desktop -c Release -- --en
+```
+
+Select TCP or UDP in the sidebar, or search by address, exact port, PID or conventional port name.
+The cards show each table's observation time, coverage and IPv4/IPv6 counts. The PID tooltip shows
+the separate owner observation time and the reason for an unknown PID. Use **Refresh** for another
+snapshot or enable **Every 5 s**. Closing the window stops polling. The view reads local socket
+tables in memory and works without Npcap or an HTTP listener. For incoming and outgoing byte
+counts, use the [host flow view](#host-flow-view). Use `--es` to open the window in Spanish.
+
 ## Local listener inventory
 
 Use this local command to see TCP listeners and bound UDP endpoints before choosing ports for a
