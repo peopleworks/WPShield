@@ -14,6 +14,7 @@ must complete first.
 
 ### Added
 
+- `network-monitor --listeners` can filter by protocol and exact local IP address, including IPv6 scope. Within a port and address family, rows sort by numeric address.
 - `network-monitor --listeners --port-hints` shows versioned offline registry names for observed TCP and UDP ports.
 
 - `audit-reference` extracts one Windows event or IIS W3C line reference from a saved JSON snapshot by source and record ID or physical line.

@@ -303,6 +303,7 @@ not read as more than they claim:
       and UDP report an unknown initiator.
 - [ ] Validate live capture on Windows Server with Npcap and named service ports.
 - [x] Offer versioned offline registry names in the local listener inventory. [Offline port hints](docs/en/network-sensor-design.md#offline-port-hints)
+- [x] Filter local listeners by protocol and exact bound address with numeric IPv4 and IPv6 ordering. [Local listener inventory](docs/en/network-sensor-design.md#local-listener-inventory)
 - [x] Export a minimal reference for one selected RDP, SQL or IIS observation from a saved CLI snapshot. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference)
 - [x] Report timestamped owner PIDs for local TCP and UDP endpoints on IPv4 and IPv6. [Observed owner PID](docs/en/network-sensor-design.md#observed-owner-pid)
 - [x] Inventory local TCP listeners and UDP bindings with per-protocol timestamps and coverage. [Local listener inventory](docs/en/network-sensor-design.md#local-listener-inventory)

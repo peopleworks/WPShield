@@ -23,6 +23,8 @@ public sealed class LocalListenerInventoryTests
         var (code, first) = Inventory(() => sockets, () => [new(IPAddress.IPv6Loopback, 443)], "--ports", "443,443");
         Assert.Equal(0, code);
         Assert.False(first.TryGetProperty("PortHintCatalog", out _));
+        Assert.False(first.TryGetProperty("LocalAddress", out _));
+        Assert.False(first.TryGetProperty("Protocol", out _));
         Assert.Equal(443, Assert.Single(first.GetProperty("Ports").EnumerateArray()).GetInt32());
         var tcp = first.GetProperty("Tables")[0];
         Assert.Equal("TCP", tcp.GetProperty("Protocol").GetString());
@@ -73,6 +75,93 @@ public sealed class LocalListenerInventoryTests
         var (filteredCode, filtered) = Inventory(() => sockets, () => [], "--ports", count.ToString());
         Assert.Equal(0, filteredCode);
         Assert.Equal(count, filtered.GetProperty("Tables")[0].GetProperty("Endpoints")[0].GetProperty("Port").GetInt32());
+    }
+
+    [Fact]
+    public void SortsRetainedBindingsByPortFamilyNumericAddressAndScope()
+    {
+        string[] addresses = ["fe80::1%10", "192.0.2.10", "::10", "fe80::1%2", "::2", "192.0.2.2"];
+        IPEndPoint[] sockets = [.. addresses.Select(a => new IPEndPoint(IPAddress.Parse(a), 443)), new(IPAddress.IPv6Loopback, 80)];
+        var (_, report) = Inventory(() => sockets, () => []);
+        var rows = report.GetProperty("Tables")[0].GetProperty("Endpoints").EnumerateArray();
+        Assert.Equal(["::1", "192.0.2.2", "192.0.2.10", "::2", "::10", "fe80::1%2", "fe80::1%10"],
+            rows.Select(row => row.GetProperty("Address").GetString()));
+    }
+
+    [Theory]
+    [InlineData("127.0.0.1", "127.0.0.1")]
+    [InlineData("0.0.0.0", "0.0.0.0")]
+    [InlineData("::", "::")]
+    [InlineData("FE80:0:0:0:0:0:0:1%2", "fe80::1%2")]
+    [InlineData("fe80::1", "fe80::1")]
+    public void MatchesTheExactBindingAndOnlyReadsTheSelectedProtocol(string filter, string canonical)
+    {
+        string[] ips = ["0.0.0.0", "::", "127.0.0.1", "::ffff:127.0.0.1", "fe80::1%2", "fe80::1%10", "fe80::1"];
+        IPEndPoint[] udp = [.. ips.Select(a => new IPEndPoint(IPAddress.Parse(a), 443)), new(IPAddress.Parse(canonical), 80)];
+        var (code, report) = Inventory(() => throw new InvalidOperationException(), () => udp,
+            "--protocol", "uDp", "--local-address", filter, "--ports", "443");
+        Assert.Equal(0, code);
+        Assert.Equal(canonical, report.GetProperty("LocalAddress").GetString());
+        Assert.Equal("UDP", report.GetProperty("Protocol").GetString());
+        var table = Assert.Single(report.GetProperty("Tables").EnumerateArray());
+        Assert.Equal("UDP", table.GetProperty("Protocol").GetString());
+        var row = Assert.Single(table.GetProperty("Endpoints").EnumerateArray());
+        Assert.Equal(canonical, row.GetProperty("Address").GetString());
+        Assert.Equal(443, row.GetProperty("Port").GetInt32());
+    }
+
+    [Fact]
+    public void FiltersBeforeTheLimitAndOwnerLookup()
+    {
+        var selected = new IPEndPoint(IPAddress.Loopback, 443);
+        IPEndPoint[] sockets = [.. Enumerable.Range(1, 4097).Select(port => new IPEndPoint(IPAddress.Any, port)), selected];
+        var args = CliOptions.Parse(["--listeners", "--protocol", "TCP", "--local-address", "127.0.0.1", "--owners"]);
+        using var output = new StringWriter();
+        var code = LocalListenerInventory.Run(args, output, () => sockets, () => throw new InvalidOperationException(),
+            (protocol, _, endpoints) =>
+            {
+                Assert.Equal("TCP", protocol);
+                Assert.Equal(selected, Assert.Single(endpoints));
+                return new(DateTimeOffset.UnixEpoch, null, new() { [selected] = 42 });
+            });
+        Assert.Equal(0, code);
+        Assert.Contains("PID 42", output.ToString());
+    }
+
+    [Theory]
+    [InlineData(true, 1, "unavailable")]
+    [InlineData(false, 0, "read")]
+    public void ConsolePreservesTheScopeOfEmptyAndUnavailableTables(bool denied, int expected, string status)
+    {
+        var args = CliOptions.Parse(["--listeners", "--protocol", "tCp", "--local-address", "127.0.0.1"]);
+        using var output = new StringWriter();
+        var code = LocalListenerInventory.Run(args, output,
+            () => denied ? throw new UnauthorizedAccessException() : [new(IPAddress.Any, 80)], () => throw new InvalidOperationException());
+        Assert.Equal(expected, code);
+        Assert.Contains("Local address: 127.0.0.1", output.ToString());
+        Assert.Contains("Protocol: TCP", output.ToString());
+        Assert.Contains($"TCP  {status}", output.ToString());
+        Assert.Contains("Endpoints shown: 0", output.ToString());
+    }
+
+    [Theory]
+    [InlineData("--protocol", null)]
+    [InlineData("--protocol", "all")]
+    [InlineData("--local-address", null)]
+    [InlineData("--local-address", "server.example")]
+    [InlineData("--local-address", "192.0.2.0/24")]
+    [InlineData("--local-address", "127.1")]
+    [InlineData("--local-address", "0x7f000001")]
+    [InlineData("--local-address", "[::1]:443")]
+    [InlineData("--local-address", "127.0.0.1%2")]
+    [InlineData("--local-address", "fe80::1%Ethernet")]
+    [InlineData("--local-address", "fe80::1%")]
+    [InlineData("--local-address", "fe80::1%4294967296")]
+    public void RejectsInvalidFiltersBeforeReadingWindows(string option, string? value)
+    {
+        string[] options = value is null ? [option] : [option, value];
+        Assert.Throws<CliArgumentException>(() =>
+            Inventory(() => throw new InvalidOperationException(), () => throw new InvalidOperationException(), options));
     }
 
     [Fact]
