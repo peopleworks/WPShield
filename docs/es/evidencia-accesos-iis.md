@@ -43,3 +43,17 @@ ilegible; 2, cobertura parcial por límites, filas malformadas o sin sitio; y 3,
 sin evidencia elegible. En un servidor de laboratorio, contrasta ambas líneas con un acceso IIS
 autorizado. Hay pruebas sintéticas. Quedan pendientes la validación en IIS real y el contraste
 con los eventos de Seguridad de Windows.
+
+## Referencia de una línea
+
+```powershell
+wpshield iis-login --log-file .\ejemplo.log --site W3SVC7 --json | Set-Content -Encoding UTF8 .\iis.json
+wpshield audit-reference --snapshot .\iis.json --source iis --line 3
+```
+
+Elija el número físico `Line` de una observación del informe guardado. La salida contiene el
+SHA-256 y la longitud en bytes del prefijo, la línea elegida y la del desafío previo si el lector
+vinculó ambas observaciones. Para verificarlo, calcule la huella de esa cantidad de bytes al
+comienzo de la copia W3C original y consulte las líneas indicadas. Un prefijo distinto identifica
+otros datos. La exportación copia la referencia que figura en el informe.
+[Límites de selección y códigos de salida](diseno-sensor-red.md#referencia-de-auditoría-seleccionada)

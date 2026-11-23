@@ -69,6 +69,7 @@ internal static class ProgramMain
                 "preview" => PreviewCommand.Run(options, Console.Out),
                 "network-monitor" => NetworkMonitorCommand.Run(options, Console.Out),
                 "iis-login" => IisLoginCommand.RunAsync(options, Console.Out).GetAwaiter().GetResult(),
+                "audit-reference" => AuditReferenceCommand.RunAsync(options, Console.Out, Console.Error).GetAwaiter().GetResult(),
                 "network-filter" => NetworkFilterCommand.Run(options, Console.Out),
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
@@ -162,6 +163,10 @@ internal static class ProgramMain
                 Console.WriteLine(IisLoginCommand.Help);
                 return 0;
 
+            case "audit-reference":
+                Console.WriteLine(AuditReferenceCommand.Help);
+                return 0;
+
             case "network-filter":
                 Console.WriteLine(NetworkFilterCommand.Help);
                 return 0;
@@ -244,6 +249,9 @@ internal static class ProgramMain
 
               iis-login   Inspect a copied IIS W3C log for one site's authentication evidence.
                           --log-file <file> --site <s-sitename> [--json]
+
+              audit-reference  Print one source reference from a saved JSON snapshot.
+                          --snapshot <report.json> --source <rdp|sql|iis> (--record-id <id> | --line <n>)
 
               network-filter
                           User-mode inbound packet filter via WinDivert. Drops attack traffic

@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- `audit-reference` extracts one Windows event or IIS W3C line reference from a saved JSON snapshot by source and record ID or physical line.
+
 - `network-monitor --listeners --owners` adds a timestamped local owner PID for TCP and UDP on IPv4 and IPv6, with reasons for unresolved endpoints.
 
 - `network-monitor --listeners` lists local TCP listeners and bound UDP endpoints with an optional port filter, per-protocol read status and JSON output.
