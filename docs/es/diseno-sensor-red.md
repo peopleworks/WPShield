@@ -32,6 +32,29 @@ puerto en las tablas con estado `read` en ambas lecturas. TCP y UDP se consultan
 socket puede aparecer o desaparecer entre lecturas. La accesibilidad desde Internet, el servicio
 propietario, el sitio y el resultado de autenticación requieren evidencia independiente.
 
+### PID del proceso observado
+
+```powershell
+wpshield network-monitor --listeners --ports 443,1433,3389 --owners --json
+```
+
+Por cada protocolo y familia IP con extremos en el inventario, la CLI consulta una segunda
+tabla local de Windows. Busca la dirección local completa (incluido el ámbito IPv6) y el
+puerto. Cada extremo incorpora un objeto `Owner` con `ObservedAtUtc`, `ProcessId` y `Reason`.
+Un PID único y distinto de cero identifica el proceso que Windows observó en esa segunda
+lectura. El socket puede cambiar de propietario entre consultas y Windows puede reutilizar
+el PID cuando un proceso termina. Para atribuir una observación histórica a un proceso actual,
+un servicio, un sitio IIS o un inicio de sesión hace falta evidencia adicional.
+[Tabla TCP de Windows](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable) · [Tabla UDP de Windows](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedudptable)
+
+`ProcessId` es nulo si el extremo desapareció (`not-observed`), las filas discrepan
+(`ambiguous`) o Windows devolvió el PID cero (`pid-unavailable`). Si falla la tabla de
+propietarios, los extremos afectados indican `access-denied`, `query-failed`, `invalid-table`
+o `table-limit`. Cada tabla usa un búfer de hasta 1 MiB y un máximo de tres intentos. Si falla
+su consulta, el resultado es parcial (código 2) y conserva los puertos observados. Una lectura
+correcta puede contener extremos cuyo propietario sigue siendo desconocido. Al omitir
+`--owners` se omiten las lecturas adicionales y el campo `Owner`.
+
 ## Vista de flujos del servidor
 
 Para identificar la interfaz de captura, consulte primero el inventario local.

@@ -302,6 +302,7 @@ not read as more than they claim:
       a flow, a separately initiated outbound connection appears independently and midstream TCP
       and UDP report an unknown initiator.
 - [ ] Validate live capture on Windows Server with Npcap and named service ports.
+- [x] Report timestamped owner PIDs for local TCP and UDP endpoints on IPv4 and IPv6. [Observed owner PID](docs/en/network-sensor-design.md#observed-owner-pid)
 - [x] Inventory local TCP listeners and UDP bindings with per-protocol timestamps and coverage. [Local listener inventory](docs/en/network-sensor-design.md#local-listener-inventory)
 - [x] Report capture state, port scope and audit source availability in local monitor snapshots. [Source status](docs/en/network-sensor-design.md#source-status)
 - [x] List local Npcap device IDs and IP families before choosing one adapter for flow monitoring.

@@ -40,8 +40,9 @@ internal static class NetworkMonitorCommand
         Usage: wpshield network-monitor [options]
 
         Local TCP listeners and bound UDP endpoints (no Npcap required):
-          wpshield network-monitor --listeners [--ports 443,1433,3389] [--json]
+          wpshield network-monitor --listeners [--ports 443,1433,3389] [--owners] [--json]
           Read the Windows socket tables once. Each protocol has a UTC timestamp and read status.
+          Add --owners for the PID observed in a second local TCP or UDP table, with its UTC time.
 
         Capture interface inventory (Npcap required):
           wpshield network-monitor --list-interfaces [--json]
