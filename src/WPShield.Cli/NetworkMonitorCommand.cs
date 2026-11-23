@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Threading;
@@ -37,6 +38,10 @@ internal static class NetworkMonitorCommand
         wpshield network-monitor - observe host TCP/UDP flows or HTTP metadata. Reads only.
 
         Usage: wpshield network-monitor [options]
+
+        Local TCP listeners and bound UDP endpoints (no Npcap required):
+          wpshield network-monitor --listeners [--ports 443,1433,3389] [--json]
+          Read the Windows socket tables once. Each protocol has a UTC timestamp and read status.
 
         Capture interface inventory (Npcap required):
           wpshield network-monitor --list-interfaces [--json]
@@ -88,9 +93,9 @@ internal static class NetworkMonitorCommand
         Stop it with Ctrl+C. Nothing on this machine is changed by running it.
 
         Exit codes:
-          0   stopped cleanly
-          1   invalid arguments, capture unavailable, or standalone SQL audit unavailable
-          2   standalone SQL audit returned a partial window
+          0   completed or stopped cleanly
+          1   invalid arguments, capture or SQL audit unavailable, or both socket tables unavailable
+          2   partial listener inventory or partial standalone SQL audit window
         """;
 
     private static readonly string[] KnownOptions =
@@ -104,6 +109,10 @@ internal static class NetworkMonitorCommand
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
 
+        if (arguments.Has("--listeners"))
+            return LocalListenerInventory.Run(arguments, output,
+                () => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(),
+                () => IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners());
         if (arguments.Has("--list-interfaces"))
             return ListInterfaces(arguments, output, Console.Error, HostFlowMonitor.ListInterfaces);
         if (arguments.Has("--flows"))
