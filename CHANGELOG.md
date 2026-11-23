@@ -37,6 +37,9 @@ must complete first.
 
 ### Changed
 
+- The README and bilingual GitHub Pages landing page now organize the gateway, host flow monitor
+  and login evidence by operator task. A synthetic example shows the limits of SQL flow attribution.
+
 - Default .NET gateway options now return the same immutable settings used by the request pipeline
   throughout a startup activation. Reading options after an edit preserves the active policy and
   its recorded revision. Site hosts, trusted peers and rate-limit arrays are protected from mutation
