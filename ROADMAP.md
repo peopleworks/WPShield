@@ -335,6 +335,7 @@ not read as more than they claim:
 ## M5 — Local multilingual dashboard
 
 - [x] Open the local listener inventory in a bilingual Windows desktop window with keyboard navigation and manual or timed refresh. [Desktop monitor](docs/en/network-sensor-design.md#desktop-monitor)
+- [x] Chart Windows adapter counters with explicit measurement gaps and pause the display independently of sampling. [Adapter traffic](docs/en/network-sensor-design.md#adapter-traffic)
 
 - [ ] Plot interval history from the host monitor. Pausing the view keeps capture running.
       Add keyboard selection and copy of a minimal audit reference. [Design references](docs/en/networkmanager-evaluation.md)

@@ -55,6 +55,8 @@
         <ListBox x:Name="Protocols" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="OnFilterChanged">
           <ListBoxItem x:Name="AllProtocols"/><ListBoxItem Content="TCP"/><ListBoxItem Content="UDP"/>
         </ListBox>
+        <Button x:Name="TrafficButton" Margin="0,18,0,0" Padding="8,8" Background="#294858" Foreground="White"
+                BorderThickness="0" Click="OpenTraffic"/>
       </StackPanel>
     </DockPanel>
     <Grid Grid.Column="1" Margin="22,18">

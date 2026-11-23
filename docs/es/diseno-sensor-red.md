@@ -18,8 +18,22 @@ convencional del puerto. Las tarjetas muestran la hora de lectura, la cobertura 
 de IPv4 e IPv6. Pase el puntero sobre un PID para ver la hora de esa segunda lectura o el motivo
 por el que se desconoce. Pulse **Actualizar** o active **Cada 5 s**. Al cerrar la ventana termina
 la consulta periódica. La vista lee las tablas locales en memoria y funciona sin Npcap ni servidor
-HTTP. Para ver bytes entrantes y salientes, use la [vista de flujos](#vista-de-flujos-del-servidor).
+HTTP.
 Use `--en` para abrir la ventana en inglés.
+
+### Tráfico por adaptador
+
+Abra **Tráfico por adaptador** y seleccione una interfaz de Windows. Cada par de barras muestra
+los bytes recibidos y enviados por segundo en todo el adaptador. Ambas direcciones comparten la
+misma escala. Pase el puntero sobre un intervalo para ver su hora UTC y sus tasas. Para investigar
+flujos individuales o puertos específicos, use la [vista de flujos](#vista-de-flujos-del-servidor).
+
+La primera lectura establece el punto de partida. Cada dos segundos se consulta cuánto han aumentado
+los contadores y se divide esa diferencia por el tiempo transcurrido. Una lectura fallida, un contador
+que retrocede, una discontinuidad del reloj o una demora superior a cinco segundos se marcan en ámbar.
+Dos lecturas iguales miden cero. **Pausar gráfica** congela la imagen mientras continúa la medición.
+Al reanudar se muestran las últimas 30 observaciones. Cambiar de adaptador inicia un historial nuevo.
+Cerrar la ventana de tráfico detiene la medición.
 
 ## Inventario de puertos locales
 
@@ -205,9 +219,9 @@ compararlos, cuenta cada intervalo una sola vez.
 | `unknown` | Faltó el contador del controlador en algún extremo. Las tasas miden los bytes observados. Un cero no demuestra que la red estaba inactiva. |
 | `gap` | Hubo paquetes omitidos, aumento o reinicio del contador de descartes, interrupción de captura, más de cinco segundos entre muestras o discrepancia entre los relojes. Las tasas son nulas. Se conservan los bytes y las razones en `GapReasons`. |
 
-El historial permanece en memoria durante la captura. La gráfica interactiva y la pausa de la vista
-quedan previstas para el panel local. Está pendiente validar las tasas en Windows Server con Npcap
-y tráfico real.
+El historial de flujos de Npcap permanece en memoria durante la captura. Quedan pendientes la
+gráfica de estas muestras por puerto y la validación en Windows Server con Npcap. Para ver una
+gráfica de toda la interfaz, abra [Tráfico por adaptador](#tráfico-por-adaptador) en el monitor de escritorio.
 
 ### Evidencia de inicios de sesión por Escritorio Remoto
 
