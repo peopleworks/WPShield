@@ -32,6 +32,23 @@ puerto en las tablas con estado `read` en ambas lecturas. TCP y UDP se consultan
 socket puede aparecer o desaparecer entre lecturas. La accesibilidad desde Internet, el servicio
 propietario, el sitio y el resultado de autenticación requieren evidencia independiente.
 
+### Nombres de puertos sin conexión
+
+```powershell
+wpshield network-monitor --listeners --ports 443,1433,3389 --port-hints --json
+```
+
+Añada `--port-hints` para consultar los nombres convencionales del protocolo y el puerto local
+en un catálogo incluido en la CLI. Por ejemplo, TCP 1433 devuelve `ms-sql-s` y TCP 3389 devuelve
+`ms-wbt-server`. En JSON, `PortHintCatalog` identifica la versión del catálogo de WPShield.
+La lista `PortHints` de cada extremo contiene las coincidencias y sus alias. Una lista vacía
+(`unknown` en consola) indica que esa combinación no figura en el catálogo incluido.
+
+La versión `wpshield-iana-v1` cubre 20 números de puerto seleccionados para web, bases de datos,
+acceso remoto, correo, FTP, SIP y VPN. La consulta se resuelve localmente, sin DNS ni peticiones
+al registro externo. Un proceso puede usar cualquier puerto disponible. Para investigar qué proceso
+lo usa, combine la opción con `--owners` y contraste el PID observado y su hora. [Registro de servicios y puertos de IANA](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml)
+
 ### PID del proceso observado
 
 ```powershell
