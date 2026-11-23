@@ -111,6 +111,28 @@ provides no login evidence. For `unavailable`, `UnavailableReason` is `access-de
 fields. Window timestamps describe the period queried. They cannot establish whether the
 server was configured to record every login.
 
+### Selected audit reference
+
+Save a single JSON snapshot locally. Use the Windows event **record ID** shown for the chosen
+row. The source selects the channel even if RDP and SQL have records with the same number.
+
+```powershell
+wpshield network-monitor --sql-instance MSSQLSERVER --json | Set-Content -Encoding UTF8 .\sql.json
+wpshield audit-reference --snapshot .\sql.json --source sql --record-id 431
+wpshield audit-reference --snapshot .\flow-snapshot.json --source rdp --record-id 125
+```
+
+Replace the example IDs with IDs present in the snapshot. For a flow monitor JSON Lines file,
+save the single original JSON line for the observation of interest in UTF-8. The selector accepts
+one object up to 8 MiB. It reads saved fields offline. The reference contains only channel,
+provider, UTC timestamp and record ID. SQL flow attribution remains unknown. Verify the reference
+against the original Windows event log on the same server.
+
+Exit 0 prints one JSON reference. Exit 3 means the requested ID was absent from that source in
+this snapshot, including when its coverage was partial. Invalid input, a missing source section,
+duplicate matches or a read error return 1. Diagnostics go to stderr and failed selections leave
+stdout empty. [IIS file and line references](iis-login-evidence.md#selected-line-reference)
+
 ### Traffic history
 
 ```powershell

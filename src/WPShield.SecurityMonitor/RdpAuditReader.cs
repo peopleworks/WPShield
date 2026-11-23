@@ -15,9 +15,10 @@ public sealed record RdpAuditWindow(string Status, IReadOnlyList<RemoteLogon> Ev
 
 public static class RdpAuditReader
 {
+    public const string Provider = "Microsoft-Windows-Security-Auditing";
     public static RdpAuditWindow Read(DateTimeOffset end)
     {
-        var filter = $"*[System[Provider[@Name='Microsoft-Windows-Security-Auditing'] and (EventID=4624 or EventID=4625) and {RecentEventLog.TimeFilter(end)}] and EventData[Data[@Name='LogonType']='10']]";
+        var filter = $"*[System[Provider[@Name='{Provider}'] and (EventID=4624 or EventID=4625) and {RecentEventLog.TimeFilter(end)}] and EventData[Data[@Name='LogonType']='10']]";
         EventLogPropertySelector? fields = null;
         try
         {

@@ -41,3 +41,16 @@ unavailable file. Exit 2 means a limit, malformed input or unknown site coverage
 partial. Exit 3 means a completed scan found no eligible evidence. Validate on a lab server by
 checking both line references against an authorized IIS access. Synthetic fixtures cover this
 reader; a live deployment and comparison against Windows Security events remain pending.
+
+## Selected line reference
+
+```powershell
+wpshield iis-login --log-file .\example.log --site W3SVC7 --json | Set-Content -Encoding UTF8 .\iis.json
+wpshield audit-reference --snapshot .\iis.json --source iis --line 3
+```
+
+Choose the physical `Line` of an evidence row in the saved report. The output contains the
+SHA-256 and byte length of the input prefix, the selected line, and the preceding challenge line
+when the reader paired the two. To verify it, hash that many leading bytes of the original W3C
+copy and inspect the indicated lines. A changed prefix identifies different input. The export
+copies the reference already present in the snapshot. [Selection limits and exit codes](network-sensor-design.md#selected-audit-reference)

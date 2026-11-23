@@ -118,6 +118,30 @@ eventos devuelve `read` y deja el resultado del acceso como desconocido. Para `u
 limitada el motivo es nulo. Los archivos JSON anteriores pueden omitir estos campos. Las
 horas describen la ventana consultada. La cobertura depende de la auditoría habilitada en el servidor.
 
+### Referencia de auditoría seleccionada
+
+Guarde una sola lectura en JSON. Seleccione el **número de registro** del evento de Windows que
+quiera verificar. La fuente identifica el canal aunque haya registros con el mismo número en
+RDP y SQL.
+
+```powershell
+wpshield network-monitor --sql-instance MSSQLSERVER --json | Set-Content -Encoding UTF8 .\sql.json
+wpshield audit-reference --snapshot .\sql.json --source sql --record-id 431
+wpshield audit-reference --snapshot .\lectura-flujos.json --source rdp --record-id 125
+```
+
+Sustituya los números del ejemplo por los del informe. Si el monitor produjo un archivo JSON
+Lines, guarde en UTF-8 la línea JSON original de la lectura que le interesa. El selector admite
+un objeto de hasta 8 MiB y lee sus campos sin consultar el servidor. Devuelve únicamente canal,
+proveedor, hora UTC y número de registro. La atribución de SQL a un flujo sigue siendo
+desconocida. Verifique la referencia en el registro de eventos original del mismo servidor.
+
+El código 0 imprime una referencia JSON. El código 3 significa que esa fuente no contiene el
+número solicitado en la lectura, que puede tener cobertura parcial. Un informe inválido, una
+sección ausente, coincidencias duplicadas o un error de lectura devuelven 1. Los diagnósticos se
+escriben en la salida de error y la salida estándar queda vacía si falla la selección.
+[Referencias de archivo y línea en IIS](evidencia-accesos-iis.md#referencia-de-una-línea)
+
 ### Historial de tráfico
 
 ```powershell
