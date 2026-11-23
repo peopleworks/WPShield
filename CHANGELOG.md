@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- `wpshield iis-login` reads a copied W3C log for one site and reports traceable authentication
+  observations, including challenges followed by authenticated requests and corroborated rejections.
+
 - `wpshield network-monitor --sql-instance` reads recent login outcomes for one SQL Server
   instance from the local Windows Application log, standalone or alongside host flows.
 

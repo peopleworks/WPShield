@@ -306,7 +306,9 @@ not read as more than they claim:
       and show the matching record IDs. Missing or ambiguous evidence leaves the outcome unknown.
 - [x] Read existing SQL Server login outcomes for a single local instance from the Windows
       Application log. Preserve its record IDs and keep TCP flow attribution unknown.
-- [ ] Corroborate service activity and authentication outcomes with IIS and richer SQL Server audit
+- [x] Inspect site-scoped W3C records for IIS login evidence, including unknown attribution and
+      corroborated Windows logon failures. [Offline reader](docs/en/iis-login-evidence.md)
+- [ ] Corroborate service activity and authentication outcomes with Windows Security and richer SQL Server audit
       evidence. Keep the outcome unknown when the records are missing. On shared
       hosts, site attribution requires independent evidence.
 

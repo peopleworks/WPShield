@@ -747,7 +747,9 @@ El resto de esta sección sigue siendo planificación; prevalece el [roadmap pub
       Windows e indicar los números de registro. Si falta evidencia o es ambigua, mostrar `unknown`.
 - [x] Leer los resultados de inicio de sesión de una instancia SQL Server local desde Aplicación
       y conservar los números de registro. La atribución al flujo TCP queda como desconocida.
-- [ ] Corroborar actividad y autenticación con evidencia de IIS y fuentes adicionales de auditoría de SQL Server.
+- [x] Inspeccionar registros W3C de un sitio IIS para identificar rechazos corroborados y secuencias
+      de negociación, con atribución desconocida cuando falta evidencia. [Lector](evidencia-accesos-iis.md)
+- [ ] Corroborar actividad y autenticación con el registro Seguridad y fuentes adicionales de auditoría de SQL Server.
       El resultado será desconocido si faltan los registros.
       En un servidor compartido, la atribución a un sitio requiere evidencia independiente.
 
