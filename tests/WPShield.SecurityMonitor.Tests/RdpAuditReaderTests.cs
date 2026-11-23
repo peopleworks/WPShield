@@ -4,6 +4,15 @@ namespace WPShield.SecurityMonitor.Tests;
 
 public sealed class RdpAuditReaderTests
 {
+    [Fact]
+    public void SharedReaderDistinguishesAccessDenialFromOtherQueryFailures()
+    {
+        Assert.Equal("access-denied", RecentEventLog.UnavailableReason(new UnauthorizedAccessException()));
+        Assert.Equal("access-denied", RecentEventLog.UnavailableReason(new System.Security.SecurityException()));
+        Assert.Equal("query-failed", RecentEventLog.UnavailableReason(new System.Diagnostics.Eventing.Reader.EventLogException()));
+        Assert.Null(RecentEventLog.UnavailableReason(new InvalidOperationException()));
+    }
+
     [Theory]
     [InlineData("-", "49152")]
     [InlineData("1", "49152")]

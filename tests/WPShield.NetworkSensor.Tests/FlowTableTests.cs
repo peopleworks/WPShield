@@ -108,6 +108,28 @@ public sealed class FlowTableTests
         Assert.Null(last.ReceivedBytesPerSecond);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void IdleCapturePublishesItsScopeAndDriverInterruptionEvenWithNoFlows(bool includeHistory)
+    {
+        using var device = new SyntheticCapture(Frame(Remote, Local, 51000, 80), false);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+        var snapshots = new List<FlowSnapshot>();
+        var table = new FlowTable([Local], new HashSet<int> { 3389, 443 });
+        Assert.Throws<InvalidOperationException>(() => HostFlowMonitor.RunOpened(device, table, snapshot =>
+        {
+            snapshots.Add(snapshot);
+            if (snapshot.CaptureStatus == "running") device.Interrupt();
+        }, timeout.Token, includeHistory: includeHistory));
+        Assert.Equal(["running", "interrupted"], snapshots.Select(s => s.CaptureStatus));
+        Assert.All(snapshots, s =>
+        {
+            Assert.Equal([443, 3389], s.CapturePorts);
+            Assert.Empty(s.Flows);
+        });
+    }
+
     [Fact]
     public void ExistingHttpMode_DeliversTheSelectedTcpPayloadFromTypedCaptureEvents()
     {
@@ -149,6 +171,7 @@ public sealed class FlowTableTests
             Assert.Equal("remote", Assert.Single(snapshot.Flows).Initiator);
         });
         Assert.Equal(driverStopped ? 1 : 2, snapshots.Count);
+        Assert.Equal(driverStopped ? "interrupted" : "stopped", snapshots[^1].CaptureStatus);
         if (includeHistory)
         {
             var history = snapshots[^1].History!;
@@ -176,11 +199,12 @@ public sealed class FlowTableTests
             Started = true;
             var header = new PcapHeader((uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds(), 0, (uint)frame.Length, (uint)frame.Length);
             OnPacketArrival?.Invoke(this, new PacketCapture(this, header, frame));
-            if (stopUnexpectedly)
-            {
-                Started = false;
-                OnCaptureStopped?.Invoke(this, CaptureStoppedEventStatus.ErrorWhileCapturing);
-            }
+            if (stopUnexpectedly) Interrupt();
+        }
+        public void Interrupt()
+        {
+            Started = false;
+            OnCaptureStopped?.Invoke(this, CaptureStoppedEventStatus.ErrorWhileCapturing);
         }
         public void StopCapture() => Started = false;
         public void Open(DeviceConfiguration configuration) => Assert.Equal(DeviceModes.None, configuration.Mode);

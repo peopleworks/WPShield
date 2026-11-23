@@ -48,6 +48,22 @@ outside this version's coverage. Both-local and neither-local traffic cannot be 
 endpoint. Filters can exclude frames before software counters see them. Only addresses assigned to
 the selected adapter at startup are used for direction. Output is local and includes IP addresses.
 
+### Source status
+
+Every flow snapshot identifies the adapter (`Interface`), the UTC snapshot time (`Timestamp`) and
+the selected TCP/UDP ports (`CapturePorts`, an empty array for all ports). During capture,
+`CaptureStatus` is `running`. The final snapshot reports `stopped` for an operator stop or
+`interrupted` for an unexpected driver stop, including with zero flows and with history disabled.
+A failure before capture starts reports a command error. In JSON mode diagnostics go to stderr.
+
+For RDP and SQL, `WindowStart` and `WindowEnd` bound the event query in UTC. RDP names the
+Security channel and selected local TCP port. SQL names the Application channel and instance
+provider. Each query has its own `AuditStatus`. A completed empty query returns `read` and
+provides no login evidence. For `unavailable`, `UnavailableReason` is `access-denied` or
+`query-failed`; for a readable or limited query the reason is null. Older JSON may omit these
+fields. Window timestamps describe the period queried. They cannot establish whether the
+server was configured to record every login.
+
 ### Traffic history
 
 ```powershell

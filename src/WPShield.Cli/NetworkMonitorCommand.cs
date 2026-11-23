@@ -48,6 +48,8 @@ internal static class NetworkMonitorCommand
           wpshield network-monitor --flows --interfaces Ethernet --all-ports
           Select exactly one adapter. Shows TCP/UDP endpoints, observed IP bytes in each
           direction, initiator and capture counters every two seconds. Add --json for JSON Lines.
+          Each snapshot identifies the adapter, port scope and capture status. Login audits
+          include their UTC query window and a reason when the event log is unavailable.
           The console shows 40 recent rows. JSON includes all retained rows (up to 4096).
           Add --history for observed inbound and outbound IP bytes per second. The console
           shows the latest five intervals, JSON up to 30. Gaps keep counts and omit rates.
@@ -274,7 +276,7 @@ internal static class NetworkMonitorCommand
         var instance = arguments.Has("--sql-instance") ? RequiredSqlInstance(arguments) : null;
         var json = arguments.Has("--json");
         var history = arguments.Has("--history");
-        var diagnostics = json && history ? Console.Error : output;
+        var diagnostics = json ? Console.Error : output;
         if (!IsElevated())
         {
             diagnostics.WriteLine("ERROR: flow monitoring requires an Administrator token.");
@@ -325,14 +327,14 @@ internal static class NetworkMonitorCommand
 
     private static void WriteSqlAudit(TextWriter output, SqlLoginAuditWindow sql)
     {
-        output.WriteLine($"{sql.WindowEnd:u}  {sql.Provider}  Application log: {sql.AuditStatus}  Login records: {sql.Events.Count}  Observed outcome: {sql.ObservedOutcome}  Flow attribution: {sql.FlowAttribution}");
+        output.WriteLine($"{sql.WindowStart:u} / {sql.WindowEnd:u}  {sql.Provider}  Application log: {AuditLabel(sql.AuditStatus, sql.UnavailableReason)}  Login records: {sql.Events.Count}  Observed outcome: {sql.ObservedOutcome}  Flow attribution: {sql.FlowAttribution}");
         foreach (var item in sql.Events)
             output.WriteLine($"  {item.Timestamp:u}  {item.Outcome}  Event {item.EventId}  Application record {item.RecordId}");
     }
 
     private static void WriteRdpAudit(TextWriter output, RdpFlowReport report, IReadOnlyList<FlowRow> visible)
     {
-        output.WriteLine($"Remote interactive logons on TCP {report.LocalPort} | Security log: {report.AuditStatus}");
+        output.WriteLine($"{report.WindowStart:u} / {report.WindowEnd:u}  Remote interactive logons on TCP {report.LocalPort} | Security log: {AuditLabel(report.AuditStatus, report.UnavailableReason)}");
         var endpoints = visible.Where(f => f.Protocol == "TCP").Select(f => (f.Local, f.Remote)).ToHashSet();
         foreach (var row in report.Flows.Where(f => endpoints.Contains((f.Local, f.Remote))))
         {
@@ -341,6 +343,8 @@ internal static class NetworkMonitorCommand
                 output.WriteLine($"    {match.Timestamp:u}  Event {match.EventId}  Security record {match.RecordId}");
         }
     }
+
+    private static string AuditLabel(string status, string? reason) => reason is null ? status : $"{status} ({reason})";
 
     internal static void WriteSnapshot(TextWriter output, FlowSnapshot snapshot, bool json,
         RdpFlowReport? rdp = null, SqlLoginAuditWindow? sql = null)
@@ -359,7 +363,8 @@ internal static class NetworkMonitorCommand
         }
         var driver = snapshot.DriverDrops?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "unavailable";
         var visible = snapshot.Flows.Take(40).ToArray();
-        output.WriteLine($"{snapshot.Timestamp:u}  {snapshot.Interface}  Showing {visible.Length}/{snapshot.ActiveFlows} flows");
+        var ports = snapshot.CapturePorts switch { null => "unknown", { Count: 0 } => "all", var selected => string.Join(",", selected) };
+        output.WriteLine($"{snapshot.Timestamp:u}  {snapshot.Interface}  TCP/UDP ports: {ports}  Capture: {snapshot.CaptureStatus}  Showing {visible.Length}/{snapshot.ActiveFlows} flows");
         output.WriteLine($"Skipped packets: {snapshot.SkippedPackets}  Table capacity drops: {snapshot.CapacityDrops}  Driver drop counter: {driver}");
         if (snapshot.History is { } history)
         {

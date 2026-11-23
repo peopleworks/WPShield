@@ -19,6 +19,11 @@ internal sealed record RdpFlowEvidence(string Local, string Remote, IReadOnlyLis
 
 internal sealed record RdpFlowReport(int LocalPort, string AuditStatus, IReadOnlyList<RdpFlowEvidence> Flows)
 {
+    public string Channel => "Security";
+    public DateTimeOffset? WindowStart { get; init; }
+    public DateTimeOffset? WindowEnd { get; init; }
+    public string? UnavailableReason { get; init; }
+
     internal static RdpFlowReport Create(FlowSnapshot snapshot, int port, RdpAuditWindow audit)
     {
         var rows = new List<RdpFlowEvidence>();
@@ -45,6 +50,11 @@ internal sealed record RdpFlowReport(int LocalPort, string AuditStatus, IReadOnl
             if (matches.Length == 1 && matches[0].Flow.Initiator == "remote")
                 matches[0].Evidence.Add(new(logon.EventId, logon.RecordId, logon.Timestamp));
         }
-        return new(port, audit.Status, rows);
+        return new(port, audit.Status, rows)
+        {
+            WindowStart = audit.WindowStart,
+            WindowEnd = audit.WindowEnd,
+            UnavailableReason = audit.UnavailableReason
+        };
     }
 }

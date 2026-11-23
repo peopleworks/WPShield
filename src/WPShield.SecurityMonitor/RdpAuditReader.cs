@@ -6,7 +6,12 @@ namespace WPShield.SecurityMonitor;
 
 public sealed record RemoteLogon(int EventId, long RecordId, DateTimeOffset Timestamp, IPEndPoint Source);
 
-public sealed record RdpAuditWindow(string Status, IReadOnlyList<RemoteLogon> Events);
+public sealed record RdpAuditWindow(string Status, IReadOnlyList<RemoteLogon> Events)
+{
+    public DateTimeOffset? WindowEnd { get; init; }
+    public DateTimeOffset? WindowStart => WindowEnd - RecentEventLog.Lookback;
+    public string? UnavailableReason { get; init; }
+}
 
 public static class RdpAuditReader
 {
@@ -26,7 +31,7 @@ public static class RdpAuditReader
                     return new(native.Id, id, time.ToUniversalTime(), source);
                 return null;
             });
-            return new(window.Status, window.Events);
+            return new(window.Status, window.Events) { WindowEnd = end.ToUniversalTime(), UnavailableReason = window.UnavailableReason };
         }
         finally
         {

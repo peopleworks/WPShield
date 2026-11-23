@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- Flow snapshots report capture state and selected ports. RDP and SQL audit results show their UTC query window and distinguish denied access from other query failures.
+
 - `network-monitor --list-interfaces [--json]` lists local Npcap device IDs, Windows names and IP
   families. Flow capture rechecks the chosen source at startup.
 
