@@ -30,6 +30,23 @@ for each table marked `read` in both snapshots. TCP and UDP are read in sequence
 appear or disappear between reads. External reachability, service ownership, site and login
 outcome all require independent evidence.
 
+### Offline port hints
+
+```powershell
+wpshield network-monitor --listeners --ports 443,1433,3389 --port-hints --json
+```
+
+Add `--port-hints` to look up conventional names for the observed protocol and local port in a
+catalog shipped with the CLI. For example, TCP 1433 returns `ms-sql-s` and TCP 3389 returns
+`ms-wbt-server`. The JSON field `PortHintCatalog` identifies the WPShield catalog version.
+Each endpoint's `PortHints` array contains the matching registry names, including aliases.
+An empty array (shown as `unknown` in the console) means this catalog has no entry for the pair.
+
+Version `wpshield-iana-v1` covers 20 selected port numbers for web, database, remote access, mail,
+FTP, SIP and VPN services. The lookup runs locally without DNS or registry requests. A listening
+process can use any available port. To investigate the actual process, combine the option with
+`--owners` and check the timestamped PID separately. [IANA service and port registry](https://www.iana.org/assignments/service-names-port-numbers/service-names-port-numbers.xhtml)
+
 ### Observed owner PID
 
 ```powershell

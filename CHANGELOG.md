@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- `network-monitor --listeners --port-hints` shows versioned offline registry names for observed TCP and UDP ports.
+
 - `audit-reference` extracts one Windows event or IIS W3C line reference from a saved JSON snapshot by source and record ID or physical line.
 
 - `network-monitor --listeners --owners` adds a timestamped local owner PID for TCP and UDP on IPv4 and IPv6, with reasons for unresolved endpoints.
