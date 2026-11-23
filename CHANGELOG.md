@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- `network-monitor --flows --history` reports recent received and sent IP bytes per second.
+  Intervals carry UTC boundaries, observed counts and gap reasons.
+
 - `wpshield iis-login` reads a copied W3C log for one site and reports traceable authentication
   observations, including challenges followed by authenticated requests and corroborated rejections.
 

@@ -302,6 +302,8 @@ not read as more than they claim:
       a flow, a separately initiated outbound connection appears independently and midstream TCP
       and UDP report an unknown initiator.
 - [ ] Validate live capture on Windows Server with Npcap and named service ports.
+- [x] Add bounded CLI traffic history with observed IP bytes per second in each direction,
+      UTC intervals and explicit gaps. [Traffic history](docs/en/network-sensor-design.md#traffic-history)
 - [x] Correlate observed incoming Remote Desktop flows with local Windows Security logon events
       and show the matching record IDs. Missing or ambiguous evidence leaves the outcome unknown.
 - [x] Read existing SQL Server login outcomes for a single local instance from the Windows
@@ -325,6 +327,8 @@ not read as more than they claim:
 
 ## M5 — Local multilingual dashboard
 
+- [ ] Plot interval history from the host monitor. Pausing the view keeps capture running.
+      Add keyboard selection and copy of a minimal audit reference. [Design references](docs/en/networkmanager-evaluation.md)
 - [ ] Bind management access to 127.0.0.1 initially.
 - [ ] Add English and Spanish views for summary, sites, events, rules, health, configuration, versions, export, and diagnostics.
 - [ ] Add CSRF protection and design Windows-authenticated administrative access before any remote use.

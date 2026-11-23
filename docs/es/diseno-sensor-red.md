@@ -34,6 +34,31 @@ IP y las cabeceras de extensión IPv6. Si ambos extremos son locales o ninguno l
 asignar un extremo remoto. Los filtros pueden excluir tramas antes de que lleguen a los contadores.
 El sentido se determina con las direcciones del adaptador al arrancar. La salida local contiene IP.
 
+### Historial de tráfico
+
+```powershell
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 443,1433,3389 --history --json
+```
+
+El historial opcional muestra los bytes IP observados por segundo en cada sentido para el adaptador
+y los puertos elegidos. Cuenta después de decodificar el paquete y determinar su sentido, antes de
+admitir, caducar o reutilizar un flujo. Si la tabla se llena, los bytes de un flujo nuevo siguen
+contando aunque su fila quede fuera. Cada lectura cierra un intervalo. Un reloj monótono mide su
+duración y las marcas UTC indican sus límites. El primer intervalo y el último pueden ser breves.
+La consola muestra cinco intervalos y el JSON conserva hasta 30 en `History`, o en
+`Traffic.History` cuando se solicita auditoría. Las lecturas sucesivas repiten intervalos. Para
+compararlos, cuenta cada intervalo una sola vez.
+
+| Cobertura | Interpretación |
+| --- | --- |
+| `observed` | El contador del controlador estaba disponible en ambos extremos y no se detectaron huecos. Las tasas describen el tráfico seleccionado que el lector pudo decodificar. |
+| `unknown` | Faltó el contador del controlador en algún extremo. Las tasas miden los bytes observados. Un cero no demuestra que la red estaba inactiva. |
+| `gap` | Hubo paquetes omitidos, aumento o reinicio del contador de descartes, interrupción de captura, más de cinco segundos entre muestras o discrepancia entre los relojes. Las tasas son nulas. Se conservan los bytes y las razones en `GapReasons`. |
+
+El historial permanece en memoria durante la captura. La gráfica interactiva y la pausa de la vista
+quedan previstas para el panel local. Está pendiente validar las tasas en Windows Server con Npcap
+y tráfico real.
+
 ### Evidencia de inicios de sesión por Escritorio Remoto
 
 Indique el puerto TCP local configurado para Escritorio Remoto en el servidor observado. La cuenta

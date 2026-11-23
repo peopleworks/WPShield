@@ -235,7 +235,7 @@ internal static class ProgramMain
                           Passive HTTP metadata or live TCP/UDP flows (Administrator and Npcap).
                           --sql-instance <name> [--json] reads one local Application log snapshot.
                           --flows --interfaces <adapter> (--ports <numbers> | --all-ports) [--json]
-                          [--rdp-port <port>] [--sql-instance <name>]
+                          [--rdp-port <port>] [--sql-instance <name>] [--history]
                           --ports <numbers> [--interfaces <names>] [--output <file>]
                           [--max-events-per-second <n>] [--promiscuous]
                           [--rotation-max-size-bytes <n>] [--rotation-retention-days <n>]
