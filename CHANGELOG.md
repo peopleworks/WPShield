@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- `network-monitor --listeners --owners` adds a timestamped local owner PID for TCP and UDP on IPv4 and IPv6, with reasons for unresolved endpoints.
+
 - `network-monitor --listeners` lists local TCP listeners and bound UDP endpoints with an optional port filter, per-protocol read status and JSON output.
 
 - Flow snapshots report capture state and selected ports. RDP and SQL audit results show their UTC query window and distinguish denied access from other query failures.

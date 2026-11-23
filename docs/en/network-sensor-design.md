@@ -30,6 +30,28 @@ for each table marked `read` in both snapshots. TCP and UDP are read in sequence
 appear or disappear between reads. External reachability, service ownership, site and login
 outcome all require independent evidence.
 
+### Observed owner PID
+
+```powershell
+wpshield network-monitor --listeners --ports 443,1433,3389 --owners --json
+```
+
+For each protocol and IP family with retained endpoints, the CLI reads a second local Windows
+table. It matches the full local address (including IPv6 scope) and port. Each endpoint gains
+an `Owner` object with `ObservedAtUtc`, `ProcessId` and `Reason`. A unique nonzero PID is the
+process identifier Windows reported at that second observation. The socket can change hands
+between reads. Windows can also reuse a PID after a process exits. A historical PID cannot
+identify a running process, Windows service, IIS site or login without further evidence.
+[Windows TCP table](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedtcptable) · [Windows UDP table](https://learn.microsoft.com/en-us/windows/win32/api/iphlpapi/nf-iphlpapi-getextendedudptable)
+
+`ProcessId` is null if the endpoint disappeared (`not-observed`), the rows disagree
+(`ambiguous`) or Windows supplied PID zero (`pid-unavailable`). A failed owner table
+marks affected endpoints with `access-denied`, `query-failed`, `invalid-table` or `table-limit`.
+Each native table read has a 1 MiB buffer ceiling and at most three attempts. A failed owner
+table makes the result partial (exit 2) while preserving the listener rows. A successful table
+can legitimately contain unresolved endpoints. Omitting `--owners` skips the extra reads and
+the `Owner` field.
+
 ## Host flow view
 
 To find the capture interface, run the local inventory first.

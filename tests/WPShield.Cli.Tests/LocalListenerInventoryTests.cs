@@ -27,6 +27,7 @@ public sealed class LocalListenerInventoryTests
         Assert.Equal("TCP", tcp.GetProperty("Protocol").GetString());
         Assert.Equal(TimeSpan.Zero, tcp.GetProperty("ObservedAtUtc").GetDateTimeOffset().Offset);
         var endpoints = tcp.GetProperty("Endpoints").EnumerateArray().ToArray();
+        Assert.All(endpoints, row => Assert.False(row.TryGetProperty("Owner", out _)));
         Assert.Equal(["wildcard", "loopback", "wildcard"], endpoints.Select(e => e.GetProperty("Binding").GetString()));
         Assert.Equal("::", endpoints[2].GetProperty("Address").GetString());
         var udp = first.GetProperty("Tables")[1];

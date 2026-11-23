@@ -18,6 +18,8 @@ public sealed class HostFlowCommandTests
     [InlineData("--listeners --ports 0")]
     [InlineData("--listeners --json=false")]
     [InlineData("--listeners=true")]
+    [InlineData("--owners")]
+    [InlineData("--listeners --owners=false")]
     [InlineData("--listeners --listeners")]
     [InlineData("--list-interfaces --flows")]
     [InlineData("--list-interfaces --output example.ndjson")]
