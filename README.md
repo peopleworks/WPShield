@@ -42,7 +42,7 @@ to what it originally claimed.</sub>
 | Question | First command | Requirements and evidence |
 | --- | --- | --- |
 | Which rule fired on my IIS-hosted WordPress site? | `wpshield watch --plain` | Start the gateway in Monitor on loopback and read its evidence log. [Request evidence](docs/en/request-evidence.md) |
-| What traffic is arriving and leaving? | `wpshield network-monitor --flows --interfaces Ethernet --all-ports` | Choose your adapter and run with Npcap and administrator privileges. [Flow coverage](docs/en/network-sensor-design.md#host-flow-view) |
+| What traffic is arriving and leaving? | `wpshield network-monitor --flows --interfaces Ethernet --all-ports` | Find the device ID with `wpshield network-monitor --list-interfaces`, then run the flow monitor with Npcap and administrator privileges. [Flow coverage](docs/en/network-sensor-design.md#host-flow-view) |
 | Which record confirms a login? | `wpshield network-monitor --sql-instance MSSQLSERVER --json` | Read the local Application log for SQL. For RDP, add `--rdp-port` and its local port number to a flow capture that includes that port. [Login evidence](docs/en/network-sensor-design.md#remote-desktop-logon-evidence) |
 
 An instance-level SQL login can be verified even when its TCP flow attribution remains `unknown`. [Guía del operador en español](docs/es/diseno-sensor-red.md)
@@ -188,7 +188,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,596 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,605 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -428,7 +428,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,596 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 311 for the CLI, 468 for the gateway, 37 for the network sensor, 14 for the network filter, 29 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,605 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 318 for the CLI, 468 for the gateway, 39 for the network sensor, 14 for the network filter, 29 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -617,7 +617,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,596 tests
+|-- tests/                            xUnit test projects, 1,605 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/

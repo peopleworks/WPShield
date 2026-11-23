@@ -12,6 +12,11 @@ public sealed class HostFlowCommandTests
     [InlineData("--flows --all-ports")]
     [InlineData("--flows --interfaces Ethernet --all-ports --history=false")]
     [InlineData("--history")]
+    [InlineData("--list-interfaces --flows")]
+    [InlineData("--list-interfaces --output example.ndjson")]
+    [InlineData("--list-interfaces=true")]
+    [InlineData("--list-interfaces --json=false")]
+    [InlineData("--list-interfaces --list-interfaces")]
     [InlineData("--flows --interfaces Ethernet")]
     [InlineData("--flows --interfaces Ethernet --ports 0")]
     [InlineData("--flows --interfaces Ethernet --ports 443 --all-ports")]
@@ -29,6 +34,36 @@ public sealed class HostFlowCommandTests
     {
         Assert.Throws<CliArgumentException>(() => NetworkMonitorCommand.Run(
             CliOptions.Parse(arguments.Split(' ')), TextWriter.Null));
+    }
+
+    [Fact]
+    public void InventoryShowsSelectableDeviceIdAndAddressFamiliesInBothFormats()
+    {
+        FlowInterface[] interfaces = [new(@"\\example", "Example\nname", "Example adapter", true, false),
+            new("example2", null, null, false, false)];
+        using var display = new StringWriter();
+        var args = CliOptions.Parse(["--list-interfaces"]);
+        Assert.Equal(0, NetworkMonitorCommand.ListInterfaces(args, display, TextWriter.Null, () => interfaces));
+        Assert.Contains(@"\\example  |  Example?name  |  IPv4", display.ToString());
+        Assert.Contains("none (flow direction unavailable)", display.ToString());
+        using var output = new StringWriter();
+        var jsonArgs = CliOptions.Parse(["--list-interfaces", "--json"]);
+        Assert.Equal(0, NetworkMonitorCommand.ListInterfaces(jsonArgs, output, TextWriter.Null, () => interfaces));
+        Assert.Equal(interfaces, JsonSerializer.Deserialize<FlowInterface[]>(output.ToString()));
+    }
+
+    [Fact]
+    public void EmptyInventoryAndUnavailableDriverAreDistinct()
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var args = CliOptions.Parse(["--list-interfaces", "--json"]);
+        Assert.Equal(0, NetworkMonitorCommand.ListInterfaces(args, output, error, () => []));
+        Assert.Equal("[]", output.ToString().Trim());
+        output.GetStringBuilder().Clear();
+        Assert.Equal(1, NetworkMonitorCommand.ListInterfaces(args, output, error, () => throw new DllNotFoundException()));
+        Assert.Empty(output.ToString());
+        Assert.Contains("Npcap", error.ToString());
     }
 
     [Fact]

@@ -7,6 +7,21 @@ request path, and it never modifies IIS.
 
 ## Host flow view
 
+To find the capture interface, run the local inventory first.
+
+```powershell
+wpshield network-monitor --list-interfaces
+wpshield network-monitor --list-interfaces --json
+```
+
+Copy the Npcap device ID from the first column into `--interfaces` when starting a flow capture.
+The ID remains usable after a Windows adapter rename. A unique friendly name or description also works.
+The inventory reports whether Npcap sees local IPv4 or IPv6 addresses. An adapter with neither
+cannot determine flow direction. The inventory reads device metadata without opening the adapter.
+Capture permissions and link support are checked when capture starts. Successful enumeration with
+zero devices returns `[]` in JSON. An enumeration error exits with code 1 and writes to stderr.
+If the selected ID disappears, list the interfaces again and choose the intended source explicitly.
+
 Run the CLI locally with administrator privileges and Npcap installed. Use the name of one
 Windows adapter and the actual service ports on that host. These examples use common ports.
 

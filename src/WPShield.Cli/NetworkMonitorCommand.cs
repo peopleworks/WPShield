@@ -38,6 +38,11 @@ internal static class NetworkMonitorCommand
 
         Usage: wpshield network-monitor [options]
 
+        Capture interface inventory (Npcap required):
+          wpshield network-monitor --list-interfaces [--json]
+          List Npcap device IDs, Windows names and IP address families without starting capture.
+          Use the device ID with --interfaces to keep the selection across adapter renames.
+
         Host flow view (local console, administrator and Npcap required):
           wpshield network-monitor --flows --interfaces Ethernet --ports 443,1433,3389
           wpshield network-monitor --flows --interfaces Ethernet --all-ports
@@ -97,6 +102,8 @@ internal static class NetworkMonitorCommand
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
 
+        if (arguments.Has("--list-interfaces"))
+            return ListInterfaces(arguments, output, Console.Error, HostFlowMonitor.ListInterfaces);
         if (arguments.Has("--flows"))
             return RunFlows(arguments, output);
         if (arguments.Has("--sql-instance"))
@@ -196,6 +203,51 @@ internal static class NetworkMonitorCommand
             return 1;
         }
     }
+
+    internal static int ListInterfaces(CliOptions arguments, TextWriter output, TextWriter error,
+        Func<IReadOnlyList<FlowInterface>> read)
+    {
+        arguments.RejectUnknown("--list-interfaces", "--json");
+        arguments.RejectRepeated();
+        if (arguments.Get("--list-interfaces") is not null || arguments.Get("--json") is not null)
+            throw new CliArgumentException("--list-interfaces and --json take no value.");
+        IReadOnlyList<FlowInterface> interfaces;
+        try
+        {
+            interfaces = read();
+        }
+        catch (Exception ex) when (ex.GetBaseException() is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException
+            || ex is InvalidOperationException or SharpPcap.PcapException or UnauthorizedAccessException or System.Net.NetworkInformation.NetworkInformationException)
+        {
+            error.WriteLine("ERROR: cannot enumerate capture interfaces. Check the Npcap installation and access permissions.");
+            return 1;
+        }
+        if (arguments.Has("--json"))
+            output.WriteLine(JsonSerializer.Serialize(interfaces));
+        else if (interfaces.Count == 0)
+            output.WriteLine("Npcap reported no capture interfaces.");
+        else
+        {
+            output.WriteLine("NPCAP DEVICE ID  |  WINDOWS NAME  |  LOCAL IP FAMILIES");
+            foreach (var item in interfaces)
+            {
+                var families = (item.HasIPv4, item.HasIPv6) switch
+                {
+                    (true, true) => "IPv4, IPv6",
+                    (true, false) => "IPv4",
+                    (false, true) => "IPv6",
+                    _ => "none (flow direction unavailable)"
+                };
+                output.WriteLine($"{ConsoleLabel(item.DeviceId)}  |  {ConsoleLabel(item.FriendlyName)}  |  {families}");
+            }
+        }
+        return 0;
+    }
+
+    private static string ConsoleLabel(string? label) => string.IsNullOrWhiteSpace(label) ? "-" :
+        string.Concat(label.Select(c => char.IsControl(c) || char.GetUnicodeCategory(c) is
+            System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.LineSeparator or
+            System.Globalization.UnicodeCategory.ParagraphSeparator ? '?' : c));
 
     private static int RunFlows(CliOptions arguments, TextWriter output)
     {

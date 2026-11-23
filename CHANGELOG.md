@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- `network-monitor --list-interfaces [--json]` lists local Npcap device IDs, Windows names and IP
+  families. Flow capture rechecks the chosen source at startup.
+
 - `network-monitor --flows --history` reports recent received and sent IP bytes per second.
   Intervals carry UTC boundaries, observed counts and gap reasons.
 

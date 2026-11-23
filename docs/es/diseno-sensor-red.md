@@ -7,6 +7,23 @@ de las solicitudes y **nunca** modifica IIS.
 
 ## Vista de flujos del servidor
 
+Para identificar la interfaz de captura, consulte primero el inventario local.
+
+```powershell
+wpshield network-monitor --list-interfaces
+wpshield network-monitor --list-interfaces --json
+```
+
+Copie el identificador de Npcap de la primera columna en `--interfaces` al iniciar la captura
+de flujos. El identificador sigue sirviendo si cambia el nombre del adaptador en Windows.
+También se admite un nombre o una descripción que identifique un único adaptador. El inventario
+indica si Npcap encuentra direcciones IPv4 o IPv6 locales. Un adaptador sin ellas no permite
+determinar el sentido del tráfico. La consulta lee los metadatos sin abrir el adaptador.
+Los permisos de captura y la compatibilidad del enlace se comprueban al iniciar la captura.
+Una consulta correcta sin dispositivos devuelve `[]` en JSON. Un error de consulta devuelve
+el código 1 y escribe en la salida de error. Si el identificador elegido desaparece,
+vuelva a consultar la lista y seleccione expresamente la interfaz que quiera observar.
+
 Ejecute la CLI localmente como administrador y con Npcap instalado. Indique el nombre de un
 adaptador de Windows y los puertos reales de sus servicios. Los ejemplos usan puertos habituales.
 
