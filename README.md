@@ -188,7 +188,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,576 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,588 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -206,6 +206,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Rate limiting and observability | Partial | Configured per-client/site/rule fixed-window budgets, structured file logs and redaction tests exist; broader M3/M4 work remains |
 | Request evidence traceability | Available | Versioned final events correlate findings, build versions, configuration activation, inspection completeness and actual forwarding outcomes. |
 | Evidence loss and community exports | Available | Local diagnostics count full-queue drops, failed file batches and skipped inspection stages. The operator PDF flags known gaps. `wpshield preview --format community` exports aggregates for one site under a synthetic label. |
+| Offline IIS login evidence | Research preview | `wpshield iis-login` reads a copied W3C log for one site and reports line references for authenticated requests, challenge-compatible responses and Windows logon rejections. [Coverage and limits](docs/en/iis-login-evidence.md) |
 | Offline policy preview | Available | `wpshield preview` compares recorded scores with candidate Monitor/Block thresholds for one site. Bounded input, explicit exclusions and aggregate JSON; no configuration changes or content-rule replay. |
 | Dashboard and Windows Service | Planned | M5 and M6 |
 | Production activation | Not approved | Requires M1-M6 validation and controlled M7 rollout |
@@ -427,7 +428,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,576 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 296 for the CLI, 468 for the gateway, 32 for the network sensor, 14 for the network filter, 29 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,588 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 308 for the CLI, 468 for the gateway, 32 for the network sensor, 14 for the network filter, 29 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -616,7 +617,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,576 tests
+|-- tests/                            xUnit test projects, 1,588 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/
@@ -695,6 +696,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | Request evidence | [Traceability and completeness](docs/en/request-evidence.md) | [Trazabilidad y completitud](docs/es/evidencia-solicitudes.md) |
 | Operator experience research | [NETworkManager evaluation](docs/en/networkmanager-evaluation.md) | [Evaluación de NETworkManager](docs/es/evaluacion-networkmanager.md) |
 | Windows service protection | [RdpGuard comparison and benchmark plan](docs/en/host-protection-benchmark.md) | [Comparación con RdpGuard y plan de evaluación](docs/es/evaluacion-proteccion-servidor.md) |
+| Offline IIS login evidence | [Read a W3C log by site](docs/en/iis-login-evidence.md) | [Verificar accesos IIS por sitio](docs/es/evidencia-accesos-iis.md) |
 | Offline policy preview | [Policy preview](docs/en/policy-preview.md) | [Vista previa de políticas](docs/es/vista-previa-politicas.md) |
 | TelltaleDNS evaluation (proposal) | [Evaluation](docs/en/telltaledns-evaluation.md) | [Evaluación](docs/es/evaluacion-telltaledns.md) |
 | Reader-1 evaluation plan (proposal) | [Evaluation plan](docs/en/reader-1-evaluation-plan.md) | [Plan de evaluación](docs/es/plan-evaluacion-reader-1.md) |
