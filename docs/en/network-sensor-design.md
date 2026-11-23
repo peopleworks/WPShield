@@ -5,6 +5,31 @@ network metadata on operator-named ports (for example `80` and `443`) so an oper
 see what traffic reaches the host. It is **not** the HTTP gateway, it is **not** in the
 request path, and it never modifies IIS.
 
+## Local listener inventory
+
+Use this local command to see TCP listeners and bound UDP endpoints before choosing ports for a
+traffic capture. It reads the Windows socket tables once and works independently of Npcap.
+
+```powershell
+wpshield network-monitor --listeners
+wpshield network-monitor --listeners --ports 443,1433,3389 --json
+```
+
+Omitting `--ports` includes all local ports. The filter accepts 1–64 port numbers. Each protocol
+has a separate UTC observation time, read status and list of distinct local addresses and ports.
+Bindings are labelled `loopback`, `wildcard` (all local addresses of that family) or `specific`.
+IPv6 addresses retain any scope ID. The output contains local addresses and is intended for the operator.
+
+A `read` table can be empty. A `limited` table contains up to 4,096 distinct matching endpoints
+and carries the reason `row-limit`. An `unavailable` table carries `access-denied` or `query-failed`.
+Exit code 0 means both tables were read completely, 2 means partial results, and 1 means both
+tables were unavailable or the arguments were invalid.
+
+To check a change, repeat the command with the same filter and compare protocol, address and port
+for each table marked `read` in both snapshots. TCP and UDP are read in sequence. A socket can
+appear or disappear between reads. External reachability, service ownership, site and login
+outcome all require independent evidence.
+
 ## Host flow view
 
 To find the capture interface, run the local inventory first.

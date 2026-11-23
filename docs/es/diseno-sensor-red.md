@@ -5,6 +5,33 @@ metadatos de red en los puertos que el operador nombre (por ejemplo `80` y `443`
 operador pueda ver qué tráfico llega al host. **No es** el gateway HTTP, **no está** en el camino
 de las solicitudes y **nunca** modifica IIS.
 
+## Inventario de puertos locales
+
+Este comando permite ver qué direcciones y puertos tienen un socket TCP en escucha o un socket UDP
+asociado antes de elegir los puertos de una captura. Consulta una vez las tablas locales de Windows
+y funciona sin Npcap.
+
+```powershell
+wpshield network-monitor --listeners
+wpshield network-monitor --listeners --ports 443,1433,3389 --json
+```
+
+Si se omite `--ports`, la consulta abarca todos los puertos locales. El filtro admite entre 1 y 64
+números. Cada protocolo tiene su propia hora UTC, estado de lectura y lista de direcciones y puertos
+sin duplicados. El campo `Binding` indica `loopback`, `wildcard` (todas las direcciones locales de
+esa familia) o `specific` (una dirección concreta). IPv6 conserva el identificador de ámbito si lo hay.
+La salida contiene direcciones locales y está destinada al operador.
+
+Una tabla `read` puede estar vacía. Una tabla `limited` conserva hasta 4.096 extremos coincidentes
+y lleva el motivo `row-limit`. Una tabla `unavailable` lleva el motivo `access-denied` o `query-failed`.
+El código de salida es 0 si se leyeron ambas tablas completas, 2 si el resultado es parcial y 1 si
+ninguna tabla pudo leerse o los argumentos son inválidos.
+
+Para comprobar un cambio, repita la consulta con el mismo filtro y compare protocolo, dirección y
+puerto en las tablas con estado `read` en ambas lecturas. TCP y UDP se consultan sucesivamente. Un
+socket puede aparecer o desaparecer entre lecturas. La accesibilidad desde Internet, el servicio
+propietario, el sitio y el resultado de autenticación requieren evidencia independiente.
+
 ## Vista de flujos del servidor
 
 Para identificar la interfaz de captura, consulte primero el inventario local.
