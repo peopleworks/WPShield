@@ -302,6 +302,7 @@ not read as more than they claim:
       a flow, a separately initiated outbound connection appears independently and midstream TCP
       and UDP report an unknown initiator.
 - [ ] Validate live capture on Windows Server with Npcap and named service ports.
+- [x] List local Npcap device IDs and IP families before choosing one adapter for flow monitoring.
 - [x] Add bounded CLI traffic history with observed IP bytes per second in each direction,
       UTC intervals and explicit gaps. [Traffic history](docs/en/network-sensor-design.md#traffic-history)
 - [x] Correlate observed incoming Remote Desktop flows with local Windows Security logon events

@@ -233,6 +233,7 @@ internal static class ProgramMain
 
               network-monitor
                           Passive HTTP metadata or live TCP/UDP flows (Administrator and Npcap).
+                          --list-interfaces [--json] lists local capture device IDs and IP families.
                           --sql-instance <name> [--json] reads one local Application log snapshot.
                           --flows --interfaces <adapter> (--ports <numbers> | --all-ports) [--json]
                           [--rdp-port <port>] [--sql-instance <name>] [--history]
