@@ -744,6 +744,7 @@ El resto de esta sección sigue siendo planificación; prevalece el [roadmap pub
       como desconocido para UDP y para TCP observado desde mitad de sesión.
 - [ ] Validar la captura en vivo en Windows Server con Npcap y los puertos de los servicios elegidos.
 - [x] Consultar nombres de puertos por protocolo en el catálogo local versionado. [Nombres de puertos sin conexión](diseno-sensor-red.md#nombres-de-puertos-sin-conexión)
+- [x] Filtrar sockets por protocolo y dirección local exacta, con orden numérico en IPv4 e IPv6. [Inventario de puertos locales](diseno-sensor-red.md#inventario-de-puertos-locales)
 - [x] Exportar la referencia de una observación de RDP, SQL o IIS desde un informe guardado. [Referencia seleccionada](diseno-sensor-red.md#referencia-de-auditoría-seleccionada)
 - [x] Mostrar el PID observado y su hora para extremos locales TCP y UDP en IPv4 e IPv6. [PID del proceso observado](diseno-sensor-red.md#pid-del-proceso-observado)
 - [x] Inventariar puertos TCP en escucha y sockets UDP con hora y cobertura por protocolo. [Inventario de puertos locales](diseno-sensor-red.md#inventario-de-puertos-locales)

@@ -14,6 +14,7 @@ y funciona sin Npcap.
 ```powershell
 wpshield network-monitor --listeners
 wpshield network-monitor --listeners --ports 443,1433,3389 --json
+wpshield network-monitor --listeners --protocol tcp --local-address 127.0.0.1 --ports 443 --owners
 ```
 
 Si se omite `--ports`, la consulta abarca todos los puertos locales. El filtro admite entre 1 y 64
@@ -22,10 +23,18 @@ sin duplicados. El campo `Binding` indica `loopback`, `wildcard` (todas las dire
 esa familia) o `specific` (una dirección concreta). IPv6 conserva el identificador de ámbito si lo hay.
 La salida contiene direcciones locales y está destinada al operador.
 
+Use `--protocol tcp` o `--protocol udp` para leer una sola tabla. Con `--local-address` puede buscar
+la dirección IPv4 o IPv6 exacta a la que se vinculó el socket, incluido el ámbito IPv6 numérico,
+por ejemplo `fe80::1%2`. Para ver los comodines, consulte `0.0.0.0` o `::` de forma explícita.
+Una búsqueda de `127.0.0.1` muestra solo los sockets vinculados a esa dirección. Los filtros se
+combinan antes del límite de filas y de la consulta de PID. Cada tabla ordena las filas por puerto,
+familia, dirección numérica e identificador de ámbito. El JSON conserva los filtros solicitados en
+`Protocol` y `LocalAddress` incluso cuando la búsqueda queda vacía.
+
 Una tabla `read` puede estar vacía. Una tabla `limited` conserva hasta 4.096 extremos coincidentes
 y lleva el motivo `row-limit`. Una tabla `unavailable` lleva el motivo `access-denied` o `query-failed`.
-El código de salida es 0 si se leyeron ambas tablas completas, 2 si el resultado es parcial y 1 si
-ninguna tabla pudo leerse o los argumentos son inválidos.
+El código de salida es 0 si se leyeron todas las tablas seleccionadas, 2 si el resultado es parcial
+y 1 si falló la lectura de todas las tablas seleccionadas o los argumentos son inválidos.
 
 Para comprobar un cambio, repita la consulta con el mismo filtro y compare protocolo, dirección y
 puerto en las tablas con estado `read` en ambas lecturas. TCP y UDP se consultan sucesivamente. Un

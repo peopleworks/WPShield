@@ -40,8 +40,9 @@ internal static class NetworkMonitorCommand
         Usage: wpshield network-monitor [options]
 
         Local TCP listeners and bound UDP endpoints (no Npcap required):
-          wpshield network-monitor --listeners [--ports 443,1433,3389] [--owners] [--port-hints] [--json]
-          Read the Windows socket tables once. Each protocol has a UTC timestamp and read status.
+          wpshield network-monitor --listeners [--protocol tcp|udp] [--local-address <IP>] [--ports 443,1433,3389] [--owners] [--port-hints] [--json]
+          Read the selected Windows socket tables once. Each has a UTC timestamp and read status.
+          Match the exact local binding, including any numeric IPv6 scope ID.
           Add --owners for the PID observed in a second local TCP or UDP table, with its UTC time.
           Add --port-hints for offline registry names associated with each transport and port.
 
@@ -96,7 +97,7 @@ internal static class NetworkMonitorCommand
 
         Exit codes:
           0   completed or stopped cleanly
-          1   invalid arguments, capture or SQL audit unavailable, or both socket tables unavailable
+          1   invalid arguments, capture or SQL audit unavailable, or all selected socket tables unavailable
           2   partial listener inventory or partial standalone SQL audit window
         """;
 

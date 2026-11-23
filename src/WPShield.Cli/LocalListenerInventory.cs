@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
@@ -23,8 +25,12 @@ internal static class LocalListenerInventory
         [JsonIgnore]
         internal bool OwnerReadFailed { get; init; }
     }
-    private sealed record Snapshot(int[] Ports, Table[] Tables)
+    private sealed record Snapshot(int[] Ports, IReadOnlyList<Table> Tables)
     {
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? LocalAddress { get; init; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public string? Protocol { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public string? PortHintCatalog { get; init; }
     }
@@ -32,7 +38,7 @@ internal static class LocalListenerInventory
     internal static int Run(CliOptions arguments, TextWriter output, Func<IPEndPoint[]> readTcp, Func<IPEndPoint[]> readUdp,
         Func<string, AddressFamily, IReadOnlySet<IPEndPoint>, ListenerOwners.Sample>? readOwners = null)
     {
-        arguments.RejectUnknown("--listeners", "--ports", "--json", "--owners", "--port-hints");
+        arguments.RejectUnknown("--listeners", "--ports", "--protocol", "--local-address", "--json", "--owners", "--port-hints");
         arguments.RejectRepeated();
         if (arguments.Get("--listeners") is not null || arguments.Get("--json") is not null ||
             arguments.Get("--owners") is not null || arguments.Get("--port-hints") is not null)
@@ -42,15 +48,23 @@ internal static class LocalListenerInventory
             throw new CliArgumentException("--ports requires 1..64 local ports in 1..65535.");
         var ports = requested.ToHashSet();
         var scope = ports.Order().ToArray();
+        var address = arguments.Has("--local-address") ? ParseAddress(arguments.Get("--local-address")) : null;
+        var protocol = arguments.Get("--protocol")?.ToUpperInvariant();
+        if (arguments.Has("--protocol") && protocol is not ("TCP" or "UDP"))
+            throw new CliArgumentException("--protocol requires TCP or UDP.");
         var lookup = arguments.Has("--owners") ? readOwners ?? ListenerOwners.Read : null;
         var includeHints = arguments.Has("--port-hints");
-        Table[] tables = [Read("TCP", readTcp, ports, lookup, includeHints), Read("UDP", readUdp, ports, lookup, includeHints)];
+        var tables = new List<Table>(2);
+        if (protocol is null or "TCP") tables.Add(Read("TCP", readTcp, ports, address, lookup, includeHints));
+        if (protocol is null or "UDP") tables.Add(Read("UDP", readUdp, ports, address, lookup, includeHints));
         if (arguments.Has("--json"))
             output.WriteLine(JsonSerializer.Serialize(new Snapshot(scope, tables)
-            { PortHintCatalog = includeHints ? PortHintCatalog.Version : null }));
+            { LocalAddress = address?.ToString(), Protocol = protocol, PortHintCatalog = includeHints ? PortHintCatalog.Version : null }));
         else
         {
             output.WriteLine($"Local socket tables | Ports: {(scope.Length == 0 ? "all" : string.Join(",", scope))}");
+            if (protocol is not null) output.WriteLine($"Protocol: {protocol}");
+            if (address is not null) output.WriteLine($"Local address: {address}");
             if (includeHints) output.WriteLine($"Port hints: {PortHintCatalog.Version} (registry names only)");
             foreach (var table in tables)
             {
@@ -74,7 +88,29 @@ internal static class LocalListenerInventory
         return tables.All(t => t.Status == "unavailable") ? 1 : 2;
     }
 
-    private static Table Read(string protocol, Func<IPEndPoint[]> read, IReadOnlySet<int> ports,
+    private static IPAddress ParseAddress(string? value)
+    {
+        if (value is { Length: > 0 and <= 64 })
+        {
+            var separator = value.IndexOf('%');
+            var literal = separator < 0 ? value : value[..separator];
+            if (literal.All(c => char.IsAsciiHexDigit(c) || c is ':' or '.') && IPAddress.TryParse(literal, out var address))
+            {
+                if (address.AddressFamily == AddressFamily.InterNetworkV6)
+                {
+                    if (separator < 0) return address;
+                    var zone = value.AsSpan(separator + 1);
+                    if (!zone.IsEmpty && !zone.ContainsAnyExceptInRange('0', '9') &&
+                        uint.TryParse(zone, NumberStyles.None, CultureInfo.InvariantCulture, out var scope))
+                        return new IPAddress(address.GetAddressBytes(), scope);
+                }
+                else if (separator < 0 && address.ToString() == literal) return address;
+            }
+        }
+        throw new CliArgumentException("--local-address requires a dotted-decimal IPv4 or IPv6 address with an optional numeric IPv6 scope ID.");
+    }
+
+    private static Table Read(string protocol, Func<IPEndPoint[]> read, IReadOnlySet<int> ports, IPAddress? address,
         Func<string, AddressFamily, IReadOnlySet<IPEndPoint>, ListenerOwners.Sample>? lookup, bool includeHints)
     {
         var observed = DateTimeOffset.UtcNow;
@@ -90,22 +126,31 @@ internal static class LocalListenerInventory
             return new(protocol, observed, "unavailable", denied ? "access-denied" : "query-failed", []);
         }
 
-        var endpoints = sockets.Where(e => ports.Count == 0 || ports.Contains(e.Port))
+        var endpoints = sockets.Where(e => (ports.Count == 0 || ports.Contains(e.Port)) &&
+            (address is null || address.Equals(e.Address)))
             .Distinct().Take(MaxEndpoints + 1).ToArray();
         var retained = endpoints.Take(MaxEndpoints);
         var samples = lookup is null ? null : retained.GroupBy(e => e.AddressFamily)
             .ToDictionary(g => g.Key, g => lookup(protocol, g.Key, g.ToHashSet()));
-        var rows = retained.Select(e => new Endpoint(e.Address.ToString(), e.Port,
-            e.AddressFamily == AddressFamily.InterNetwork ? "IPv4" : "IPv6", Binding(e.Address))
-        {
-            Owner = samples?[e.AddressFamily].For(e),
-            PortHints = includeHints ? PortHintCatalog.Lookup(protocol, e.Port) : null
-        })
-            .OrderBy(e => e.Port).ThenBy(e => e.Family, StringComparer.Ordinal)
-            .ThenBy(e => e.Address, StringComparer.Ordinal).ToArray();
+        var rows = retained.OrderBy(e => e.Port).ThenBy(e => e.AddressFamily)
+            .ThenBy(e => NumericAddress(e.Address))
+            .ThenBy(e => e.AddressFamily == AddressFamily.InterNetworkV6 ? e.Address.ScopeId : 0)
+            .Select(e => new Endpoint(e.Address.ToString(), e.Port,
+                e.AddressFamily == AddressFamily.InterNetwork ? "IPv4" : "IPv6", Binding(e.Address))
+            {
+                Owner = samples?[e.AddressFamily].For(e),
+                PortHints = includeHints ? PortHintCatalog.Lookup(protocol, e.Port) : null
+            }).ToArray();
         var limited = endpoints.Length > MaxEndpoints;
         return new(protocol, observed, limited ? "limited" : "read", limited ? "row-limit" : null, rows)
         { OwnerReadFailed = samples?.Values.Any(s => s.Error is not null) == true };
+    }
+
+    private static UInt128 NumericAddress(IPAddress address)
+    {
+        Span<byte> bytes = stackalloc byte[16];
+        address.TryWriteBytes(bytes, out var length);
+        return length == 4 ? BinaryPrimitives.ReadUInt32BigEndian(bytes) : BinaryPrimitives.ReadUInt128BigEndian(bytes);
     }
 
     private static string Binding(IPAddress address)
