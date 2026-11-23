@@ -7,7 +7,11 @@ namespace WPShield.NetworkSensor;
 public static class HostFlowMonitor
 {
     public static void Run(string interfaceName, IReadOnlyList<int> ports, bool allPorts,
-        Action<FlowSnapshot> publish, CancellationToken cancellationToken, bool includeAllRows = false)
+        Action<FlowSnapshot> publish, CancellationToken cancellationToken, bool includeAllRows = false) =>
+        Run(interfaceName, ports, allPorts, publish, cancellationToken, includeAllRows, includeHistory: false);
+
+    public static void Run(string interfaceName, IReadOnlyList<int> ports, bool allPorts,
+        Action<FlowSnapshot> publish, CancellationToken cancellationToken, bool includeAllRows, bool includeHistory)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(interfaceName);
         ArgumentNullException.ThrowIfNull(publish);
@@ -34,7 +38,7 @@ public static class HostFlowMonitor
             if (link is not (LinkLayers.Ethernet or LinkLayers.Raw or LinkLayers.RawLegacy
                 or LinkLayers.IPv4 or LinkLayers.IPv6 or LinkLayers.Null or LinkLayers.Loop))
                 throw new InvalidOperationException("The selected interface uses an unsupported capture link type.");
-            RunOpened(device, table, publish, cancellationToken, includeAllRows);
+            RunOpened(device, table, publish, cancellationToken, includeAllRows, includeHistory);
         }
         finally
         {
@@ -43,7 +47,7 @@ public static class HostFlowMonitor
     }
 
     internal static void RunOpened(ICaptureDevice device, FlowTable table, Action<FlowSnapshot> publish,
-        CancellationToken cancellationToken, bool includeAllRows = false)
+        CancellationToken cancellationToken, bool includeAllRows = false, bool includeHistory = false)
     {
         var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
         var link = device.LinkType;
@@ -54,12 +58,12 @@ public static class HostFlowMonitor
                 table.Observe(link, packet.Data, packet.Header.Timeval.Date, (packet.Header as PcapHeader)?.PacketLength);
         }
         void Stopped(object sender, CaptureStoppedEventStatus status) => ended.TrySetResult();
-        void Publish()
+        void Publish(bool interrupted = false)
         {
             var drops = ReadDrops(device);
             FlowSnapshot snapshot;
             lock (gate)
-                snapshot = table.Snapshot(device.Name, DateTimeOffset.UtcNow, drops, includeAllRows);
+                snapshot = table.Snapshot(device.Name, DateTimeOffset.UtcNow, drops, includeAllRows, interrupted);
             publish(snapshot);
         }
 
@@ -67,22 +71,38 @@ public static class HostFlowMonitor
         device.OnCaptureStopped += Stopped;
         try
         {
+            if (includeHistory) table.StartHistory(TimeProvider.System, ReadDrops(device));
             device.StartCapture();
             while (!cancellationToken.IsCancellationRequested)
             {
-                Publish();
+                var stopped = ended.Task.IsCompleted;
+                Publish(interrupted: stopped);
+                if (stopped) break;
                 if (ended.Task.Wait(TimeSpan.FromSeconds(2), cancellationToken))
-                    throw new InvalidOperationException("Capture stopped unexpectedly. Check the adapter and Npcap.");
+                {
+                    if (includeHistory) Publish(interrupted: true);
+                    break;
+                }
             }
+            if (ended.Task.IsCompleted && !cancellationToken.IsCancellationRequested)
+                throw new InvalidOperationException("Capture stopped unexpectedly. Check the adapter and Npcap.");
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         finally
         {
             device.OnCaptureStopped -= Stopped;
             device.OnPacketArrival -= Arrived;
-            if (device.Started) device.StopCapture();
+            try
+            {
+                if (includeHistory && cancellationToken.IsCancellationRequested)
+                    Publish(interrupted: ended.Task.IsCompleted);
+            }
+            finally
+            {
+                if (device.Started) device.StopCapture();
+            }
         }
-        Publish();
+        if (!includeHistory) Publish();
     }
 
     private static uint? ReadDrops(ICaptureDevice device)

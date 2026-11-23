@@ -14,6 +14,100 @@ public sealed class FlowTableTests
     private static readonly IPAddress Local = IPAddress.Parse("192.0.2.1");
     private static readonly IPAddress Remote = IPAddress.Parse("198.51.100.2");
 
+    private sealed class ManualClock : TimeProvider
+    {
+        public TimeSpan Elapsed { get; set; }
+        public override long TimestampFrequency => TimeSpan.TicksPerSecond;
+        public override long GetTimestamp() => Elapsed.Ticks;
+        public override DateTimeOffset GetUtcNow() => Now + Elapsed;
+    }
+
+    [Fact]
+    public void HistoryMeasuresEachDirectionAcrossTupleReuseAndFlowExpiry()
+    {
+        var clock = new ManualClock();
+        var table = new FlowTable([Local], new HashSet<int> { 443 });
+        table.StartHistory(clock, 0);
+        var incoming = Frame(Remote, Local, 51000, 443, flags: 2);
+        table.Observe(LinkLayers.Ethernet, incoming, Now.AddMinutes(-2));
+        incoming[^13] = 1;
+        table.Observe(LinkLayers.Ethernet, incoming, Now.AddMinutes(-2));
+        table.Observe(LinkLayers.Ethernet, Frame(Local, Remote, 52000, 443, flags: 16, bodyBytes: 120), Now);
+        table.Observe(LinkLayers.Ethernet, Frame(Local, Remote, 2345, 1234), Now);
+        clock.Elapsed = TimeSpan.FromSeconds(2);
+        var first = table.Snapshot("synthetic", clock.GetUtcNow(), 0);
+        Assert.Single(first.Flows);
+        var interval = Assert.Single(first.History!);
+        Assert.Equal(80, interval.ReceivedBytes);
+        Assert.Equal(160, interval.SentBytes);
+        Assert.Equal(40d, interval.ReceivedBytesPerSecond);
+        Assert.Equal(80d, interval.SentBytesPerSecond);
+        Assert.Equal("observed", interval.Coverage);
+        for (var i = 0; i < 32; i++)
+        {
+            clock.Elapsed += TimeSpan.FromSeconds(2);
+            table.Snapshot("synthetic", clock.GetUtcNow(), 0);
+        }
+        clock.Elapsed += TimeSpan.FromSeconds(2);
+        var latest = table.Snapshot("synthetic", clock.GetUtcNow(), 0);
+        Assert.Empty(latest.Flows);
+        Assert.Equal(30, latest.History!.Count);
+        Assert.Equal(Now.AddSeconds(8), latest.History[0].StartUtc);
+        Assert.All(latest.History, sample => Assert.Equal(0d, sample.ReceivedBytesPerSecond));
+    }
+
+    [Fact]
+    public void FullFlowTableStillCountsObservedBytesBeforeRefusingANewTuple()
+    {
+        var clock = new ManualClock();
+        var table = new FlowTable([Local], new HashSet<int>());
+        table.StartHistory(clock, 0);
+        for (var port = 1; port <= FlowTable.Capacity + 1; port++)
+            table.Observe(LinkLayers.Ethernet, Frame(Local, Remote, port, 443), Now);
+        clock.Elapsed = TimeSpan.FromSeconds(2);
+        var snapshot = table.Snapshot("synthetic", clock.GetUtcNow(), 0);
+        Assert.Equal(1, snapshot.CapacityDrops);
+        Assert.Equal((FlowTable.Capacity + 1) * 40, Assert.Single(snapshot.History!).SentBytes);
+    }
+
+    [Fact]
+    public void GapsKeepByteCountsAndUnknownCountersRemainDistinctFromZeroDrops()
+    {
+        var clock = new ManualClock();
+        var table = new FlowTable([Local], new HashSet<int>());
+        table.StartHistory(clock, 3);
+        TrafficInterval Next(uint? drops, int seconds = 2, int utcOffset = 0)
+        {
+            clock.Elapsed += TimeSpan.FromSeconds(seconds);
+            return table.Snapshot("synthetic", clock.GetUtcNow().AddSeconds(utcOffset), drops).History![^1];
+        }
+        table.Observe(LinkLayers.Ethernet, [], Now);
+        table.Observe(LinkLayers.Ethernet, Frame(Local, Remote, 51000, 443), Now);
+        var lost = Next(5);
+        Assert.Equal(["skipped-packets", "driver-drops"], lost.GapReasons);
+        Assert.Equal(2u, lost.DriverDrops);
+        Assert.Equal(1, lost.SkippedPackets);
+        Assert.Null(lost.SentBytesPerSecond);
+        Assert.Equal(40, lost.SentBytes);
+        Assert.Contains("driver-counter-reset", Next(1).GapReasons);
+        Assert.Equal("unknown", Next(null).Coverage);
+        Assert.Equal("unknown", Next(1).Coverage);
+        Assert.Contains("sample-delayed", Next(1, seconds: 7).GapReasons);
+        Assert.Contains("clock-discontinuity", Next(1, utcOffset: -5).GapReasons);
+    }
+
+    [Fact]
+    public void InterruptedCapturePublishesATerminalGapWithHistoryEnabled()
+    {
+        using var device = new SyntheticCapture(Frame(Remote, Local, 51000, 443), true);
+        var snapshots = new List<FlowSnapshot>();
+        Assert.Throws<InvalidOperationException>(() => HostFlowMonitor.RunOpened(device,
+            new FlowTable([Local], new HashSet<int>()), snapshots.Add, CancellationToken.None, includeHistory: true));
+        var last = snapshots[^1].History![^1];
+        Assert.Contains("capture-stopped", last.GapReasons);
+        Assert.Null(last.ReceivedBytesPerSecond);
+    }
+
     [Fact]
     public void ExistingHttpMode_DeliversTheSelectedTcpPayloadFromTypedCaptureEvents()
     {
@@ -30,9 +124,10 @@ public sealed class FlowTableTests
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void CaptureLoop_ConsumesTypedEvents_AndDistinguishesCancellationFromDriverStop(bool driverStopped)
+    [InlineData(false, false)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void CaptureLoop_ConsumesTypedEvents_AndDistinguishesCancellationFromDriverStop(bool driverStopped, bool includeHistory)
     {
         var frame = Frame(Remote, Local, 51000, 443, flags: 2);
         using var device = new SyntheticCapture(frame, driverStopped);
@@ -43,7 +138,7 @@ public sealed class FlowTableTests
             {
                 snapshots.Add(snapshot);
                 if (!driverStopped) stop.Cancel();
-            }, stop.Token));
+            }, stop.Token, includeHistory: includeHistory));
         if (driverStopped) Assert.IsType<InvalidOperationException>(error);
         else Assert.Null(error);
         Assert.False(device.Started);
@@ -54,6 +149,12 @@ public sealed class FlowTableTests
             Assert.Equal("remote", Assert.Single(snapshot.Flows).Initiator);
         });
         Assert.Equal(driverStopped ? 1 : 2, snapshots.Count);
+        if (includeHistory)
+        {
+            var history = snapshots[^1].History!;
+            Assert.Equal(40, history.Sum(row => row.ReceivedBytes));
+            Assert.All(history, row => Assert.DoesNotContain("capture-stopped", row.GapReasons));
+        }
     }
 
     private sealed class SyntheticCapture(byte[] frame, bool stopUnexpectedly) : ICaptureDevice

@@ -10,6 +10,8 @@ public sealed class HostFlowCommandTests
 {
     [Theory]
     [InlineData("--flows --all-ports")]
+    [InlineData("--flows --interfaces Ethernet --all-ports --history=false")]
+    [InlineData("--history")]
     [InlineData("--flows --interfaces Ethernet")]
     [InlineData("--flows --interfaces Ethernet --ports 0")]
     [InlineData("--flows --interfaces Ethernet --ports 443 --all-ports")]
@@ -45,6 +47,25 @@ public sealed class HostFlowCommandTests
         using var json = JsonDocument.Parse(output.ToString());
         Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("DriverDrops").ValueKind);
         Assert.Equal(2, json.RootElement.GetProperty("CapacityDrops").GetInt64());
+        Assert.False(json.RootElement.TryGetProperty("History", out _));
+    }
+
+    [Fact]
+    public void ConsoleShowsFiveIntervalsAndAuditJsonKeepsAllSuppliedIntervalsInTraffic()
+    {
+        var rows = Enumerable.Range(1, 6).Select(i => new TrafficInterval(Start.AddSeconds(i - 1), Start.AddSeconds(i),
+            1, 100, 50, 0, 1, ["driver-drops"])).ToArray();
+        var snapshot = Snapshot() with { History = rows };
+        using var console = new StringWriter();
+        NetworkMonitorCommand.WriteSnapshot(console, snapshot, false);
+        Assert.Equal(5, console.ToString().Split("gap (driver-drops)").Length - 1);
+        Assert.Contains("--", console.ToString());
+        using var writer = new StringWriter();
+        NetworkMonitorCommand.WriteSnapshot(writer, snapshot, true, RdpFlowReport.Create(snapshot, 3389, new("read", [])));
+        using var json = JsonDocument.Parse(writer.ToString());
+        var history = json.RootElement.GetProperty("Traffic").GetProperty("History");
+        Assert.Equal(6, history.GetArrayLength());
+        Assert.Equal(JsonValueKind.Null, history[0].GetProperty("ReceivedBytesPerSecond").ValueKind);
     }
 
     private static readonly DateTimeOffset Start = DateTimeOffset.UnixEpoch;

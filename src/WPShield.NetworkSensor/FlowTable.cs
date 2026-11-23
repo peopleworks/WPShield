@@ -11,7 +11,11 @@ public sealed record FlowRow(string Protocol, string Local, string Remote, strin
 }
 
 public sealed record FlowSnapshot(string Interface, DateTimeOffset Timestamp, int ActiveFlows,
-    long SkippedPackets, long CapacityDrops, uint? DriverDrops, IReadOnlyList<FlowRow> Flows);
+    long SkippedPackets, long CapacityDrops, uint? DriverDrops, IReadOnlyList<FlowRow> Flows)
+{
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<TrafficInterval>? History { get; init; }
+}
 
 /// <summary>A single capture reader owns this bounded table. Only endpoint metadata survives Observe.</summary>
 internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnlySet<int> ports)
@@ -21,6 +25,10 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
     private readonly Dictionary<Key, Totals> _flows = [];
     private long _skipped;
     private long _capacityDrops;
+    private TrafficHistory? _history;
+
+    internal void StartHistory(TimeProvider clock, uint? drops) =>
+        _history = new(clock, clock.GetUtcNow(), drops, _skipped);
 
     private readonly record struct Key(byte Protocol, IPEndPoint Local, IPEndPoint Remote);
     private sealed class Totals(DateTimeOffset firstSeen)
@@ -60,6 +68,7 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
             _skipped++;
             return;
         }
+        _history?.Count(outbound, length);
         var src = new IPEndPoint(source, srcPort);
         var dst = new IPEndPoint(destination, dstPort);
         var key = outbound ? new Key(protocol, src, dst) : new Key(protocol, dst, src);
@@ -96,8 +105,10 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
         totals.LastSeen = seen;
     }
 
-    internal FlowSnapshot Snapshot(string device, DateTimeOffset now, uint? driverDrops, bool includeAllRows = false)
+    internal FlowSnapshot Snapshot(string device, DateTimeOffset now, uint? driverDrops, bool includeAllRows = false,
+        bool interrupted = false)
     {
+        var history = _history?.Finish(now, driverDrops, _skipped, interrupted);
         foreach (var key in _flows.Where(pair => now - pair.Value.LastSeen >= TimeSpan.FromMinutes(1))
                      .Select(pair => pair.Key).ToArray())
             _flows.Remove(key);
@@ -106,7 +117,10 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
                 pair.Key.Local.ToString(), pair.Key.Remote.ToString(), pair.Value.Initiator,
                 pair.Value.Received, pair.Value.Sent, pair.Value.LastSeen)
             { FirstSeen = pair.Value.FirstSeen }).ToArray();
-        return new(device, now, _flows.Count, _skipped, _capacityDrops, driverDrops, rows);
+        return new(device, now, _flows.Count, _skipped, _capacityDrops, driverDrops, rows)
+        {
+            History = history
+        };
     }
 
     private static bool TryGetIp(LinkLayers link, ReadOnlySpan<byte> frame, out ReadOnlySpan<byte> ip)

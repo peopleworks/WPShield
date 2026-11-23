@@ -743,6 +743,8 @@ El resto de esta sección sigue siendo planificación; prevalece el [roadmap pub
       comparten una fila, que una conexión saliente aparece por separado y que el iniciador figura
       como desconocido para UDP y para TCP observado desde mitad de sesión.
 - [ ] Validar la captura en vivo en Windows Server con Npcap y los puertos de los servicios elegidos.
+- [x] Mostrar en la CLI un historial acotado de bytes IP por segundo en ambos sentidos, con
+      intervalos UTC y huecos explícitos. [Historial de tráfico](diseno-sensor-red.md#historial-de-tráfico)
 - [x] Correlacionar los flujos entrantes de Escritorio Remoto con eventos de inicio de sesión de
       Windows e indicar los números de registro. Si falta evidencia o es ambigua, mostrar `unknown`.
 - [x] Leer los resultados de inicio de sesión de una instancia SQL Server local desde Aplicación
@@ -817,6 +819,10 @@ Rate-limit events
 ---
 
 ## M5 — Dashboard multidioma
+
+- [ ] Graficar los intervalos del monitor y permitir pausar la vista mientras continúa la captura.
+      Seleccionar con teclado una referencia de auditoría y copiar sus campos mínimos.
+      [Ideas y pruebas de aceptación](evaluacion-networkmanager.md)
 
 ### Acceso inicial
 

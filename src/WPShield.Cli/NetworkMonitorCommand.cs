@@ -44,6 +44,8 @@ internal static class NetworkMonitorCommand
           Select exactly one adapter. Shows TCP/UDP endpoints, observed IP bytes in each
           direction, initiator and capture counters every two seconds. Add --json for JSON Lines.
           The console shows 40 recent rows. JSON includes all retained rows (up to 4096).
+          Add --history for observed inbound and outbound IP bytes per second. The console
+          shows the latest five intervals, JSON up to 30. Gaps keep counts and omit rates.
           Add --rdp-port <port> to match remote interactive logon records from the local
           Security log against observed TCP flows. Include the local RDP port in the capture.
           Add --sql-instance <name> to show Database Engine login events for one local instance.
@@ -197,10 +199,11 @@ internal static class NetworkMonitorCommand
 
     private static int RunFlows(CliOptions arguments, TextWriter output)
     {
-        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json", "--rdp-port", "--sql-instance");
+        arguments.RejectUnknown("--flows", "--interfaces", "--ports", "--all-ports", "--json", "--rdp-port", "--sql-instance", "--history");
         arguments.RejectRepeated();
-        if (arguments.Get("--flows") is not null || arguments.Get("--all-ports") is not null || arguments.Get("--json") is not null)
-            throw new CliArgumentException("--flows, --all-ports and --json take no value.");
+        if (arguments.Get("--flows") is not null || arguments.Get("--all-ports") is not null ||
+            arguments.Get("--json") is not null || arguments.Get("--history") is not null)
+            throw new CliArgumentException("--flows, --all-ports, --json and --history take no value.");
         var interfaces = arguments.List("--interfaces");
         if (interfaces.Count != 1 || interfaces[0].Any(char.IsControl))
             throw new CliArgumentException("--flows requires one named --interfaces adapter.");
@@ -217,9 +220,12 @@ internal static class NetworkMonitorCommand
                 throw new CliArgumentException("--rdp-port requires a local TCP port from 1..65535 included in the capture.");
         }
         var instance = arguments.Has("--sql-instance") ? RequiredSqlInstance(arguments) : null;
+        var json = arguments.Has("--json");
+        var history = arguments.Has("--history");
+        var diagnostics = json && history ? Console.Error : output;
         if (!IsElevated())
         {
-            output.WriteLine("ERROR: flow monitoring requires an Administrator token.");
+            diagnostics.WriteLine("ERROR: flow monitoring requires an Administrator token.");
             return 1;
         }
         using var stop = new CancellationTokenSource();
@@ -227,24 +233,23 @@ internal static class NetworkMonitorCommand
         Console.CancelKeyPress += cancel;
         try
         {
-            var json = arguments.Has("--json");
             HostFlowMonitor.Run(interfaces[0], ports, allPorts,
                 snapshot =>
                 {
                     var rdp = rdpPort is int port ? RdpFlowReport.Create(snapshot, port, RdpAuditReader.Read(snapshot.Timestamp)) : null;
                     var sql = instance is null ? null : SqlLoginAuditReader.Read(instance, snapshot.Timestamp);
                     WriteSnapshot(output, snapshot, json, rdp, sql);
-                }, stop.Token, includeAllRows: json || rdpPort.HasValue);
+                }, stop.Token, includeAllRows: json || rdpPort.HasValue, includeHistory: history);
             return 0;
         }
         catch (Exception ex) when (ex.GetBaseException() is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException)
         {
-            output.WriteLine("ERROR: a compatible Npcap installation is required for live flow monitoring.");
+            diagnostics.WriteLine("ERROR: a compatible Npcap installation is required for live flow monitoring.");
             return 1;
         }
         catch (Exception ex) when (ex is InvalidOperationException or SharpPcap.PcapException)
         {
-            output.WriteLine($"ERROR: {ex.Message}");
+            diagnostics.WriteLine($"ERROR: {ex.Message}");
             return 1;
         }
         catch (OperationCanceledException) when (stop.IsCancellationRequested) { return 0; }
@@ -304,6 +309,17 @@ internal static class NetworkMonitorCommand
         var visible = snapshot.Flows.Take(40).ToArray();
         output.WriteLine($"{snapshot.Timestamp:u}  {snapshot.Interface}  Showing {visible.Length}/{snapshot.ActiveFlows} flows");
         output.WriteLine($"Skipped packets: {snapshot.SkippedPackets}  Table capacity drops: {snapshot.CapacityDrops}  Driver drop counter: {driver}");
+        if (snapshot.History is { } history)
+        {
+            output.WriteLine("UTC INTERVAL (START / END)  RECEIVED (B/s)  SENT (B/s)  COVERAGE");
+            foreach (var interval in history.TakeLast(5))
+            {
+                var coverage = interval.GapReasons.Count == 0 ? interval.Coverage : $"gap ({string.Join(", ", interval.GapReasons)})";
+                var rx = interval.ReceivedBytesPerSecond?.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) ?? "--";
+                var tx = interval.SentBytesPerSecond?.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) ?? "--";
+                output.WriteLine($"{interval.StartUtc:HH:mm:ss.fff} / {interval.EndUtc:HH:mm:ss.fff}  {rx,14}  {tx,10}  {coverage}");
+            }
+        }
         output.WriteLine("UTC LAST SEEN  PROTO  INITIATOR  RECEIVED (B)  SENT (B)  LOCAL  <->  REMOTE");
         foreach (var flow in visible)
             output.WriteLine($"{flow.LastSeen.UtcDateTime:HH:mm:ss}       {flow.Protocol,-5}  {flow.Initiator,-8}  {flow.ReceivedBytes,12}  {flow.SentBytes,8}  {flow.Local}  <->  {flow.Remote}");

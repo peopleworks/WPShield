@@ -33,6 +33,30 @@ outside this version's coverage. Both-local and neither-local traffic cannot be 
 endpoint. Filters can exclude frames before software counters see them. Only addresses assigned to
 the selected adapter at startup are used for direction. Output is local and includes IP addresses.
 
+### Traffic history
+
+```powershell
+wpshield network-monitor --flows --interfaces "Ethernet" --ports 443,1433,3389 --history --json
+```
+
+The optional history shows observed IP bytes per second for each direction on the selected adapter
+and ports. Counting happens after decoding and direction checks, before flow admission, expiry or
+tuple reuse. A full flow table can omit an endpoint row while its observed bytes still count.
+Each snapshot closes one interval. A monotonic clock measures its duration and UTC labels its
+boundaries. The first and final intervals can be short. The console shows five intervals and JSON
+includes up to 30 under `History` (under `Traffic.History` when an audit is selected).
+Snapshots overlap in history; use each interval once when comparing them.
+
+| Coverage | Meaning |
+| --- | --- |
+| `observed` | The driver counter was available at both boundaries and the reader detected no gap. Rates describe the selected, decodable traffic. |
+| `unknown` | The driver counter was unavailable at a boundary. Rates still measure observed bytes. A zero is insufficient to establish an idle network. |
+| `gap` | Packets were skipped, the driver counter rose or reset, capture stopped unexpectedly, sampling exceeded five seconds, or the UTC and monotonic clocks disagreed. Rates are null. Counts and `GapReasons` remain available. |
+
+History is kept in memory during the capture. The graphical timeline and pausing its display are
+planned for the local dashboard. Validation of rates with a live Windows Server/Npcap capture
+remains pending.
+
 ### Remote Desktop logon evidence
 
 On the monitored server, specify its configured local Remote Desktop TCP port. The account running
