@@ -1,0 +1,11 @@
+# NETworkManager y la experiencia del operador
+
+Revisamos la documentación del proyecto en la revisión `735173c` el 22 de noviembre de 2026. La comparación describe las funciones documentadas. Las mediciones en Windows Server quedan pendientes. [Revisión consultada](https://github.com/BornToBeRoot/NETworkManager/tree/735173c0e1d40dafe76dcc4559e75b0e213d2e5b)
+
+| Prioridad | Observación | Aplicación en WPShield y criterio de aceptación |
+| --- | --- | --- |
+| Elegir una tarea | La vista de conexiones explica su comando y por qué una consulta puntual puede omitir conexiones breves. [Guía de conexiones](https://github.com/BornToBeRoot/NETworkManager/blob/735173c0e1d40dafe76dcc4559e75b0e213d2e5b/Website/docs/application/connections.md) | El README y la portada ofrecen inspección de IIS, tráfico entrante y saliente, y verificación de accesos. A 360 px de ancho y con teclado debe poderse encontrar cada comando, sus requisitos y un ejemplo con atribución desconocida. |
+| Examinar un intervalo | La vista de interfaz muestra tasas de subida y bajada, unidades e historial. [Guía de interfaces](https://github.com/BornToBeRoot/NETworkManager/blob/735173c0e1d40dafe76dcc4559e75b0e213d2e5b/Website/docs/application/network-interface.md) | Propuesta para el panel local M5. Contar bytes IP observados antes de que caduquen los flujos. Una prueba con dos ráfagas y una interrupción debe mostrar tasas por sentido, el intervalo UTC y el hueco. Pausar la vista debe conservar la captura. |
+| Verificar el origen | La vista de conexiones permite copiar información seleccionada y exportar filas. [Guía de conexiones](https://github.com/BornToBeRoot/NETworkManager/blob/735173c0e1d40dafe76dcc4559e75b0e213d2e5b/Website/docs/application/connections.md) | Propuesta para M5. Copiar con teclado solo el canal, proveedor, hora UTC y número del registro seleccionado. Probarlo con dos servicios en pantalla y mantener visible la atribución `unknown` de SQL, en ambos idiomas. |
+
+El proyecto publica la licencia GPLv3. Las propuestas contemplan una implementación propia con los datos y componentes de WPShield. [Licencia de NETworkManager](https://github.com/BornToBeRoot/NETworkManager/blob/735173c0e1d40dafe76dcc4559e75b0e213d2e5b/LICENSE) · [Alcance del panel M5](../../ROADMAP.md#m5--local-multilingual-dashboard)

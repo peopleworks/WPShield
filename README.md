@@ -23,7 +23,7 @@ to what it originally claimed.</sub>
 [![GitHub stars](https://img.shields.io/github/stars/peopleworks/WPShield?style=flat-square&logo=github)](https://github.com/peopleworks/WPShield/stargazers)
 [![by PeopleWorks](https://img.shields.io/badge/by-PeopleWorks-636f61?style=flat-square)](https://mvp.microsoft.com/en-US/mvp/profile/24060a02-dbc6-44ec-bca5-c213ff9835c5)
 
-[What a finding looks like](#what-a-finding-looks-like) · [Architecture](#architecture) · [How it compares](#how-it-compares) · [Getting started](#getting-started) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Security](SECURITY.md) · [Español](docs/es/)
+[Choose an operator task](#choose-an-operator-task) · [What a finding looks like](#what-a-finding-looks-like) · [Architecture](#architecture) · [How it compares](#how-it-compares) · [Getting started](#getting-started) · [Roadmap](#roadmap) · [Contributing](#contributing) · [Security](SECURITY.md) · [Español](docs/es/)
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/peopleworks/WPShield/main/assets/hero-dark.svg">
@@ -36,6 +36,16 @@ to what it originally claimed.</sub>
 
 > [!IMPORTANT]
 > WPShield is an early research preview. Do not place it in front of a production site yet. During M1 and M2, the gateway must remain bound to loopback and must not replace public IIS bindings.
+
+## Choose an operator task
+
+| Question | First command | Requirements and evidence |
+| --- | --- | --- |
+| Which rule fired on my IIS-hosted WordPress site? | `wpshield watch --plain` | Start the gateway in Monitor on loopback and read its evidence log. [Request evidence](docs/en/request-evidence.md) |
+| What traffic is arriving and leaving? | `wpshield network-monitor --flows --interfaces Ethernet --all-ports` | Choose your adapter and run with Npcap and administrator privileges. [Flow coverage](docs/en/network-sensor-design.md#host-flow-view) |
+| Which record confirms a login? | `wpshield network-monitor --sql-instance MSSQLSERVER --json` | Read the local Application log for SQL. For RDP, add `--rdp-port` and its local port number to a flow capture that includes that port. [Login evidence](docs/en/network-sensor-design.md#remote-desktop-logon-evidence) |
+
+An instance-level SQL login can be verified even when its TCP flow attribution remains `unknown`. [Guía del operador en español](docs/es/diseno-sensor-red.md)
 
 ## What a finding looks like
 
@@ -683,6 +693,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | Preflight | [Preflight](docs/en/preflight.md) | [Verificación previa](docs/es/verificacion-previa.md) |
 | Deployment | [Deployment](docs/en/deployment.md) | [Despliegue](docs/es/despliegue.md) |
 | Request evidence | [Traceability and completeness](docs/en/request-evidence.md) | [Trazabilidad y completitud](docs/es/evidencia-solicitudes.md) |
+| Operator experience research | [NETworkManager evaluation](docs/en/networkmanager-evaluation.md) | [Evaluación de NETworkManager](docs/es/evaluacion-networkmanager.md) |
 | Windows service protection | [RdpGuard comparison and benchmark plan](docs/en/host-protection-benchmark.md) | [Comparación con RdpGuard y plan de evaluación](docs/es/evaluacion-proteccion-servidor.md) |
 | Offline policy preview | [Policy preview](docs/en/policy-preview.md) | [Vista previa de políticas](docs/es/vista-previa-politicas.md) |
 | TelltaleDNS evaluation (proposal) | [Evaluation](docs/en/telltaledns-evaluation.md) | [Evaluación](docs/es/evaluacion-telltaledns.md) |
