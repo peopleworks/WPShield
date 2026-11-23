@@ -14,6 +14,7 @@ public partial class ListenerWindow : Window
     private bool reading;
     private bool initialized;
     private bool closed;
+    private AdapterTrafficWindow? trafficWindow;
     private IReadOnlyList<LocalListenerInventory.Table> latest = [];
 
     public ListenerWindow()
@@ -25,6 +26,7 @@ public partial class ListenerWindow : Window
         Heading.Text = L("Local ports", "Puertos locales");
         SourceLabel.Text = L("Network monitor  /  Windows", "Monitor de red  /  Windows");
         NavLabel.Text = L("Inventory", "Inventario");
+        TrafficButton.Content = L("Adapter traffic", "Tráfico por adaptador");
         AllProtocols.Content = L("All protocols", "Todos los protocolos");
         PreviewLabel.Text = L("Research preview", "Vista previa de investigación");
         RefreshButton.Content = L("Refresh", "Actualizar");
@@ -41,6 +43,21 @@ public partial class ListenerWindow : Window
     }
 
     private string L(string english, string es) => spanish ? es : english;
+
+    private void OpenTraffic(object sender, RoutedEventArgs e)
+    {
+        if (trafficWindow is null)
+        {
+            trafficWindow = new AdapterTrafficWindow(spanish) { Owner = this };
+            trafficWindow.Closed += (_, _) => trafficWindow = null;
+            trafficWindow.Show();
+        }
+        else
+        {
+            if (trafficWindow.WindowState == WindowState.Minimized) trafficWindow.WindowState = WindowState.Normal;
+            trafficWindow.Activate();
+        }
+    }
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await RefreshAsync();
 

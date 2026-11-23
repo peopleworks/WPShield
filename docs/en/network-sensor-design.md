@@ -17,8 +17,20 @@ Select TCP or UDP in the sidebar, or search by address, exact port, PID or conve
 The cards show each table's observation time, coverage and IPv4/IPv6 counts. The PID tooltip shows
 the separate owner observation time and the reason for an unknown PID. Use **Refresh** for another
 snapshot or enable **Every 5 s**. Closing the window stops polling. The view reads local socket
-tables in memory and works without Npcap or an HTTP listener. For incoming and outgoing byte
-counts, use the [host flow view](#host-flow-view). Use `--es` to open the window in Spanish.
+tables in memory and works without Npcap or an HTTP listener. Use `--es` to open the window in Spanish.
+
+### Adapter traffic
+
+Open **Adapter traffic** and select a Windows network adapter. Paired bars show received and sent
+bytes per second across the whole adapter. Both use the same vertical scale. Hover over an interval
+to see its UTC time and rates. For individual flows or a port-specific capture, use the
+[host flow view](#host-flow-view).
+
+The first read establishes a baseline. Every two seconds the window reads the byte counters and
+divides their change by the measured elapsed time. A failed read, lower counter, clock discontinuity
+or interval longer than five seconds marks a gap in amber. Two equal counter readings measure zero.
+**Pause chart** freezes the display while sampling continues. Resume returns to the latest 30
+observations. Switching adapters starts a new history. Closing the traffic window ends sampling.
 
 ## Local listener inventory
 
@@ -193,9 +205,9 @@ Snapshots overlap in history; use each interval once when comparing them.
 | `unknown` | The driver counter was unavailable at a boundary. Rates still measure observed bytes. A zero is insufficient to establish an idle network. |
 | `gap` | Packets were skipped, the driver counter rose or reset, capture stopped unexpectedly, sampling exceeded five seconds, or the UTC and monotonic clocks disagreed. Rates are null. Counts and `GapReasons` remain available. |
 
-History is kept in memory during the capture. The graphical timeline and pausing its display are
-planned for the local dashboard. Validation of rates with a live Windows Server/Npcap capture
-remains pending.
+Npcap flow history stays in memory during capture. A graphical timeline for these port-scoped
+samples and validation on Windows Server with Npcap remain planned. For a live chart covering the
+whole interface, open [Adapter traffic](#adapter-traffic) in the Windows desktop monitor.
 
 ### Remote Desktop logon evidence
 
