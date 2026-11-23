@@ -1,0 +1,123 @@
+<Window x:Class="WPShield.Desktop.ListenerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="WPShield" Width="1140" Height="730" MinWidth="830" MinHeight="540"
+        WindowStartupLocation="CenterScreen" Background="#EFF3F6" Foreground="#152C3D"
+        FontFamily="Segoe UI" FontSize="14" Loaded="OnLoaded" Closed="OnClosed">
+  <Window.Resources>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="#CFDCE2"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Padding" Value="16,11"/>
+    </Style>
+    <Style TargetType="ListBoxItem">
+      <Setter Property="Foreground" Value="#DEE8EE"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="ListBoxItem">
+          <Border x:Name="Nav" Margin="0,2" Padding="14,10" CornerRadius="6" Background="Transparent">
+            <ContentPresenter/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Nav" Property="Background" Value="#294152"/></Trigger>
+            <Trigger Property="IsSelected" Value="True"><Setter TargetName="Nav" Property="Background" Value="#165958"/><Setter Property="Foreground" Value="White"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#E8EEF1"/>
+      <Setter Property="Foreground" Value="#324F5F"/>
+      <Setter Property="Padding" Value="10,9"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style x:Key="CellText" TargetType="TextBlock">
+      <Setter Property="Margin" Value="10,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+      <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+    </Style>
+  </Window.Resources>
+  <Grid>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="178"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <DockPanel Background="#162D3B" LastChildFill="True">
+      <StackPanel DockPanel.Dock="Top" Margin="16,25,0,34" Orientation="Horizontal">
+        <Border Background="#75E2BE" Width="32" Height="32" CornerRadius="9">
+          <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xEA18;" Foreground="#143B39" FontSize="19" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+        <TextBlock Text="WPShield" Foreground="White" FontSize="22" FontWeight="SemiBold" Margin="8,0,0,0"/>
+      </StackPanel>
+      <TextBlock x:Name="PreviewLabel" DockPanel.Dock="Bottom" Foreground="#B3C7D0" FontSize="12" Margin="18,16" TextWrapping="Wrap"/>
+      <StackPanel Margin="10,0">
+        <TextBlock x:Name="NavLabel" Foreground="#A6BDC8" FontSize="12" Margin="9,0,0,8"/>
+        <ListBox x:Name="Protocols" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="OnFilterChanged">
+          <ListBoxItem x:Name="AllProtocols"/><ListBoxItem Content="TCP"/><ListBoxItem Content="UDP"/>
+        </ListBox>
+      </StackPanel>
+    </DockPanel>
+    <Grid Grid.Column="1" Margin="22,18">
+      <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+      <DockPanel>
+        <Button x:Name="RefreshButton" DockPanel.Dock="Right" Click="OnRefresh" VerticalAlignment="Center"
+                Background="#145856" Foreground="White" BorderThickness="0" Padding="15,8" FontWeight="SemiBold"/>
+        <StackPanel>
+          <TextBlock x:Name="SourceLabel" Foreground="#486475" FontSize="12"/>
+          <TextBlock x:Name="Heading" FontSize="30" FontWeight="SemiBold"/>
+        </StackPanel>
+      </DockPanel>
+      <UniformGrid Grid.Row="1" Columns="2" Margin="0,15,0,15">
+        <Border Style="{StaticResource Card}" Margin="0,0,5,0">
+          <StackPanel>
+            <TextBlock x:Name="TcpLabel" FontWeight="SemiBold" Foreground="#146662"/>
+            <TextBlock x:Name="TcpCount" FontSize="28" FontWeight="SemiBold" Text="—"/>
+            <Grid x:Name="TcpMeter" Visibility="Hidden" Height="4" Margin="0,3,0,4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border Background="#1A7771"/><Border Grid.Column="1" Background="#849DAA"/>
+            </Grid>
+            <TextBlock x:Name="TcpFamilies" FontSize="12" Foreground="#365463"/>
+            <TextBlock x:Name="TcpState" FontSize="12" Foreground="#476170" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+        <Border Style="{StaticResource Card}" Margin="5,0,0,0">
+          <StackPanel>
+            <TextBlock x:Name="UdpLabel" FontWeight="SemiBold" Foreground="#3E5696"/>
+            <TextBlock x:Name="UdpCount" FontSize="28" FontWeight="SemiBold" Text="—"/>
+            <Grid x:Name="UdpMeter" Visibility="Hidden" Height="4" Margin="0,3,0,4"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions>
+              <Border Background="#5069A7"/><Border Grid.Column="1" Background="#849DAA"/>
+            </Grid>
+            <TextBlock x:Name="UdpFamilies" FontSize="12" Foreground="#365463"/>
+            <TextBlock x:Name="UdpState" FontSize="12" Foreground="#476170" TextWrapping="Wrap"/>
+          </StackPanel>
+        </Border>
+      </UniformGrid>
+      <DockPanel Grid.Row="2" Margin="0,0,0,8">
+        <CheckBox x:Name="AutoRefresh" DockPanel.Dock="Right" VerticalAlignment="Center" Margin="12,0,0,0" Checked="OnAutoChanged" Unchecked="OnAutoChanged"/>
+        <Label x:Name="SearchLabel" Target="{Binding ElementName=Search}" Padding="0,5,8,5"/>
+        <TextBox x:Name="Search" VerticalContentAlignment="Center" Padding="8,4" MaxLength="96" TextChanged="OnFilterChanged"/>
+      </DockPanel>
+      <Border Grid.Row="3" BorderBrush="#CFDCE2" BorderThickness="1" Background="White" CornerRadius="6" ClipToBounds="True">
+        <Grid>
+          <DataGrid x:Name="Rows" AutoGenerateColumns="False" IsReadOnly="True" CanUserReorderColumns="False" CanUserSortColumns="False"
+                    SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E6ECEF"
+                    BorderThickness="0" Background="White" AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True">
+            <DataGrid.Columns>
+              <DataGridTextColumn Binding="{Binding Protocol}" Width="76" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Address}" Width="2*" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Port}" Width="72" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Family}" Width="68" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Hint}" Width="*" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Owner}" Width="*">
+                <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock" BasedOn="{StaticResource CellText}">
+                  <Setter Property="ToolTip" Value="{Binding OwnerDetail}"/>
+                </Style></DataGridTextColumn.ElementStyle>
+              </DataGridTextColumn>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock x:Name="Empty" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
+        </Grid>
+      </Border>
+      <TextBlock x:Name="Footer" Grid.Row="4" Margin="0,8,0,0" Foreground="#476170" FontSize="12" TextWrapping="Wrap"/>
+    </Grid>
+  </Grid>
+</Window>

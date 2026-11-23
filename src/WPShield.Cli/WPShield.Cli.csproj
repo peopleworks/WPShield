@@ -72,5 +72,6 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="WPShield.Cli.Tests" />
+    <InternalsVisibleTo Include="WPShield.Desktop" />
   </ItemGroup>
 </Project>

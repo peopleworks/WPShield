@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <UseWPF>true</UseWPF>
+    <!-- The repository verifies formatting for the whole solution on Linux. -->
+    <EnableWindowsTargeting Condition="'$(OS)' != 'Windows_NT'">true</EnableWindowsTargeting>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WPShield.Cli/WPShield.Cli.csproj" />
+    <InternalsVisibleTo Include="WPShield.Desktop.Tests" />
+  </ItemGroup>
+</Project>

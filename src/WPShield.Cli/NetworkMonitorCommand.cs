@@ -1,4 +1,3 @@
-using System.Net.NetworkInformation;
 using System.Security.Principal;
 using System.Text.Json;
 using System.Threading;
@@ -114,8 +113,7 @@ internal static class NetworkMonitorCommand
 
         if (arguments.Has("--listeners"))
             return LocalListenerInventory.Run(arguments, output,
-                () => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(),
-                () => IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners());
+                LocalListenerInventory.ReadTcp, LocalListenerInventory.ReadUdp);
         if (arguments.Has("--list-interfaces"))
             return ListInterfaces(arguments, output, Console.Error, HostFlowMonitor.ListInterfaces);
         if (arguments.Has("--flows"))

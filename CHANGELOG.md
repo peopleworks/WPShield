@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- An English and Spanish Windows desktop monitor displays the local TCP and UDP inventory with search, observed owner PIDs and optional five-second refresh.
+
 - `network-monitor --listeners` can filter by protocol and exact local IP address, including IPv6 scope. Within a port and address family, rows sort by numeric address.
 - `network-monitor --listeners --port-hints` shows versioned offline registry names for observed TCP and UDP ports.
 

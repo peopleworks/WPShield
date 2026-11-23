@@ -334,6 +334,8 @@ not read as more than they claim:
 
 ## M5 — Local multilingual dashboard
 
+- [x] Open the local listener inventory in a bilingual Windows desktop window with keyboard navigation and manual or timed refresh. [Desktop monitor](docs/en/network-sensor-design.md#desktop-monitor)
+
 - [ ] Plot interval history from the host monitor. Pausing the view keeps capture running.
       Add keyboard selection and copy of a minimal audit reference. [Design references](docs/en/networkmanager-evaluation.md)
 - [ ] Bind management access to 127.0.0.1 initially.

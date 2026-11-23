@@ -12,14 +12,14 @@ internal static class LocalListenerInventory
 {
     internal const int MaxEndpoints = 4096;
 
-    private sealed record Endpoint(string Address, int Port, string Family, string Binding)
+    internal sealed record Endpoint(string Address, int Port, string Family, string Binding)
     {
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public ListenerOwner? Owner { get; init; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public IReadOnlyList<string>? PortHints { get; init; }
     }
-    private sealed record Table(string Protocol, DateTimeOffset ObservedAtUtc, string Status, string? Reason,
+    internal sealed record Table(string Protocol, DateTimeOffset ObservedAtUtc, string Status, string? Reason,
         IReadOnlyList<Endpoint> Endpoints)
     {
         [JsonIgnore]
@@ -54,9 +54,7 @@ internal static class LocalListenerInventory
             throw new CliArgumentException("--protocol requires TCP or UDP.");
         var lookup = arguments.Has("--owners") ? readOwners ?? ListenerOwners.Read : null;
         var includeHints = arguments.Has("--port-hints");
-        var tables = new List<Table>(2);
-        if (protocol is null or "TCP") tables.Add(Read("TCP", readTcp, ports, address, lookup, includeHints));
-        if (protocol is null or "UDP") tables.Add(Read("UDP", readUdp, ports, address, lookup, includeHints));
+        var tables = ReadTables(readTcp, readUdp, protocol, ports, address, lookup, includeHints);
         if (arguments.Has("--json"))
             output.WriteLine(JsonSerializer.Serialize(new Snapshot(scope, tables)
             { LocalAddress = address?.ToString(), Protocol = protocol, PortHintCatalog = includeHints ? PortHintCatalog.Version : null }));
@@ -86,6 +84,19 @@ internal static class LocalListenerInventory
         }
         if (tables.All(t => t.Status == "read" && !t.OwnerReadFailed)) return 0;
         return tables.All(t => t.Status == "unavailable") ? 1 : 2;
+    }
+
+    internal static IPEndPoint[] ReadTcp() => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners();
+    internal static IPEndPoint[] ReadUdp() => IPGlobalProperties.GetIPGlobalProperties().GetActiveUdpListeners();
+
+    internal static IReadOnlyList<Table> ReadTables(Func<IPEndPoint[]> readTcp, Func<IPEndPoint[]> readUdp,
+        string? protocol, IReadOnlySet<int> ports, IPAddress? address,
+        Func<string, AddressFamily, IReadOnlySet<IPEndPoint>, ListenerOwners.Sample>? lookup, bool includeHints)
+    {
+        var tables = new List<Table>(2);
+        if (protocol is null or "TCP") tables.Add(Read("TCP", readTcp, ports, address, lookup, includeHints));
+        if (protocol is null or "UDP") tables.Add(Read("UDP", readUdp, ports, address, lookup, includeHints));
+        return tables;
     }
 
     private static IPAddress ParseAddress(string? value)
