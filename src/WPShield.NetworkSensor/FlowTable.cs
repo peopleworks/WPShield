@@ -15,12 +15,15 @@ public sealed record FlowSnapshot(string Interface, DateTimeOffset Timestamp, in
 {
     [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
     public IReadOnlyList<TrafficInterval>? History { get; init; }
+    public string CaptureStatus { get; init; } = "unknown";
+    public IReadOnlyList<int>? CapturePorts { get; init; }
 }
 
 /// <summary>A single capture reader owns this bounded table. Only endpoint metadata survives Observe.</summary>
 internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnlySet<int> ports)
 {
     internal const int Capacity = 4096;
+    private readonly IReadOnlyList<int> _capturePorts = Array.AsReadOnly(ports.Order().ToArray());
     private readonly HashSet<IPAddress> _local = localAddresses.Select(WithoutScope).ToHashSet();
     private readonly Dictionary<Key, Totals> _flows = [];
     private long _skipped;
@@ -119,7 +122,8 @@ internal sealed class FlowTable(IEnumerable<IPAddress> localAddresses, IReadOnly
             { FirstSeen = pair.Value.FirstSeen }).ToArray();
         return new(device, now, _flows.Count, _skipped, _capacityDrops, driverDrops, rows)
         {
-            History = history
+            History = history,
+            CapturePorts = _capturePorts
         };
     }
 

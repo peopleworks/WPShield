@@ -743,6 +743,7 @@ El resto de esta sección sigue siendo planificación; prevalece el [roadmap pub
       comparten una fila, que una conexión saliente aparece por separado y que el iniciador figura
       como desconocido para UDP y para TCP observado desde mitad de sesión.
 - [ ] Validar la captura en vivo en Windows Server con Npcap y los puertos de los servicios elegidos.
+- [x] Mostrar el estado de captura, los puertos y la disponibilidad de las fuentes de auditoría. [Estado de las fuentes](diseno-sensor-red.md#estado-de-las-fuentes)
 - [x] Enumerar los identificadores de Npcap y las familias IP antes de elegir el adaptador del monitor.
 - [x] Mostrar en la CLI un historial acotado de bytes IP por segundo en ambos sentidos, con
       intervalos UTC y huecos explícitos. [Historial de tráfico](diseno-sensor-red.md#historial-de-tráfico)

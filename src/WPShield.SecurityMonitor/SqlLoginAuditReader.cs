@@ -9,6 +9,7 @@ public sealed record SqlLoginAuditWindow(string Provider, DateTimeOffset WindowE
 {
     public string Channel => "Application";
     public DateTimeOffset WindowStart => WindowEnd - RecentEventLog.Lookback;
+    public string? UnavailableReason { get; init; }
     public string ObservedOutcome => (Events.Any(e => e.Outcome == "success"), Events.Any(e => e.Outcome == "failure")) switch
     {
         (true, true) => "mixed",
@@ -32,7 +33,7 @@ public static class SqlLoginAuditReader
         // The Application event's system fields suffice. Never render its message or read its insertion strings.
         var window = RecentEventLog.Read("Application", filter, record =>
             Project(provider, record.ProviderName, record.Id, record.RecordId, record.TimeCreated));
-        return new(provider, end.ToUniversalTime(), window.Status, window.Events);
+        return new(provider, end.ToUniversalTime(), window.Status, window.Events) { UnavailableReason = window.UnavailableReason };
     }
 
     internal static string ProviderFor(string instance)

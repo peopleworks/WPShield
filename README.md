@@ -188,7 +188,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,605 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,609 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -199,7 +199,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Inspection of non-multipart bodies | Planned | Nothing else is inspected: urlencoded forms, JSON, XML-RPC, `application/octet-stream` PUTs and other `multipart/*` subtypes stream through untouched |
 | Inspection of archive contents | Planned | A `.zip` plugin or theme carrying a webshell is not detected, and plugin installation is a genuine upload path. No milestone assigned |
 | Bound on concurrent buffered uploads | Available | `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10, ceiling 50. Monitor forwards and warns at the limit; Block refuses with HTTP 429. |
-| Host traffic monitor | Research preview | `wpshield network-monitor --flows` shows TCP/UDP endpoints, byte counts and initiators on one adapter. Add `--history` for measured IP bytes per second and capture gaps. Use `--rdp-port` for Remote Desktop logon evidence or `--sql-instance` for SQL Server login outcomes by instance. The SQL snapshot also runs without packet capture. [Usage and coverage](docs/en/network-sensor-design.md#host-flow-view) · [Guía en español](docs/es/diseno-sensor-red.md#vista-de-flujos-del-servidor) |
+| Host traffic monitor | Research preview | `wpshield network-monitor --flows` shows TCP/UDP endpoints, byte counts and initiators on one adapter. Each snapshot identifies the capture state and port scope. Login audits include the UTC query window and the reason for an unavailable source. Add `--history` for measured IP bytes per second and capture gaps. Use `--rdp-port` for Remote Desktop logon evidence or `--sql-instance` for SQL Server login outcomes by instance. The SQL snapshot also runs without packet capture. [Usage and coverage](docs/en/network-sensor-design.md#host-flow-view) · [Guía en español](docs/es/diseno-sensor-red.md#vista-de-flujos-del-servidor) |
 | **Network layer packet filtering** | **Available** | **`WPShield.NetworkFilter` inspects inbound TCP/UDP packets in user mode via WinDivert.** Rate limiting, dynamic block lists, and port-scan detection run ahead of IIS with a strict per-packet time budget so the filter can never stall the network stack or trigger a kernel watchdog. |
 | **Security event monitoring** | **Available** | **`WPShield.SecurityMonitor` reads the Windows Security event log and detects RDP brute-force and failed-logon patterns.** It publishes findings to a sink that can feed the dynamic block list of `WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication failures. |
 | **Security → Network filter bridge** | **Available** | **`WPShield.Integration` wires `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`** via `NetworkFilterBlockListSink`, so IPs caught by security event rules are dropped at the packet layer before they reach IIS. |
@@ -428,7 +428,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,605 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 318 for the CLI, 468 for the gateway, 39 for the network sensor, 14 for the network filter, 29 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,609 tests across ten projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 319 for the CLI, 468 for the gateway, 41 for the network sensor, 14 for the network filter, 30 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -617,7 +617,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,605 tests
+|-- tests/                            xUnit test projects, 1,609 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/

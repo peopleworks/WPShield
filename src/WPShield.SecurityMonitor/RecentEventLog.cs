@@ -17,7 +17,7 @@ internal static class RecentEventLog
         return $"TimeCreated[@SystemTime >= '{start}' and @SystemTime <= '{stop}']";
     }
 
-    internal static (string Status, IReadOnlyList<T> Events) Read<T>(
+    internal static (string Status, IReadOnlyList<T> Events, string? UnavailableReason) Read<T>(
         string channel, string filter, Func<EventRecord, T?> project) where T : class
     {
         var events = new List<T>();
@@ -32,15 +32,22 @@ internal static class RecentEventLog
                 var remaining = budget - timer.Elapsed;
                 if (remaining <= TimeSpan.Zero) break;
                 using var record = reader.ReadEvent(remaining);
-                if (record is null) return ("read", events);
+                if (record is null) return ("read", events, null);
                 if (i == MaxRecords) break;
                 if (project(record) is { } item) events.Add(item);
             }
-            return ("limited", events);
+            return ("limited", events, null);
         }
-        catch (Exception ex) when (ex is EventLogException or UnauthorizedAccessException or SecurityException)
+        catch (Exception ex) when (UnavailableReason(ex) is string reason)
         {
-            return ("unavailable", []);
+            return ("unavailable", [], reason);
         }
     }
+
+    internal static string? UnavailableReason(Exception error) => error switch
+    {
+        UnauthorizedAccessException or SecurityException => "access-denied",
+        EventLogException => "query-failed",
+        _ => null
+    };
 }

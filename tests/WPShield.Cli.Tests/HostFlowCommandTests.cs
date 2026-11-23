@@ -166,6 +166,36 @@ public sealed class HostFlowCommandTests
         Assert.Equal("unknown", Assert.Single(report.Flows).Outcome);
     }
 
+    [Fact]
+    public void EmptySourcesReportIndependentWindowsReasonsAndCaptureStatus()
+    {
+        var snapshot = Snapshot() with { CaptureStatus = "interrupted", CapturePorts = [1433, 3389] };
+        var end = snapshot.Timestamp;
+        var rdp = RdpFlowReport.Create(snapshot, 3389, new("unavailable", [])
+        { WindowEnd = end, UnavailableReason = "access-denied" });
+        var sql = new SqlLoginAuditWindow("MSSQLSERVER", end, "read", []);
+        using var output = new StringWriter();
+        NetworkMonitorCommand.WriteSnapshot(output, snapshot, true, rdp, sql);
+        using var document = JsonDocument.Parse(output.ToString());
+        var report = document.RootElement;
+        Assert.Equal("interrupted", report.GetProperty("Traffic").GetProperty("CaptureStatus").GetString());
+        var security = report.GetProperty("RdpAudit");
+        Assert.Equal(end.AddMinutes(-1), security.GetProperty("WindowStart").GetDateTimeOffset());
+        Assert.Equal(end, security.GetProperty("WindowEnd").GetDateTimeOffset());
+        Assert.Equal("access-denied", security.GetProperty("UnavailableReason").GetString());
+        Assert.Equal("read", report.GetProperty("SqlAudit").GetProperty("AuditStatus").GetString());
+        Assert.Equal(JsonValueKind.Null, report.GetProperty("SqlAudit").GetProperty("UnavailableReason").ValueKind);
+        using var display = new StringWriter();
+        NetworkMonitorCommand.WriteSnapshot(display, snapshot, false, rdp, sql);
+        Assert.Contains("TCP/UDP ports: 1433,3389  Capture: interrupted", display.ToString());
+        Assert.Contains("Security log: unavailable (access-denied)", display.ToString());
+        Assert.Contains("Application log: read", display.ToString());
+        using var standalone = new StringWriter();
+        Assert.Equal(1, NetworkMonitorCommand.WriteStandaloneSqlAudit(standalone, sql with
+        { AuditStatus = "unavailable", UnavailableReason = "query-failed" }, false));
+        Assert.Contains("Application log: unavailable (query-failed)", standalone.ToString());
+    }
+
     [Theory]
     [InlineData("read", 0)]
     [InlineData("limited", 2)]

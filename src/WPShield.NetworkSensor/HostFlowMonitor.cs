@@ -42,7 +42,7 @@ public static class HostFlowMonitor
     internal static void RunOpened(ICaptureDevice device, FlowTable table, Action<FlowSnapshot> publish,
         CancellationToken cancellationToken, bool includeAllRows = false, bool includeHistory = false)
     {
-        var ended = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var ended = new TaskCompletionSource<CaptureStoppedEventStatus>(TaskCreationOptions.RunContinuationsAsynchronously);
         var link = device.LinkType;
         var gate = new object();
         void Arrived(object sender, PacketCapture packet)
@@ -50,14 +50,14 @@ public static class HostFlowMonitor
             lock (gate)
                 table.Observe(link, packet.Data, packet.Header.Timeval.Date, (packet.Header as PcapHeader)?.PacketLength);
         }
-        void Stopped(object sender, CaptureStoppedEventStatus status) => ended.TrySetResult();
-        void Publish(bool interrupted = false)
+        void Stopped(object sender, CaptureStoppedEventStatus status) => ended.TrySetResult(status);
+        void Publish(string status)
         {
             var drops = ReadDrops(device);
             FlowSnapshot snapshot;
             lock (gate)
-                snapshot = table.Snapshot(device.Name, DateTimeOffset.UtcNow, drops, includeAllRows, interrupted);
-            publish(snapshot);
+                snapshot = table.Snapshot(device.Name, DateTimeOffset.UtcNow, drops, includeAllRows, status == "interrupted");
+            publish(snapshot with { CaptureStatus = status });
         }
 
         device.OnPacketArrival += Arrived;
@@ -66,36 +66,29 @@ public static class HostFlowMonitor
         {
             if (includeHistory) table.StartHistory(TimeProvider.System, ReadDrops(device));
             device.StartCapture();
-            while (!cancellationToken.IsCancellationRequested)
+            try
             {
-                var stopped = ended.Task.IsCompleted;
-                Publish(interrupted: stopped);
-                if (stopped) break;
-                if (ended.Task.Wait(TimeSpan.FromSeconds(2), cancellationToken))
+                while (!cancellationToken.IsCancellationRequested && !ended.Task.IsCompleted)
                 {
-                    if (includeHistory) Publish(interrupted: true);
-                    break;
+                    Publish("running");
+                    if (ended.Task.Wait(TimeSpan.FromSeconds(2), cancellationToken)) break;
                 }
             }
-            if (ended.Task.IsCompleted && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+
+            var interrupted = ended.Task.IsCompleted;
+            if (device.Started) device.StopCapture();
+            interrupted |= ended.Task.IsCompletedSuccessfully && ended.Task.Result == CaptureStoppedEventStatus.ErrorWhileCapturing;
+            Publish(interrupted ? "interrupted" : "stopped");
+            if (interrupted && !cancellationToken.IsCancellationRequested)
                 throw new InvalidOperationException("Capture stopped unexpectedly. Check the adapter and Npcap.");
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
         finally
         {
             device.OnCaptureStopped -= Stopped;
             device.OnPacketArrival -= Arrived;
-            try
-            {
-                if (includeHistory && cancellationToken.IsCancellationRequested)
-                    Publish(interrupted: ended.Task.IsCompleted);
-            }
-            finally
-            {
-                if (device.Started) device.StopCapture();
-            }
+            if (device.Started) device.StopCapture();
         }
-        if (!includeHistory) Publish();
     }
 
     private static uint? ReadDrops(ICaptureDevice device)

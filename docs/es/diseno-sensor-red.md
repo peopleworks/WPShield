@@ -51,6 +51,23 @@ IP y las cabeceras de extensión IPv6. Si ambos extremos son locales o ninguno l
 asignar un extremo remoto. Los filtros pueden excluir tramas antes de que lleguen a los contadores.
 El sentido se determina con las direcciones del adaptador al arrancar. La salida local contiene IP.
 
+### Estado de las fuentes
+
+Cada lectura de tráfico identifica el adaptador (`Interface`), la hora UTC de la lectura
+(`Timestamp`) y los puertos TCP/UDP elegidos (`CapturePorts`, una lista vacía para todos los
+puertos). Durante la captura, `CaptureStatus` vale `running`. La última lectura indica
+`stopped` si el operador la detiene o `interrupted` si el controlador la interrumpe, incluso
+con cero flujos y sin activar el historial. Si la captura falla antes de arrancar, el comando
+devuelve un error. En modo JSON los diagnósticos se escriben en la salida de error.
+
+Para RDP y SQL, `WindowStart` y `WindowEnd` delimitan en UTC el período consultado. RDP indica
+el canal Security y el puerto TCP local elegido. SQL indica el canal Application y el proveedor
+de la instancia. Cada consulta tiene su propio `AuditStatus`. Una consulta completada sin
+eventos devuelve `read` y deja el resultado del acceso como desconocido. Para `unavailable`,
+`UnavailableReason` puede ser `access-denied` o `query-failed`. Para una consulta legible o
+limitada el motivo es nulo. Los archivos JSON anteriores pueden omitir estos campos. Las
+horas describen la ventana consultada. La cobertura depende de la auditoría habilitada en el servidor.
+
 ### Historial de tráfico
 
 ```powershell
