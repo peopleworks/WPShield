@@ -47,6 +47,11 @@ internal static class ProgramMain
             return PrintVerbHelp(command);
         }
 
+        if (command == "network-filter")
+        {
+            return Fail(NetworkFilterCommand.Unavailable);
+        }
+
         try
         {
             var options = CliOptions.Parse(rest);
@@ -70,7 +75,6 @@ internal static class ProgramMain
                 "network-monitor" => NetworkMonitorCommand.Run(options, Console.Out),
                 "iis-login" => IisLoginCommand.RunAsync(options, Console.Out).GetAwaiter().GetResult(),
                 "audit-reference" => AuditReferenceCommand.RunAsync(options, Console.Out, Console.Error).GetAwaiter().GetResult(),
-                "network-filter" => NetworkFilterCommand.Run(options, Console.Out),
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
@@ -254,19 +258,12 @@ internal static class ProgramMain
                           --snapshot <report.json> --source <rdp|sql|iis> (--record-id <id> | --line <n>)
 
               network-filter
-                          User-mode inbound packet filter via WinDivert. Drops attack traffic
-                          before IIS. Requires Administrator elevation and WinDivert. Never runs
-                          in kernel; enforces a 5 ms per-packet inspection budget so it cannot
-                          become the watchdog violation it exists to prevent.
-                          --filter <string> [--max-inspection-time-ms <n>]
-                          [--max-connections-per-minute <n>] [--max-distinct-ports-per-minute <n>]
-                          [--block-list <ips>]
+                          Unavailable in this preview. No host-wide packet blocking is active.
 
               security-monitor
                           Read-only Windows Security event log monitor. Detects RDP brute force
                           and failed logons; prints findings as JSON Lines. Requires Administrator
-                          elevation. Pair with network-filter to block offending IPs at the packet
-                          layer.
+                          elevation. Findings are report-only.
                           --log-name <string> [--event-ids <numbers>]
                           [--max-failed-logons <n>] [--window-minutes <n>] [--allow-list <ips>]
                           [--watch] [--interval-seconds <n>] [--output <file>]

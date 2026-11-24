@@ -205,9 +205,9 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 | Inspection of archive contents | Planned | A `.zip` plugin or theme carrying a webshell is not detected, and plugin installation is a genuine upload path. No milestone assigned |
 | Bound on concurrent buffered uploads | Available | `Gateway:Multipart:MaximumConcurrentInspections` defaults to 10, ceiling 50. Monitor forwards and warns at the limit; Block refuses with HTTP 429. |
 | Host traffic monitor | Research preview | `wpshield network-monitor --flows` shows TCP/UDP endpoints, byte counts and initiators on one adapter. Each snapshot identifies the capture state and port scope. Login audits include the UTC query window and the reason for an unavailable source. Add `--history` for measured IP bytes per second and capture gaps. Use `--rdp-port` for Remote Desktop logon evidence or `--sql-instance` for SQL Server login outcomes by instance. The SQL snapshot also runs without packet capture. [Usage and coverage](docs/en/network-sensor-design.md#host-flow-view) · [Guía en español](docs/es/diseno-sensor-red.md#vista-de-flujos-del-servidor) |
-| **Network layer packet filtering** | **Available** | **`WPShield.NetworkFilter` inspects inbound TCP/UDP packets in user mode via WinDivert.** Rate limiting, dynamic block lists, and port-scan detection run ahead of IIS with a strict per-packet time budget so the filter can never stall the network stack or trigger a kernel watchdog. |
-| **Security event monitoring** | **Available** | **`WPShield.SecurityMonitor` reads the Windows Security event log and detects RDP brute-force and failed-logon patterns.** It publishes findings to a sink that can feed the dynamic block list of `WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication failures. |
-| **Security → Network filter bridge** | **Available** | **`WPShield.Integration` wires `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`** via `NetworkFilterBlockListSink`, so IPs caught by security event rules are dropped at the packet layer before they reach IIS. |
+| Host-wide packet blocking | Unavailable | The CLI refuses `network-filter`. The replacement is tracked in [PR #86](https://github.com/peopleworks/WPShield/pull/86). |
+| Security event monitoring | Available | `wpshield security-monitor` reports RDP brute-force and repeated failed-logon findings from the Windows Security log. |
+| Security findings to packet enforcement | Planned | The integration library has an in-memory block-list sink. The CLI reports findings without applying network blocks. |
 | Rate limiting and observability | Partial | Configured per-client/site/rule fixed-window budgets, structured file logs and redaction tests exist; broader M3/M4 work remains |
 | Request evidence traceability | Available | Versioned final events correlate findings, build versions, configuration activation, inspection completeness and actual forwarding outcomes. |
 | Evidence loss and community exports | Available | Local diagnostics count full-queue drops, failed file batches and skipped inspection stages. The operator PDF flags known gaps. `wpshield preview --format community` exports aggregates for one site under a synthetic label. |
@@ -230,7 +230,7 @@ flowchart TB
     R["WPShield.Rules.WordPress<br/>Rules that need WordPress knowledge"]
     S["WPShield.Service<br/>Engine demonstration"]
     G["WPShield.Gateway<br/>Loopback Kestrel + YARP"]
-    NF["WPShield.NetworkFilter<br/>User-mode packet filter (WinDivert)"]
+    NF["WPShield.NetworkFilter<br/>Legacy filter prototype"]
     SM["WPShield.SecurityMonitor<br/>Security event log monitor"]
     IN["WPShield.Integration<br/>Security → Network filter bridge"]
     O["WPShield.Observability<br/>Planned"]
@@ -246,7 +246,6 @@ flowchart TB
     C --> G
     R --> S
     R --> G
-    NF -.-> G
     SM -.-> IN
     IN -.-> NF
     G -.-> O
@@ -319,9 +318,9 @@ The following are project invariants:
 - **Privacy-safe evidence.** Logs must exclude credentials, authorization values, cookies, nonces, tokens, complete query strings, request bodies, and upload content.
 - **Explainable decisions.** Findings retain a stable rule ID, score, message key, minimal evidence, and recommended action.
 - **No automatic production changes.** WPShield does not modify IIS, DNS, certificates, firewall rules, Windows services, or public ports automatically.
-- **Network filter never runs in kernel.** `WPShield.NetworkFilter` inspects packets in user mode through WinDivert. It never acquires kernel spinlocks, never stalls the network stack, and enforces a strict per-packet inspection budget so a slow rule can never become a `DPC_WATCHDOG_VIOLATION` that reboots the server.
+- **Host-wide blocking is unavailable.** The CLI refuses the legacy filter before accessing a packet driver.
 - **Security monitor reads only.** `WPShield.SecurityMonitor` reads the Windows Security event log and never modifies, clears, or archives it. It requires Administrator privileges and refuses to start without them.
-- **Integration bridge is optional.** `WPShield.Integration` wires security findings into `WPShield.NetworkFilter.BlockListRule` through `NetworkFilterBlockListSink`. It is a separate, opt-in project: the core gateway, rules, sensor, and monitor projects do not depend on it.
+- **Security findings are observational.** The CLI sends findings to its output sink.
 
 Read [THREAT_MODEL.md](THREAT_MODEL.md) for protected assets, trust boundaries, threats, and required safeguards. Report vulnerabilities according to [SECURITY.md](SECURITY.md), never through a public issue.
 
@@ -433,7 +432,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,744 tests across eleven projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 403 for the CLI, 51 for the desktop monitor, 468 for the gateway, 41 for the network sensor, 14 for the network filter, 30 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,745 tests across eleven projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 404 for the CLI, 51 for the desktop monitor, 468 for the gateway, 41 for the network sensor, 14 for the network filter, 30 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

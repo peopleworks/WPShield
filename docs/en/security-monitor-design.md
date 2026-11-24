@@ -2,30 +2,25 @@
 
 WPShield.SecurityMonitor is a **Windows-only, user-mode component** that reads the Windows
 Security event log and detects authentication attacks such as RDP brute force and repeated
-failed logons. It publishes findings to a sink that can feed the dynamic block list of
-`WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication
-failures that packets alone cannot reveal.
+failed logons. The CLI reports these findings to the operator.
 
 ## Why it exists
 
 A production WordPress host on Windows Server was observed receiving sustained attacks on
-both web ports (80/443) and Remote Desktop (TCP 3389). `WPShield.NetworkFilter` can block
-packets by source IP and rate, but it cannot see whether an RDP connection succeeded or
-failed — that happens inside the authentication session, after the TCP handshake.
+both web ports (80/443) and Remote Desktop (TCP 3389). Windows authentication events record
+the outcome of a logon attempt.
 
 `WPShield.SecurityMonitor` reads Event ID `4625` (failed logon) and `4624` (logon success)
 from the Security log, identifies Logon Type `10` (RemoteInteractive = RDP), and raises
-findings when a source IP exceeds a configurable failure threshold. Those findings can be
-published to a block list that `NetworkFilter` consumes, so the attacker's IP is dropped at
-the packet layer before it can even attempt another logon.
+findings when a source IP exceeds a configurable failure threshold.
 
 ## Position in the architecture
 
 | Layer | Component | What it sees | Blocks? |
 |---|---|---|---|
 | 1 | Windows Firewall | Static IP rules | Yes |
-| 2 | `WPShield.NetworkFilter` | TCP/UDP packet headers | Yes |
-| 3 | **`WPShield.SecurityMonitor`** | **Security event log (auth results)** | **Indirectly** |
+| 2 | `WPShield.NetworkFilter` | Legacy prototype | Unavailable |
+| 3 | **`WPShield.SecurityMonitor`** | **Security event log (auth results)** | **Report only** |
 | 4 | `WPShield.Gateway` | HTTP request bodies | Yes (uploads) |
 | 5 | IIS + WordPress | Application layer | No |
 
@@ -188,7 +183,7 @@ while (!cts.Token.IsCancellationRequested)
 
 | Milestone | Relationship |
 |---|---|
-| M2.7 Network filter | SecurityMonitor findings feed the dynamic block list of `WPShield.NetworkFilter`. |
+| M2.7 Network filter | The CLI reports findings. Host-wide enforcement is pending. |
 | M3 Rate limiting | `WP-SEC-001` and `WP-SEC-002` are the authentication half of rate limiting; M3 adds the HTTP half. |
 | M4 Observability | SecurityMonitor findings use the same JSON Lines log envelope as the gateway. |
 | M6 Windows Service | `SecurityEventMonitor` can run as part of the WPShield Windows service under `NT SERVICE\WPShield`. |

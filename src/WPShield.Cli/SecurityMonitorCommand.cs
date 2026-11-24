@@ -51,9 +51,7 @@ internal static class SecurityMonitorCommand
         name, logon type, event ID, and timestamp. Only findings with Action of Observe or Block
         are emitted.
 
-        What it does NOT do: modify the Security log, block packets directly, install anything,
-        or touch IIS. To block offending IPs at the packet layer, pair this with
-        'wpshield network-filter' and the WPShield.Integration bridge.
+        The action describes a rule finding. This command only reports it.
 
         Exit codes:
           0   stopped cleanly

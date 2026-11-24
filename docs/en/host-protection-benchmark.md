@@ -34,10 +34,11 @@ a service, a site or a login outcome requires independent evidence. [Host flow v
 | SSH | Failed authentications in the Windows OpenSSH Operational log. [SSH](https://rdpguard.com/openssh-brute-force-protection.aspx) | **Planned.** Match an OpenSSH refusal, keeping a pre-authentication disconnect separate. |
 | Microsoft VPN / RRAS | RemoteAccess event 20271 and IPsec event 4652. [RRAS](https://rdpguard.com/ms-vpn-rras-brute-force-protection.aspx) | **Planned.** Distinguish a VPN authentication refusal from a negotiation failure and identify the available source address. |
 
-WPShield's Security Monitor already defines RDP and generic failed-logon rules. Its optional
-bridge passes qualifying findings to an in-process packet-filter block list. The new flow view
-reads audit evidence independently. M3 handles HTTP decisions in the gateway. Proposed ADR 0002
-places host-wide firewall management in a separate component with its own recovery contract.
+WPShield's Security Monitor reports RDP and generic failed-logon findings. The integration
+library has an in-memory block-list sink. The CLI leaves findings observational and refuses
+`network-filter`. Host-wide prevention trials depend on the replacement tracked in
+[draft PR #86](https://github.com/peopleworks/WPShield/pull/86). The flow view independently
+reads audit evidence. M3 handles HTTP decisions in the gateway.
 Monitor remains the default. M1/M2 listeners remain loopback-only. [Security monitor design](security-monitor-design.md) · [Network filter design](network-filter-design.md) · [ADR 0002](adr/0002-host-level-brute-force-defence.md) · [Roadmap](../../ROADMAP.md)
 
 ## Paired evaluation

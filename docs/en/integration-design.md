@@ -1,5 +1,7 @@
 # WPShield.Integration — Design (English)
 
+> **Historical prototype.** This document describes the WinDivert prototype. The CLI refuses `network-filter` and only reports security findings. Host-wide blocking awaits the replacement and validation in [PR #86](https://github.com/peopleworks/WPShield/pull/86).
+
 WPShield.Integration is an **optional, opt-in bridge project** that wires
 `WPShield.SecurityMonitor` findings into `WPShield.NetworkFilter.BlockListRule`,
 so IPs detected by security event rules (RDP brute force, failed logons, etc.)

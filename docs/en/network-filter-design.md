@@ -1,5 +1,7 @@
 # WPShield.NetworkFilter — Design (English)
 
+> **Historical prototype.** This document describes the WinDivert prototype. The CLI refuses `network-filter` and only reports security findings. Host-wide blocking awaits the replacement and validation in [PR #86](https://github.com/peopleworks/WPShield/pull/86).
+
 WPShield.NetworkFilter is a **Windows-only, user-mode packet filter** that inspects inbound
 TCP/UDP traffic ahead of IIS and WordPress. It is built on **WinDivert**, so a signed system
 driver handles packet capture and reinjection while **all filtering decisions run in this
