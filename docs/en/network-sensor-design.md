@@ -165,6 +165,17 @@ server was configured to record every login.
 
 ### Selected audit reference
 
+In the Windows desktop monitor, choose **Audit references → Open snapshot** and open one saved
+WPShield JSON object. Use the arrow keys to select a row. The preview shows the exact JSON that
+**Copy** or **Ctrl+C** places on the clipboard. RDP and SQL rows identify the Windows event by
+channel, provider, UTC timestamp and record ID. IIS rows identify the W3C input prefix by SHA-256
+and byte length, with the physical line and any paired challenge line.
+
+Coverage is the status recorded in the file. Older snapshots can have unknown coverage. An
+empty list describes the contents of that snapshot. The desktop accepts up to 8 MiB and 1,024
+references per snapshot with a five-second read budget. A duplicate ID within one source,
+an invalid reference or an exceeded limit clears the list and disables copying.
+
 Save a single JSON snapshot locally. Use the Windows event **record ID** shown for the chosen
 row. The source selects the channel even if RDP and SQL have records with the same number.
 

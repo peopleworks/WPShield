@@ -28,6 +28,100 @@ public sealed class AuditReferenceTests
         finally { File.Delete(path); }
     }
 
+    private static async Task<AuditReferenceList> Browse(string json)
+    {
+        var path = Path.GetTempFileName();
+        try
+        {
+            await File.WriteAllTextAsync(path, json, Encoding.UTF8);
+            return await SavedAuditSnapshot.BrowseAsync(path, CancellationToken.None);
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public async Task BrowserAndCliExportIdenticalReferencesAcrossSourcesWithTheSameId()
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            SqlAudit = Sql with { AuditStatus = "limited" },
+            RdpAudit = new { Flows = new[] { new { Remote = "private-sentinel", Events = new[] { new { RecordId = 10, Timestamp = When } } } } }
+        });
+        var list = await Browse(json);
+        Assert.Equal(3, list.Rows.Count);
+        Assert.Equal("limited", list.Coverage["sql"]);
+        Assert.Equal("unknown", list.Coverage["rdp"]);
+        foreach (var row in list.Rows)
+        {
+            var cli = await Select(json, row.Source.ToLowerInvariant(), row.Id.ToString());
+            Assert.Equal(0, cli.Code);
+            Assert.Equal(row.Json, cli.Output.Trim());
+            Assert.DoesNotContain("private-sentinel", row.Json);
+            Assert.Equal(TimeSpan.Zero, row.Timestamp!.Value.Offset);
+        }
+    }
+
+    [Theory]
+    [InlineData(0, "read")]
+    [InlineData(1, "limited")]
+    public async Task IisBrowserUsesPhysicalLinesAndPreservesCoverage(int malformed, string status)
+    {
+        var json = JsonSerializer.Serialize(new
+        {
+            InputPrefixSha256 = new string('F', 64),
+            InputPrefixBytes = 42,
+            Report = new
+            {
+                StopReason = "end_of_file",
+                UnattributedRows = 0,
+                MalformedRows = malformed,
+                Evidence = new[] { new { Line = 4, ChallengeLine = 3, Username = "private-sentinel" } }
+            }
+        });
+        var list = await Browse(json);
+        var row = Assert.Single(list.Rows);
+        Assert.Equal("IIS", row.Source);
+        Assert.Null(row.Timestamp);
+        Assert.Equal(status, list.Coverage["iis"]);
+        var cli = await Select(json, "iis", "4");
+        Assert.Equal(row.Json, cli.Output.Trim());
+        Assert.DoesNotContain("private-sentinel", row.Json);
+    }
+
+    [Fact]
+    public async Task EmptyUnavailableSourceKeepsItsCoverage()
+    {
+        var list = await Browse(JsonSerializer.Serialize(Sql with { AuditStatus = "unavailable", Events = [] }));
+        Assert.Empty(list.Rows);
+        Assert.Equal("unavailable", list.Coverage["sql"]);
+    }
+
+    [Fact]
+    public async Task DuplicateInOneSourceRejectsTheEntireList()
+    {
+        var json = JsonSerializer.Serialize(Sql with { Events = [Sql.Events[0], Sql.Events[1], Sql.Events[0]] });
+        await Assert.ThrowsAsync<DuplicateAuditRowException>(() => Browse(json));
+    }
+
+    [Fact]
+    public async Task ReferenceBudgetAcceptsTheLimitAndRejectsOverflow()
+    {
+        string Make(int count) => JsonSerializer.Serialize(Sql with
+        {
+            Events = Enumerable.Range(1, count).Select(i => Sql.Events[0] with { RecordId = i }).ToArray()
+        });
+        Assert.Equal(1024, (await Browse(Make(1024))).Rows.Count);
+        await Assert.ThrowsAsync<ReferenceLimitException>(() => Browse(Make(1025)));
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"RdpAudit":{"Flows":[]},"RdpAudit":{"Flows":[]}}""")]
+    [InlineData("""{"RdpAudit":{"Flows":[]}} {"RdpAudit":{"Flows":[]}}""")]
+    [InlineData("""{"RdpAudit":{"Flows":[{"Events":[{"RecordId":0}]}]}}""")]
+    public async Task UnsupportedOrAmbiguousInputsCannotPopulateTheBrowser(string json) =>
+        await Assert.ThrowsAnyAsync<JsonException>(() => Browse(json));
+
     [Theory]
     [InlineData("rdp", "Security", "Microsoft-Windows-Security-Auditing", 3)]
     [InlineData("sql", "Application", "MSSQL$Example", 2)]
@@ -158,7 +252,7 @@ public sealed class AuditReferenceTests
         var path = Path.GetTempFileName();
         try
         {
-            using (var file = File.OpenWrite(path)) file.SetLength(AuditReferenceCommand.MaxBytes + 1);
+            using (var file = File.OpenWrite(path)) file.SetLength(SavedAuditSnapshot.MaxBytes + 1);
             var args = CliOptions.Parse(["--snapshot", path, "--source", "iis", "--line", "2"]);
             using var output = new StringWriter();
             using var error = new StringWriter();

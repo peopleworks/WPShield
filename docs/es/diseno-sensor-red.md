@@ -176,6 +176,17 @@ horas describen la ventana consultada. La cobertura depende de la auditoría hab
 
 ### Referencia de auditoría seleccionada
 
+En el monitor de escritorio, abra **Referencias de auditoría → Abrir informe** y elija un archivo
+con un solo objeto JSON de WPShield. Seleccione una fila con las flechas. La vista previa muestra
+el JSON exacto que **Copiar** o **Ctrl+C** coloca en el portapapeles. En RDP y SQL se copian el
+canal, el proveedor, la hora UTC y el ID del evento. En IIS se copian el SHA-256 y la longitud del
+prefijo del archivo W3C, la línea física y, si corresponde, la línea del desafío de autenticación.
+
+La cobertura procede del informe guardado. En informes anteriores puede figurar como desconocida.
+Una lista vacía describe el contenido de ese informe. El escritorio admite hasta 8 MiB y 1.024
+referencias por informe, con un plazo de lectura de cinco segundos. Un ID duplicado en una misma
+fuente, una referencia inválida o un límite excedido vacían la lista y deshabilitan la copia.
+
 Guarde una sola lectura en JSON. Seleccione el **número de registro** del evento de Windows que
 quiera verificar. La fuente identifica el canal aunque haya registros con el mismo número en
 RDP y SQL.

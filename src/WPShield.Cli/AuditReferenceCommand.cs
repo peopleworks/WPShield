@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text.Json;
-using WPShield.SecurityMonitor;
 
 namespace WPShield.Cli;
 
@@ -14,8 +13,6 @@ internal static class AuditReferenceCommand
         Use the Windows event record ID or physical W3C line from the report.
         Exit 0: one reference. 1: invalid, ambiguous or unreadable input. 3: no matching record.
         """;
-    internal const int MaxBytes = 8 * 1024 * 1024;
-    private sealed class AmbiguousReferenceException : Exception;
 
     internal static async Task<int> RunAsync(CliOptions options, TextWriter output, TextWriter error, CancellationToken token = default)
     {
@@ -35,19 +32,10 @@ internal static class AuditReferenceCommand
         string? reference;
         try
         {
-            using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.Asynchronous);
-            var length = file.Length;
-            if (length > MaxBytes)
-            {
-                error.WriteLine("The selected snapshot exceeds 8 MiB.");
-                return 1;
-            }
-            var bytes = new byte[(int)length];
-            await file.ReadExactlyAsync(bytes, timeout.Token);
-            var preamble = System.Text.Encoding.UTF8.Preamble;
-            var offset = bytes.AsSpan().StartsWith(preamble) ? preamble.Length : 0;
-            using var doc = JsonDocument.Parse(bytes.AsMemory(offset), new JsonDocumentOptions { MaxDepth = 32, AllowDuplicateProperties = false });
-            reference = Select(doc.RootElement, source, id, timeout.Token);
+            using var doc = await SavedAuditSnapshot.ReadAsync(path, timeout.Token);
+            var section = SavedAuditSnapshot.GetSource(doc.RootElement, source);
+            var row = Find(section.Rows, section.Key, id, timeout.Token);
+            reference = row.HasValue ? section.Project(row.Value, id).Json : null;
             timeout.Token.ThrowIfCancellationRequested();
         }
         catch (OperationCanceledException) when (!token.IsCancellationRequested)
@@ -55,7 +43,12 @@ internal static class AuditReferenceCommand
             error.WriteLine("The snapshot read exceeded the time budget.");
             return 1;
         }
-        catch (AmbiguousReferenceException)
+        catch (SnapshotSizeException)
+        {
+            error.WriteLine("The selected snapshot exceeds 8 MiB.");
+            return 1;
+        }
+        catch (DuplicateAuditRowException)
         {
             error.WriteLine("Multiple rows match the selected ID in this source.");
             return 1;
@@ -79,54 +72,6 @@ internal static class AuditReferenceCommand
         return 0;
     }
 
-    private static string? Select(JsonElement root, string source, long id, CancellationToken token)
-    {
-        if (source == "iis")
-        {
-            var rows = root.GetProperty("Report").GetProperty("Evidence").EnumerateArray();
-            var row = Find(rows, "Line", id, token);
-            if (row is null) return null;
-            var hash = root.GetProperty("InputPrefixSha256").GetString();
-            var bytes = root.GetProperty("InputPrefixBytes").GetInt32();
-            if (hash is not { Length: 64 } || !hash.All(char.IsAsciiHexDigit) || bytes is < 1 or > IisLoginAudit.MaxBytes || id > bytes)
-                throw new JsonException();
-            var challenge = row.Value.GetProperty("ChallengeLine");
-            int? line = challenge.ValueKind == JsonValueKind.Null ? null : challenge.GetInt32();
-            if (line.HasValue && (line <= 0 || line >= id)) throw new JsonException();
-            return JsonSerializer.Serialize(new { InputPrefixSha256 = hash, InputPrefixBytes = bytes, Line = id, ChallengeLine = line });
-        }
-
-        string channel, provider;
-        IEnumerable<JsonElement> events;
-        if (source == "rdp")
-        {
-            var audit = root.GetProperty("RdpAudit");
-            channel = "Security";
-            provider = RdpAuditReader.Provider;
-            // Versions before source status used the same RDP reader and omitted Channel.
-            if (audit.TryGetProperty("Channel", out var recorded) && recorded.GetString() != channel) throw new JsonException();
-            if (audit.TryGetProperty("Provider", out var recordedProvider) && recordedProvider.GetString() != provider) throw new JsonException();
-            events = audit.GetProperty("Flows").EnumerateArray().SelectMany(flow => flow.GetProperty("Events").EnumerateArray());
-        }
-        else
-        {
-            var audit = root.TryGetProperty("SqlAudit", out var sql) ? sql : root;
-            channel = "Application";
-            provider = audit.GetProperty("Provider").GetString() ?? throw new JsonException();
-            if (audit.GetProperty("Channel").GetString() != channel || !(provider == "MSSQLSERVER" ||
-                provider.StartsWith("MSSQL$", StringComparison.Ordinal) && SqlLoginAuditReader.IsValidInstance(provider[6..])))
-                throw new JsonException();
-            events = audit.GetProperty("Events").EnumerateArray();
-        }
-        var entry = Find(events, "RecordId", id, token);
-        if (entry is null) return null;
-        var time = entry.Value.GetProperty("Timestamp");
-        var value = time.GetString();
-        if (value is null || !(value.EndsWith('Z') || value.Length >= 6 && value[^6] is '+' or '-' && value[^3] == ':'))
-            throw new JsonException();
-        return JsonSerializer.Serialize(new { Channel = channel, Provider = provider, Timestamp = time.GetDateTimeOffset().ToUniversalTime(), RecordId = id });
-    }
-
     private static JsonElement? Find(IEnumerable<JsonElement> rows, string key, long id, CancellationToken token)
     {
         JsonElement? match = null;
@@ -134,7 +79,7 @@ internal static class AuditReferenceCommand
         {
             token.ThrowIfCancellationRequested();
             if (row.GetProperty(key).GetInt64() != id) continue;
-            if (match.HasValue) throw new AmbiguousReferenceException();
+            if (match.HasValue) throw new DuplicateAuditRowException();
             match = row;
         }
         return match;
