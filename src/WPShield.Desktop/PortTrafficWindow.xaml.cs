@@ -101,7 +101,9 @@ public partial class PortTrafficWindow : Window
             var found = await Task.Run(list);
             if (closed) return;
             var choices = found.Where(i => i.HasIPv4 || i.HasIPv6).Select(i =>
-                new Choice(i.DeviceId, i.FriendlyName is { Length: > 0 } name ? $"{name}  ·  {i.DeviceId}" : i.DeviceId)).ToArray();
+                new Choice(i.DeviceId, i.FriendlyName is { Length: > 0 } name
+                    ? $"{DisplayText.Clean(name, 120)}  ·  {DisplayText.Clean(i.DeviceId, 120)}"
+                    : DisplayText.Clean(i.DeviceId, 120))).ToArray();
             Adapters.ItemsSource = choices;
             Adapters.SelectedItem = choices.FirstOrDefault(i => i.Id == previous);
             Status.Text = choices.Length == 0 ? L("No capture adapter with a local IP address.", "No hay un adaptador de captura con IP local.") :

@@ -13,13 +13,31 @@ Desde la raíz del repositorio, en Windows con el SDK de .NET 10 y el entorno de
 dotnet run --project src/WPShield.Desktop -c Release -- --es
 ```
 
-Seleccione TCP o UDP en la barra lateral o busque por dirección, puerto exacto, PID o nombre
-convencional del puerto. Las tarjetas muestran la hora de lectura, la cobertura y los recuentos
-de IPv4 e IPv6. Pase el puntero sobre un PID para ver la hora de esa segunda lectura o el motivo
-por el que se desconoce. Pulse **Actualizar** o active **Cada 5 s**. Al cerrar la ventana termina
-la consulta periódica. La vista lee las tablas locales en memoria y funciona sin Npcap ni servidor
-HTTP.
+Seleccione TCP o UDP en la barra lateral o busque por dirección, puerto exacto, PID, nombre del
+proceso o nombre convencional del puerto. Las tarjetas muestran la hora de lectura, la cobertura y
+los recuentos de IPv4 e IPv6. La columna de propietario muestra el proceso y su PID, por ejemplo
+`sqlservr · 4120`. El nombre se lee justo después de la tabla de sockets; si el proceso termina
+entre ambas lecturas, se muestra el PID con "terminó o no se pudo leer" en lugar de adivinar un
+nombre. Pase el puntero sobre esa columna para ver la hora de lectura y, si se desconoce el
+propietario, el motivo en el idioma de la ventana. Pulse **Actualizar** o active **Cada 5 s**. Al
+cerrar la ventana termina la consulta periódica. La vista lee las tablas locales en memoria y
+funciona sin Npcap, sin permisos de administrador y sin servidor HTTP.
 Use `--en` para abrir la ventana en inglés.
+
+Los nombres que vienen de Windows (adaptadores, dispositivos de captura, procesos) se muestran con
+los caracteres de control y de formato bidireccional sustituidos por `�`, y se conservan las letras
+acentuadas. Si una lectura falla de forma inesperada, la ventana muestra un aviso y sigue abierta.
+
+**En un servidor sin el SDK de .NET,** genere una copia autocontenida en una máquina de desarrollo y
+lleve la carpeta; no se instala nada en el servidor:
+
+```powershell
+dotnet publish src/WPShield.Desktop -c Release -r win-x64 --self-contained true -o artifacts\wpshield-desktop
+```
+
+Ejecute `WPShield.Desktop.exe` desde esa carpeta en la sesión de escritorio del servidor (Windows
+Server con Experiencia de escritorio). Solo **Tráfico por puertos** necesita Npcap y permisos de
+administrador.
 
 ### Tráfico por adaptador
 

@@ -21,8 +21,7 @@ public partial class ListenerWindow : Window
 
     public ListenerWindow()
     {
-        var args = Environment.GetCommandLineArgs();
-        spanish = args.Contains("--es") || (!args.Contains("--en") && CultureInfo.CurrentUICulture.TwoLetterISOLanguageName == "es");
+        spanish = App.Spanish();
         InitializeComponent();
         Title = "WPShield | " + L("Local network monitor", "Monitor de red local");
         Heading.Text = L("Local ports", "Puertos locales");
@@ -37,16 +36,32 @@ public partial class ListenerWindow : Window
         TcpLabel.Text = L("TCP listeners", "Escuchas TCP");
         UdpLabel.Text = L("Bound UDP sockets", "Sockets UDP vinculados");
         SearchLabel.Content = L("_Search", "_Buscar");
-        Search.ToolTip = L("Address, exact port, PID or port name", "Dirección, puerto exacto, PID o nombre de puerto");
+        Search.ToolTip = L("Address, exact port, PID, process or port name", "Dirección, puerto exacto, PID, proceso o nombre de puerto");
         AutoRefresh.Content = L("Every 5 s", "Cada 5 s");
         string[] headers = [L("Protocol", "Protocolo"), L("Local address", "Dirección local"), L("Port", "Puerto"),
-            L("Family", "Familia"), L("Port name", "Nombre de puerto"), "PID"];
+            L("Family", "Familia"), L("Port name", "Nombre de puerto"), L("Process · PID", "Proceso · PID")];
         for (int i = 0; i < headers.Length; i++) Rows.Columns[i].Header = headers[i];
         timer.Tick += OnRefresh;
         initialized = true;
     }
 
     private string L(string english, string es) => spanish ? es : english;
+
+    /// <summary>The library reports stable English codes; the operator reads them in the chosen language.</summary>
+    internal static string Reason(string? code, bool spanish) => code switch
+    {
+        null => "—",
+        "access-denied" => spanish ? "acceso denegado" : "access denied",
+        "query-failed" => spanish ? "la consulta falló" : "query failed",
+        "invalid-table" => spanish ? "tabla no válida" : "invalid table",
+        "table-limit" => spanish ? "tabla demasiado grande" : "table too large",
+        "not-observed" => spanish ? "no aparece en la tabla de propietarios" : "not in the owner table",
+        "ambiguous" => spanish ? "propietario ambiguo" : "ambiguous owner",
+        "pid-unavailable" => spanish ? "PID no disponible" : "PID unavailable",
+        _ => DisplayText.Clean(code, 40)
+    };
+
+    private string Reason(string? code) => Reason(code, spanish);
 
     private void OpenTraffic(object sender, RoutedEventArgs e)
     {
@@ -105,8 +120,13 @@ public partial class ListenerWindow : Window
         Footer.Text = L("Reading Windows socket tables…", "Leyendo las tablas de sockets de Windows…");
         try
         {
-            var tables = await Task.Run(() => LocalListenerInventory.ReadTables(LocalListenerInventory.ReadTcp,
-                LocalListenerInventory.ReadUdp, null, new HashSet<int>(), null, ListenerOwners.Read, true));
+            var (tables, names) = await Task.Run(() =>
+            {
+                var read = LocalListenerInventory.ReadTables(LocalListenerInventory.ReadTcp,
+                    LocalListenerInventory.ReadUdp, null, new HashSet<int>(), null, ListenerOwners.Read, true);
+                var ids = read.SelectMany(t => t.Endpoints).Select(e => e.Owner?.ProcessId).OfType<uint>();
+                return (read, ProcessNames.Resolve(ids, ProcessNames.Read));
+            });
             if (closed) return;
             foreach (var table in tables)
             {
@@ -121,7 +141,7 @@ public partial class ListenerWindow : Window
                 (tcp ? TcpCount : UdpCount).Text = table.Status == "unavailable" ? "—" : table.Endpoints.Count.ToString(CultureInfo.CurrentCulture);
                 var state = table.Status switch
                 {
-                    "unavailable" => L("Unavailable", "Sin acceso") + $" ({table.Reason})",
+                    "unavailable" => L("Unavailable", "Sin acceso") + $" ({Reason(table.Reason)})",
                     "limited" => L("Row limit reached", "Límite de filas alcanzado"),
                     _ => L("Table read", "Tabla leída")
                 };
@@ -132,12 +152,30 @@ public partial class ListenerWindow : Window
             inventory = tables.SelectMany(table => table.Endpoints.Select(e =>
             {
                 var owner = e.Owner;
-                var pid = owner?.ProcessId?.ToString(CultureInfo.InvariantCulture) ?? "—";
-                var detail = owner is null ? "—" : $"{owner.ObservedAtUtc:u}  ·  {owner.Reason ?? pid}";
+                var pid = owner?.ProcessId?.ToString(CultureInfo.InvariantCulture);
+                var name = owner?.ProcessId is uint id && names.TryGetValue(id, out var found) && found is not null
+                    ? DisplayText.Clean(found, 64) : "";
+                var shown = (pid, name.Length) switch
+                {
+                    (null, _) => owner is null ? "—" : L("Unknown", "Desconocido") + $" ({Reason(owner.Reason)})",
+                    (_, 0) => pid + "  ·  " + L("ended or unreadable", "terminó o no se pudo leer"),
+                    _ => name + "  ·  " + pid
+                };
+                var detail = owner is null ? "—" : owner.ProcessId is null
+                    ? $"{owner.ObservedAtUtc:u}  ·  {Reason(owner.Reason)}"
+                    : $"{owner.ObservedAtUtc:u}  ·  PID {pid}" + L("; the name is read just after the socket table",
+                        "; el nombre se lee justo después de la tabla de sockets");
                 return new ListenerRow(table.Protocol, e.Address, e.Port, e.Family,
-                    e.PortHints is { Count: > 0 } hints ? string.Join(", ", hints) : "—", owner?.ProcessId, pid, detail);
+                    e.PortHints is { Count: > 0 } hints ? string.Join(", ", hints) : "—", owner?.ProcessId, shown, detail, name);
             })).ToArray();
             ShowRows();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            // The two tables report their own access problems; this is for what nobody anticipated.
+            if (closed) return;
+            Footer.Text = L("The socket tables could not be read: ", "No se pudieron leer las tablas de sockets: ") +
+                DisplayText.Clean(ex.GetType().Name + ": " + ex.Message, 200);
         }
         finally
         {
