@@ -1,6 +1,6 @@
 # ADR 0007 — A local evidence store, and who may read it
 
-- **Status:** Proposed
+- **Status:** Accepted on 2026-11-24, with the amendment below the same day
 - **Deciders:** Pedro Hernández (maintainer)
 - **Affects:** `AGENTS.md`, `WPShield.Service`, the desktop monitor, the CLI, `wpshield uninstall`,
   and a future `wpshield mcp` server
@@ -132,6 +132,34 @@ during an incident is the worst moment to delete the record of what happened.
 - **LiteDB or another embedded document store.** Workable, but SQLite is the format every tool can
   open, which matters when evidence has to be inspected by hand during an incident.
 - **The desktop as the writer.** Simpler, and it records only while a window is open.
+
+## Amendment (2026-11-24): settings and evidence of any kind
+
+The maintainer asked for the store to hold more than failed logons, including configuration, and to
+grow without a schema change each time. Two tables do that under the same rules:
+
+- **`events`**: evidence of any kind the store has no dedicated table for (an HTTP request the gateway
+  refused, a SQL Server or FTP logon). Each row has a kind, a source, a time, an optional address, a
+  cleaned subject and a small JSON detail (4 KB at most, string values cleaned and bounded), with an
+  optional key that makes a second copy a no-op. Kinds are lowercase names; a new kind needs no
+  migration. A source gets a dedicated table only when a query needs one, as failed logons did.
+- **`settings`** and **`settings_history`**: values as JSON, but **only keys the code declares** in
+  its settings catalog, each with a type, bounds and when it takes effect (at the next use, or at the
+  next start - never "now" without saying so). Unknown keys are refused, so a typo never becomes a
+  setting that silently does nothing. Every change records the old and new value, who made it and
+  why. The first settings are retention (detail days, aggregate days, event days, maximum size), the
+  attacks view's default range, labels for known addresses, and whether an MCP answer may contain
+  single attempts.
+
+Rules this adds:
+
+- **Settings are written by an elevated operator tool or by the service, never by a reader.** The
+  desktop and an MCP server read them. An MCP tool that changes a setting is an action, and falls
+  under section 6.
+- **A label describes; it never allows or blocks.** The allow-list and block thresholds become
+  settings only through the decision engine's own ADR, with their own validation.
+- **Settings that only apply at start say so** when they are changed, the configuration rule
+  `AGENTS.md` already states for files.
 
 ## Revisiting this decision
 

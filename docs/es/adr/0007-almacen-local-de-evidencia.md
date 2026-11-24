@@ -1,6 +1,6 @@
 # ADR 0007 — Un almacén local de evidencia, y quién puede leerlo
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada el 2026-11-24, con la enmienda de abajo el mismo día
 - **Deciden:** Pedro Hernández (mantenedor)
 - **Afecta a:** `AGENTS.md`, `WPShield.Service`, el monitor de escritorio, la CLI,
   `wpshield uninstall` y un futuro servidor `wpshield mcp`
@@ -139,6 +139,35 @@ logs: desinstalar en pleno incidente es el peor momento para borrar el registro 
 - **LiteDB u otro almacén de documentos embebido.** Funcionaría, pero SQLite es el formato que
   cualquier herramienta abre, y eso importa cuando hay que revisar la evidencia a mano en un incidente.
 - **El escritorio como escritor.** Más sencillo, y solo registra mientras hay una ventana abierta.
+
+## Enmienda (2026-11-24): ajustes y evidencia de cualquier tipo
+
+El mantenedor pidió que el almacén guarde más que inicios de sesión fallidos, incluida configuración,
+y que pueda crecer sin cambiar el esquema cada vez. Dos tablas lo hacen bajo las mismas reglas:
+
+- **`events`**: evidencia de cualquier tipo que no tenga tabla propia (una petición HTTP que el gateway
+  rechazó, un inicio de sesión de SQL Server o de FTP). Cada fila tiene un tipo, un origen, una hora,
+  una dirección opcional, un asunto limpio y un pequeño detalle JSON (como máximo 4 KB, con los textos
+  limpios y acotados), y una clave opcional que convierte una segunda copia en una operación nula. Los
+  tipos son nombres en minúsculas; un tipo nuevo no necesita migración. Una fuente solo recibe tabla
+  propia cuando una consulta la necesita, como pasó con los inicios de sesión fallidos.
+- **`settings`** y **`settings_history`**: valores en JSON, pero **solo las claves que el código
+  declara** en su catálogo de ajustes, cada una con su tipo, sus límites y cuándo surte efecto (en el
+  próximo uso o en el próximo arranque; nunca "ya" sin decirlo). Las claves desconocidas se rechazan,
+  para que una errata nunca se convierta en un ajuste que no hace nada en silencio. Cada cambio guarda
+  el valor anterior y el nuevo, quién lo hizo y por qué. Los primeros ajustes son la retención (días de
+  detalle, días de resúmenes, días de eventos, tamaño máximo), el rango con que abre la vista de
+  ataques, etiquetas para direcciones conocidas y si una respuesta MCP puede incluir intentos sueltos.
+
+Reglas que añade:
+
+- **Los ajustes los escribe una herramienta de operador elevada o el servicio, nunca un lector.** El
+  escritorio y un servidor MCP los leen. Una herramienta MCP que cambie un ajuste es una acción y queda
+  bajo la sección 6.
+- **Una etiqueta describe; nunca permite ni bloquea.** La lista de permitidos y los umbrales de
+  bloqueo solo pasan a ser ajustes mediante el ADR propio del motor de decisión, con su validación.
+- **Los ajustes que solo se aplican al arrancar lo dicen** cuando se cambian, la misma regla de
+  configuración que `AGENTS.md` ya fija para los archivos.
 
 ## Cuándo revisar esta decisión
 

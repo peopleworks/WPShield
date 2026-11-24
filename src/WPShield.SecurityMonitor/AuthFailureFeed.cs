@@ -5,23 +5,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Security;
 using System.Text;
+using WPShield.Evidence;
 
 namespace WPShield.SecurityMonitor;
-
-/// <summary>One failed Windows authentication, as the event log recorded it.</summary>
-/// <param name="Channel">
-/// <c>security-4625</c> (Security log, any logon type) or <c>rdpcorets-140</c> (Remote Desktop's own
-/// record of a wrong user name or password, which carries the client address when NLA left 4625
-/// without one).
-/// </param>
-/// <param name="Address">The source address, or <see langword="null"/> when the record has none.</param>
-/// <param name="Account">
-/// The account name the client tried, cleaned of control and format characters and bounded. The
-/// attacker chose this text; it is evidence, never a label to trust.
-/// </param>
-/// <param name="Reason">A stable code: <c>unknown-account</c>, <c>bad-password</c>, <c>locked-out</c>...</param>
-public sealed record AuthFailure(DateTimeOffset Timestamp, string Channel, IPAddress? Address, int? Port,
-    string Account, string Reason, int? LogonType, long RecordId);
 
 /// <summary>What one channel could be read for, so an empty list is never mistaken for a quiet host.</summary>
 /// <param name="Status"><c>read</c>, <c>limited</c> (a bound stopped the read) or <c>unavailable</c>.</param>
@@ -53,7 +39,7 @@ public static class AuthFailureFeed
     public const string SecurityChannel = "Security";
     public const string RdpCoreChannel = "Microsoft-Windows-RemoteDesktopServices-RdpCoreTS/Operational";
     public const int MaxRecordsPerChannel = 20_000;
-    internal const int MaxAccountLength = 64;
+    internal const int MaxAccountLength = EvidenceText.MaxAccountLength;
 
     private static readonly string[] Fields4625 =
         ["TargetUserName", "Status", "SubStatus", "LogonType", "IpAddress", "IpPort"];
@@ -179,20 +165,7 @@ public static class AuthFailureFeed
         return ip;
     }
 
-    internal static string CleanAccount(string? name)
-    {
-        if (string.IsNullOrEmpty(name) || name == "-") return "";
-        var builder = new StringBuilder(Math.Min(name.Length, MaxAccountLength));
-        foreach (var rune in name.EnumerateRunes())
-        {
-            if (builder.Length >= MaxAccountLength) break;
-            var category = Rune.GetUnicodeCategory(rune);
-            builder.Append(category is UnicodeCategory.Control or UnicodeCategory.Format or UnicodeCategory.LineSeparator
-                or UnicodeCategory.ParagraphSeparator or UnicodeCategory.Surrogate or UnicodeCategory.PrivateUse
-                or UnicodeCategory.OtherNotAssigned ? "�" : rune.ToString());
-        }
-        return builder.ToString();
-    }
+    internal static string CleanAccount(string? name) => EvidenceText.Clean(name, MaxAccountLength);
 
     private static uint ToCode(object? value) => value switch
     {

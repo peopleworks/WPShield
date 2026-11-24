@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using WPShield.Evidence;
 using WPShield.SecurityMonitor;
 
 namespace WPShield.Desktop;
@@ -47,7 +48,7 @@ internal sealed record AttackDetail(AttackSource Source, IReadOnlyList<(string A
 internal sealed class AttackBoard
 {
     internal const int Capacity = 100_000;
-    internal static readonly TimeSpan SameAttempt = TimeSpan.FromSeconds(2);
+    internal static readonly TimeSpan SameAttempt = AttemptPairing.Window;
     private readonly List<AuthFailure> failures = [];
     private DateTimeOffset? coveredFrom;
 
@@ -70,7 +71,7 @@ internal sealed class AttackBoard
         var partner = FindPartner(failure, index);
         if (partner >= 0)
         {
-            if (!KeepIncoming(failure, failures[partner])) return;
+            if (!AttemptPairing.KeepIncoming(failure, failures[partner])) return;
             failures.RemoveAt(partner);
             if (partner < index) index--;
         }
@@ -86,30 +87,10 @@ internal sealed class AttackBoard
     private int FindPartner(AuthFailure incoming, int index)
     {
         for (var i = index - 1; i >= 0 && incoming.Timestamp - failures[i].Timestamp <= SameAttempt; i--)
-            if (IsSameAttempt(failures[i], incoming)) return i;
+            if (AttemptPairing.IsSameAttempt(failures[i], incoming)) return i;
         for (var i = index; i < failures.Count && failures[i].Timestamp - incoming.Timestamp <= SameAttempt; i++)
-            if (IsSameAttempt(failures[i], incoming)) return i;
+            if (AttemptPairing.IsSameAttempt(failures[i], incoming)) return i;
         return -1;
-    }
-
-    private static bool IsSameAttempt(AuthFailure a, AuthFailure b)
-    {
-        if (a.Channel == b.Channel) return false;
-        var rdp = a.Channel == "rdpcorets-140" ? a : b;
-        var security = ReferenceEquals(rdp, a) ? b : a;
-        // NLA: 4625 type 3 without an address, 140 with it. Otherwise both name the same address.
-        return security.Address is null ? security.LogonType == 3 : security.Address.Equals(rdp.Address);
-    }
-
-    /// <summary>
-    /// Of a pair, the record with the address survives; when both carry it, the 4625 does, because it
-    /// also names the account.
-    /// </summary>
-    private static bool KeepIncoming(AuthFailure incoming, AuthFailure partner)
-    {
-        var incomingIsSecurity = incoming.Channel == "security-4625";
-        var security = incomingIsSecurity ? incoming : partner;
-        return incomingIsSecurity ? security.Address is not null : security.Address is null;
     }
 
     private int InsertionPoint(DateTimeOffset time)

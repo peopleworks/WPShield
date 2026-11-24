@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The local evidence store (ADR 0007). Portable on purpose: schema, retention and queries have no
+    Windows dependency, so they are tested on every platform. Only the collector that reads the
+    Windows event log is Windows-only, and it lives with the event-log code, not here.
+
+    This assembly opens a file (the SQLite database). Like WPShield.Logging, it is separate from the
+    gateway so the gateway's structural disk-freedom guard stays as strict as it was written: the
+    assembly that handles requests cannot name a file API, and nothing here accepts a request body.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPShield.Evidence.Tests" />
+  </ItemGroup>
+</Project>
