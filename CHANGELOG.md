@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- The bilingual desktop monitor can open saved RDP, SQL Server and IIS audit snapshots, show each source's reported coverage and copy the selected reference as JSON.
+
 - The desktop monitor charts received and sent bytes per second for a selected Windows adapter, with a pause control and explicit measurement gaps.
 
 - An English and Spanish Windows desktop monitor displays the local TCP and UDP inventory with search, observed owner PIDs and optional five-second refresh.

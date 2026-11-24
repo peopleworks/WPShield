@@ -337,8 +337,8 @@ not read as more than they claim:
 - [x] Open the local listener inventory in a bilingual Windows desktop window with keyboard navigation and manual or timed refresh. [Desktop monitor](docs/en/network-sensor-design.md#desktop-monitor)
 - [x] Chart Windows adapter counters with explicit measurement gaps and pause the display independently of sampling. [Adapter traffic](docs/en/network-sensor-design.md#adapter-traffic)
 
-- [ ] Plot interval history from the host monitor. Pausing the view keeps capture running.
-      Add keyboard selection and copy of a minimal audit reference. [Design references](docs/en/networkmanager-evaluation.md)
+- [x] Select a saved RDP, SQL Server or IIS audit reference with the keyboard and copy its minimal JSON from the desktop monitor. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference)
+- [ ] Plot interval history from the host monitor. Pausing the view keeps capture running. [Design references](docs/en/networkmanager-evaluation.md)
 - [ ] Bind management access to 127.0.0.1 initially.
 - [ ] Add English and Spanish views for summary, sites, events, rules, health, configuration, versions, export, and diagnostics.
 - [ ] Add CSRF protection and design Windows-authenticated administrative access before any remote use.
