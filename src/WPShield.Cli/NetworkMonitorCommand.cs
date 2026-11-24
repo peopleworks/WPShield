@@ -398,11 +398,11 @@ internal static class NetworkMonitorCommand
     /// <summary>
     /// Whether the current process is running with an Administrator token.
     /// </summary>
-    private static bool IsElevated()
+    internal static bool IsElevated()
     {
         try
         {
-            var identity = WindowsIdentity.GetCurrent();
+            using var identity = WindowsIdentity.GetCurrent();
             var principal = new WindowsPrincipal(identity);
             return principal.IsInRole(WindowsBuiltInRole.Administrator);
         }

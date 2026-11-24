@@ -1,6 +1,5 @@
 using System.IO;
 using System.Windows.Input;
-using System.Windows.Threading;
 using Xunit;
 
 namespace WPShield.Desktop.Tests;
@@ -10,29 +9,8 @@ public sealed class AuditReferenceWindowTests
     [Theory]
     [InlineData(true, "Cobertura declarada", "Referencia copiada.")]
     [InlineData(false, "Reported coverage", "Reference copied.")]
-    public async Task CopyCommandUsesOnlyTheSelectedPreviewAndDisablesOnFailedReload(bool spanish, string coverage, string copied)
-    {
-        var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var thread = new Thread(() =>
-        {
-            var dispatcher = Dispatcher.CurrentDispatcher;
-            dispatcher.InvokeAsync(async () =>
-            {
-                try
-                {
-                    await VerifyWindow(spanish, coverage, copied);
-                    completed.SetResult();
-                }
-                catch (Exception error) { completed.SetException(error); }
-                finally { dispatcher.BeginInvokeShutdown(DispatcherPriority.Background); }
-            });
-            Dispatcher.Run();
-        });
-        thread.IsBackground = true;
-        thread.SetApartmentState(ApartmentState.STA);
-        thread.Start();
-        await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
-    }
+    public Task CopyCommandUsesOnlyTheSelectedPreviewAndDisablesOnFailedReload(bool spanish, string coverage, string copied) =>
+        DesktopDispatcher.RunAsync(() => VerifyWindow(spanish, coverage, copied));
 
     private static async Task VerifyWindow(bool spanish, string coverage, string copied)
     {
