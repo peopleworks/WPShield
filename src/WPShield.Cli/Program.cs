@@ -79,6 +79,7 @@ internal static class ProgramMain
                 "evidence" => EvidenceCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? string.Empty),
                 "attacks" => AttacksCommand.Run(options, Console.Out, Console.Error),
                 "settings" => SettingsCommand.Run(rest, Console.Out, Console.Error),
+                "mcp" => McpCommand.Run(options),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -194,6 +195,10 @@ internal static class ProgramMain
                 Console.WriteLine(SettingsCommand.Help);
                 return 0;
 
+            case "mcp":
+                Console.WriteLine(McpCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -295,6 +300,9 @@ internal static class ProgramMain
               settings    The evidence store's settings: retention, labels, the attacks range.
                           list | get <key> | history [<key>] read only; set <key> <value> and
                           reset <key> need elevation and --reason, and are recorded with who and why.
+
+              mcp         A read-only MCP server over the evidence store, for an assistant to start
+                          on stdio. Opens no port; changes nothing. Needs elevation. [--store <path>]
 
               publish    Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.

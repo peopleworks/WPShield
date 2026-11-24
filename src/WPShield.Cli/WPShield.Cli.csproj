@@ -34,6 +34,13 @@
       names. It renders a document from the aggregated log and touches nothing else.
     -->
     <PackageReference Include="QuestPDF" />
+    <!--
+      'wpshield mcp' (ADR 0008): a read-only Model Context Protocol server over the evidence store.
+      Only the stdio transport and the attribute-based tools are used; the server is created
+      directly, without a generic host, because a host's default console logger writes to stdout
+      and stdout belongs to the protocol. Nothing here opens a socket.
+    -->
+    <PackageReference Include="ModelContextProtocol" />
   </ItemGroup>
 
   <ItemGroup>
@@ -60,6 +67,8 @@
     <ProjectReference Include="../WPShield.NetworkSensor/WPShield.NetworkSensor.csproj" />
 
     <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
+    <!-- The evidence store's read-only queries (ADR 0007), for 'wpshield mcp'. -->
+    <ProjectReference Include="../WPShield.Evidence/WPShield.Evidence.csproj" />
   </ItemGroup>
 
   <ItemGroup>
