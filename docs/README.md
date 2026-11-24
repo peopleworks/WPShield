@@ -37,6 +37,7 @@ the same set.
 | ADR 0004 — name and scope · Nombre y alcance | [What WPShield stands for](en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](es/adr/0004-que-significa-wpshield.md) |
 | ADR 0005 — putting it in the path · Poner en la ruta | [Putting WPShield in the path](en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](es/adr/0005-poner-wpshield-en-la-ruta.md) |
 | ADR 0007 — evidence store · Almacén de evidencia | [A local evidence store, and who may read it](en/adr/0007-local-evidence-store.md) | [Un almacén local de evidencia, y quién puede leerlo](es/adr/0007-almacen-local-de-evidencia.md) |
+| ADR 0008 — read-only MCP server · Servidor MCP de solo lectura | [A read-only MCP server over the evidence store](en/adr/0008-read-only-mcp-server.md) | [Un servidor MCP de solo lectura sobre el almacén de evidencia](es/adr/0008-servidor-mcp-de-solo-lectura.md) |
 
 The threat model's English original sits at the repository root, because `README.md`, `SECURITY.md`
 and `AGENTS.md` all point readers there; its Spanish translation lives here with the other pairs.
