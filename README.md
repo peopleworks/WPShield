@@ -43,7 +43,7 @@ to what it originally claimed.</sub>
 | --- | --- | --- |
 | Which rule fired on my IIS-hosted WordPress site? | `wpshield watch --plain` | Start the gateway in Monitor on loopback and read its evidence log. [Request evidence](docs/en/request-evidence.md) |
 | Which local ports are in use? | `wpshield network-monitor --listeners` | Use `--protocol tcp --local-address 127.0.0.1` to find sockets bound to IPv4 loopback. Add `--port-hints` for conventional port names or `--owners` for the observed PID. [Listener inventory](docs/en/network-sensor-design.md#local-listener-inventory) |
-| Can I see local ports in a window? | `dotnet run --project src/WPShield.Desktop -c Release` | Browse TCP listeners and bound UDP sockets in a Windows desktop window, with the owning process name. Search by address, port, PID, process or port name. [Desktop monitor](docs/en/network-sensor-design.md#desktop-monitor) |
+| Can I see local ports in a window? | `dotnet run --project src/WPShield.Desktop -c Release` | Browse TCP listeners and bound UDP sockets in a Windows desktop window, with the process name when its start time confirms the observed PID. Search by address, port, PID, process or port name. [Desktop monitor](docs/en/network-sensor-design.md#desktop-monitor) |
 | How busy is one network adapter? | Open **Adapter traffic** in the desktop monitor | Compare received and sent bytes per second for one Windows interface. Works without Npcap. [Adapter traffic](docs/en/network-sensor-design.md#adapter-traffic) |
 | How much traffic involves selected TCP or UDP ports? | Open **Port traffic** in the desktop monitor | Type ports or add them from the port list, then select a capture adapter. The chart shows observed IP bytes per second and coverage for each interval. Requires Npcap and administrator privileges. [Traffic history](docs/en/network-sensor-design.md#traffic-history) |
 | How do I copy one record from a saved audit? | Open **Audit references** in the desktop monitor | Open one WPShield JSON snapshot, select the row with the arrow keys and press Ctrl+C to copy its reference. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference) |
@@ -193,7 +193,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,724 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,750 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -432,7 +432,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,745 tests across eleven projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 404 for the CLI, 51 for the desktop monitor, 468 for the gateway, 41 for the network sensor, 14 for the network filter, 30 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,750 tests across eleven projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 404 for the CLI, 56 for the desktop monitor, 468 for the gateway, 41 for the network sensor, 14 for the network filter, 30 for the security monitor and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

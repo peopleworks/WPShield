@@ -34,6 +34,9 @@ public sealed class ListenerRowTests
     [InlineData("query-failed", "la consulta falló", "query failed")]
     [InlineData("invalid-table", "tabla no válida", "invalid table")]
     [InlineData("table-limit", "tabla demasiado grande", "table too large")]
+    [InlineData("name-lookup-limit", "límite de consultas de nombres", "name lookup limit reached")]
+    [InlineData("name-unavailable", "terminó o no se pudo leer", "ended or unreadable")]
+    [InlineData("start-not-before-sample", "inicio no anterior a la lectura del PID", "start time at or after PID observation")]
     public void ReasonCodesAreTranslated(string code, string spanish, string english)
     {
         Assert.Equal(spanish, ListenerWindow.Reason(code, spanish: true));
