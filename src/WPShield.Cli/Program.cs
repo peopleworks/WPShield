@@ -77,6 +77,8 @@ internal static class ProgramMain
                 "audit-reference" => AuditReferenceCommand.RunAsync(options, Console.Out, Console.Error).GetAwaiter().GetResult(),
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
                 "evidence" => EvidenceCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? string.Empty),
+                "attacks" => AttacksCommand.Run(options, Console.Out, Console.Error),
+                "settings" => SettingsCommand.Run(rest, Console.Out, Console.Error),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -184,6 +186,14 @@ internal static class ProgramMain
                 Console.WriteLine(EvidenceCommand.Help);
                 return 0;
 
+            case "attacks":
+                Console.WriteLine(AttacksCommand.Help);
+                return 0;
+
+            case "settings":
+                Console.WriteLine(SettingsCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -276,6 +286,15 @@ internal static class ProgramMain
               evidence collect
                           Record failed logons into the evidence store in the foreground, until
                           Ctrl+C. Elevated; refuses while the WPShield service runs. [--store <file>]
+
+              attacks     Failed Windows logons from the WPShield evidence store: totals, top
+                          sources with their labels, or one address's history. Reads only;
+                          needs an elevated prompt. Says "no data" where nothing was recorded.
+                          [--range 1h|6h|24h|7d|30d] [--top N] [--source <ip>] [--store <path>] [--json]
+
+              settings    The evidence store's settings: retention, labels, the attacks range.
+                          list | get <key> | history [<key>] read only; set <key> <value> and
+                          reset <key> need elevation and --reason, and are recorded with who and why.
 
               publish    Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.

@@ -256,7 +256,7 @@ internal static class NetworkMonitorCommand
         return 0;
     }
 
-    private static string ConsoleLabel(string? label) => string.IsNullOrWhiteSpace(label) ? "-" :
+    internal static string ConsoleLabel(string? label) => string.IsNullOrWhiteSpace(label) ? "-" :
         string.Concat(label.Select(c => char.IsControl(c) || char.GetUnicodeCategory(c) is
             System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.LineSeparator or
             System.Globalization.UnicodeCategory.ParagraphSeparator ? '?' : c));
