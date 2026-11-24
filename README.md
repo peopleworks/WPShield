@@ -709,6 +709,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | ADR 0003 — operator tooling | [Operator tooling moves to a .NET CLI](docs/en/adr/0003-operator-tooling-in-dotnet.md) | [Las herramientas de operador pasan a una CLI de .NET](docs/es/adr/0003-herramientas-de-operador-en-dotnet.md) |
 | ADR 0004 — name and scope | [What WPShield stands for](docs/en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](docs/es/adr/0004-que-significa-wpshield.md) |
 | ADR 0005 — putting it in the path | [Putting WPShield in the path](docs/en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](docs/es/adr/0005-poner-wpshield-en-la-ruta.md) |
+| ADR 0007 — evidence store | [A local evidence store, and who may read it](docs/en/adr/0007-local-evidence-store.md) | [Un almacén local de evidencia, y quién puede leerlo](docs/es/adr/0007-almacen-local-de-evidencia.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.
 
