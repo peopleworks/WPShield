@@ -8,6 +8,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../WPShield.Cli/WPShield.Cli.csproj" />
+    <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
     <InternalsVisibleTo Include="WPShield.Desktop.Tests" />
   </ItemGroup>
 </Project>

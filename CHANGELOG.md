@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- The desktop monitor's **Attacks** view shows failed Windows logons (Security 4625, any logon type, and Remote Desktop's RdpCoreTS 140) for the last 24 hours and then live: totals, a timeline split into nonexistent accounts and the rest, one row per source address with its network neighbours, search, and a slide-in detail per source. It needs administrator rights and offers to reopen elevated; without them it shows `—`, never zero, and intervals the log no longer covers are drawn as "no data".
+- `AuthFailureFeed` in the Security Monitor reads recent failed logons newest first, bounded by records and time, reports how far back each log reaches, and follows new ones through an `EventLogWatcher` subscription. It pairs nothing and decides nothing; the view pairs a 4625 and a 140 of the same attempt so it is counted once.
+
 - The desktop monitor names the process behind each listener (`sqlservr · 4120`) and finds rows by process name. A process that exits between the socket read and the name read keeps its PID and says so instead of guessing.
 - The desktop monitor documents how to run a self-contained copy on a server that has no .NET SDK.
 

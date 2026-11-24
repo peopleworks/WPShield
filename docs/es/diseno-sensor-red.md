@@ -41,6 +41,44 @@ Ejecute `WPShield.Desktop.exe` desde esa carpeta en la sesión de escritorio del
 Server con Experiencia de escritorio). Solo **Tráfico por puertos** necesita Npcap y permisos de
 administrador.
 
+### Ataques
+
+Abra **Ataques** para ver quién intenta entrar en este servidor y falla. La vista lee las últimas 24
+horas de inicios de sesión fallidos y luego sigue los nuevos en vivo:
+
+- **4625 del registro de seguridad**, para cualquier tipo de inicio. Escritorio remoto con NLA y SMB
+  fallan como tipo 3, Escritorio remoto sin NLA como tipo 10 y la autenticación básica de IIS como
+  tipo 8.
+- **RdpCoreTS 140** (`Microsoft-Windows-RemoteDesktopServices-RdpCoreTS/Operational`). Con NLA,
+  Windows suele escribir el 4625 sin la dirección del cliente; el registro propio de Escritorio remoto
+  sí la trae. Un 4625 y un 140 del mismo intento, con menos de dos segundos de diferencia, se cuentan
+  una vez: se conserva el que tiene dirección y, si ambos la tienen, el 4625, porque indica la cuenta.
+
+Las tarjetas muestran los intentos fallidos, las direcciones de origen distintas, la proporción de
+intentos a nombres de cuenta que no existen (adivinan nombres; no es un usuario conocido
+equivocándose) y la última hora. La línea de tiempo separa en cada intervalo las cuentas inexistentes
+del resto, para 1 hora, 6 horas o 24 horas. Elija un origen para abrir su panel: las cuentas que
+probó, sus intentos en el tiempo, otras direcciones que atacan desde la misma red /24 (IPv4) o /64
+(IPv6) y sus últimos intentos. **Esc** o **✕** lo cierran. La búsqueda acepta una dirección, una red
+como `203.0.113.0/24` o una cuenta.
+
+Lo que la vista no hace:
+
+- **Mostrar un tablero vacío como si nadie atacara.** Leer el registro de seguridad requiere permisos
+  de administrador. Sin ellos las tarjetas muestran `—`, un aviso dice que la ventana no pudo mirar y
+  **Abrir como administrador** la vuelve a abrir con permisos en esta vista. El resto del monitor
+  sigue funcionando sin elevación.
+- **Mostrar como cero el tiempo no leído.** En un servidor con mucho tráfico el registro de seguridad
+  puede cubrir solo horas. Los intervalos anteriores al registro más antiguo que queda, o a donde se
+  detuvo la lectura por sus límites (20 000 registros o 10 segundos por registro), se dibujan como
+  **sin datos**, y el aviso indica desde cuándo hay datos. Ampliar el registro de seguridad es un
+  ajuste manual del servidor.
+- **Fiarse de los nombres de cuenta.** Los eligió el atacante. Se limpian de caracteres de control y
+  de formato y se limitan a 64 caracteres antes de guardarlos o mostrarlos.
+- **Decidir ni bloquear nada.** Lee y muestra. Los registros en vivo se aplican una vez por segundo y
+  la memoria guarda como máximo 100 000 registros: descarta los más antiguos y mueve con ellos la
+  línea de **sin datos**.
+
 ### Tráfico por adaptador
 
 Abra **Tráfico por adaptador** y seleccione una interfaz de Windows. Cada par de barras muestra

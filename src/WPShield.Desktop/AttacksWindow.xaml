@@ -1,0 +1,198 @@
+<Window x:Class="WPShield.Desktop.AttacksWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="WPShield"
+        Width="1280" Height="820" MinWidth="960" MinHeight="600" WindowStartupLocation="CenterOwner"
+        Background="#EFF3F6" Foreground="#152C3D" FontFamily="Segoe UI" FontSize="14"
+        Loaded="OnLoaded" Closed="OnClosed" PreviewKeyDown="OnKey">
+  <Window.Resources>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="#CFDCE2"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Padding" Value="16,11"/>
+    </Style>
+    <Style x:Key="Range" TargetType="RadioButton">
+      <Setter Property="Margin" Value="4,0,0,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="RadioButton">
+          <Border x:Name="Chip" Padding="12,6" CornerRadius="6" Background="#E2EAEE">
+            <ContentPresenter HorizontalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chip" Property="Background" Value="#145856"/>
+              <Setter Property="Foreground" Value="White"/></Trigger>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chip" Property="Opacity" Value="0.85"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#E8EEF1"/>
+      <Setter Property="Foreground" Value="#324F5F"/>
+      <Setter Property="Padding" Value="10,9"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style x:Key="CellText" TargetType="TextBlock">
+      <Setter Property="Margin" Value="10,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+      <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+    </Style>
+    <Style x:Key="Kpi" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="28"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Text" Value="—"/>
+    </Style>
+    <DataTemplate x:Key="Line">
+      <TextBlock Text="{Binding}" TextTrimming="CharacterEllipsis" ToolTip="{Binding}" Margin="0,1"/>
+    </DataTemplate>
+    <Style x:Key="Small" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="#476170"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+  </Window.Resources>
+  <Grid>
+    <Grid Margin="22,16">
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+        <RowDefinition Height="230"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
+
+      <DockPanel>
+        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+          <RadioButton x:Name="RangeHour" Style="{StaticResource Range}" GroupName="Range" Content="1 h" Checked="OnRange"/>
+          <RadioButton x:Name="RangeSix" Style="{StaticResource Range}" GroupName="Range" Content="6 h" Checked="OnRange"/>
+          <RadioButton x:Name="RangeDay" Style="{StaticResource Range}" GroupName="Range" Content="24 h" Checked="OnRange"/>
+          <CheckBox x:Name="Live" Margin="16,0,0,0" VerticalAlignment="Center" Checked="OnLive" Unchecked="OnLive"/>
+          <Button x:Name="RefreshButton" Margin="12,0,0,0" Click="OnRefresh" Background="#145856" Foreground="White"
+                  BorderThickness="0" Padding="15,8" FontWeight="SemiBold"/>
+        </StackPanel>
+        <StackPanel>
+          <TextBlock x:Name="SourceLabel" Foreground="#486475" FontSize="12"/>
+          <TextBlock x:Name="Heading" FontSize="30" FontWeight="SemiBold"/>
+          <TextBlock x:Name="Subtitle" Style="{StaticResource Small}"/>
+        </StackPanel>
+      </DockPanel>
+
+      <Border x:Name="Banner" Grid.Row="1" Margin="0,12,0,0" Background="#FFF4DF" BorderBrush="#E9C27A" BorderThickness="1"
+              CornerRadius="8" Padding="14,10" Visibility="Collapsed">
+        <DockPanel>
+          <Button x:Name="ElevateButton" DockPanel.Dock="Right" Click="OnElevate" Padding="12,6" Margin="12,0,0,0"
+                  Background="#8A5A12" Foreground="White" BorderThickness="0" Visibility="Collapsed"/>
+          <TextBlock x:Name="BannerText" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="#5E3F0B"/>
+        </DockPanel>
+      </Border>
+
+      <UniformGrid Grid.Row="2" Columns="4" Margin="0,14,0,12">
+        <Border Style="{StaticResource Card}" Margin="0,0,6,0"><StackPanel>
+          <TextBlock x:Name="AttemptsLabel" FontWeight="SemiBold" Foreground="#9A2F2F"/>
+          <TextBlock x:Name="AttemptsValue" Style="{StaticResource Kpi}"/>
+          <TextBlock x:Name="AttemptsNote" Style="{StaticResource Small}"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="3,0"><StackPanel>
+          <TextBlock x:Name="SourcesLabel" FontWeight="SemiBold" Foreground="#146662"/>
+          <TextBlock x:Name="SourcesValue" Style="{StaticResource Kpi}"/>
+          <TextBlock x:Name="SourcesNote" Style="{StaticResource Small}"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="3,0"><StackPanel>
+          <TextBlock x:Name="UnknownLabel" FontWeight="SemiBold" Foreground="#8A5A12"/>
+          <TextBlock x:Name="UnknownValue" Style="{StaticResource Kpi}"/>
+          <TextBlock x:Name="UnknownNote" Style="{StaticResource Small}"/></StackPanel></Border>
+        <Border Style="{StaticResource Card}" Margin="6,0,0,0"><StackPanel>
+          <TextBlock x:Name="HourLabel" FontWeight="SemiBold" Foreground="#3E5696"/>
+          <TextBlock x:Name="HourValue" Style="{StaticResource Kpi}"/>
+          <TextBlock x:Name="HourNote" Style="{StaticResource Small}"/></StackPanel></Border>
+      </UniformGrid>
+
+      <Border Grid.Row="3" Style="{StaticResource Card}">
+        <Grid>
+          <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+          <DockPanel>
+            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+              <Border Width="11" Height="11" Background="#B33A3A" CornerRadius="2" Margin="0,0,5,0"/>
+              <TextBlock x:Name="LegendOther" FontSize="12" Margin="0,0,14,0"/>
+              <Border Width="11" Height="11" Background="#E0A23A" CornerRadius="2" Margin="0,0,5,0"/>
+              <TextBlock x:Name="LegendUnknown" FontSize="12" Margin="0,0,14,0"/>
+              <Border Width="11" Height="11" Background="#C9D3D8" CornerRadius="2" Margin="0,0,5,0"/>
+              <TextBlock x:Name="LegendGap" FontSize="12"/>
+            </StackPanel>
+            <TextBlock x:Name="ChartTitle" FontWeight="SemiBold"/>
+          </DockPanel>
+          <Grid Grid.Row="1" Margin="0,10,0,4">
+            <Border Background="#E6ECEF" Height="1" VerticalAlignment="Top"/>
+            <Border Background="#E6ECEF" Height="1" VerticalAlignment="Center"/>
+            <Border Background="#C9D8DF" Height="1" VerticalAlignment="Bottom"/>
+            <UniformGrid x:Name="Plot" Rows="1" SizeChanged="OnPlotResized"/>
+          </Grid>
+          <DockPanel Grid.Row="2"><TextBlock x:Name="ChartEnd" DockPanel.Dock="Right" FontSize="12" Foreground="#486475"/>
+            <TextBlock x:Name="ChartStart" FontSize="12" Foreground="#486475"/></DockPanel>
+        </Grid>
+      </Border>
+
+      <DockPanel Grid.Row="4" Margin="0,12,0,8">
+        <Label x:Name="SearchLabel" Target="{Binding ElementName=Search}" Padding="0,5,8,5"/>
+        <TextBox x:Name="Search" VerticalContentAlignment="Center" Padding="8,4" MaxLength="96" TextChanged="OnSearch"/>
+      </DockPanel>
+
+      <Border Grid.Row="5" BorderBrush="#CFDCE2" BorderThickness="1" Background="White" CornerRadius="6" ClipToBounds="True">
+        <Grid>
+          <DataGrid x:Name="Rows" AutoGenerateColumns="False" IsReadOnly="True" CanUserReorderColumns="False"
+                    SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                    HorizontalGridLinesBrush="#E6ECEF" BorderThickness="0" Background="White"
+                    AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True"
+                    SelectionChanged="OnRowSelected">
+            <DataGrid.Columns>
+              <DataGridTextColumn Binding="{Binding Address}" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Attempts}" Width="90" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Accounts}" Width="90" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding TopAccounts}" Width="2*" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding UnknownShare, StringFormat=P0}" Width="100" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding LogonTypes}" Width="80" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Network}" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Neighbors}" Width="80" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Last, StringFormat=HH:mm:ss}" Width="100" ElementStyle="{StaticResource CellText}"/>
+            </DataGrid.Columns>
+          </DataGrid>
+          <TextBlock x:Name="Empty" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                     IsHitTestVisible="False" TextWrapping="Wrap" TextAlignment="Center" Margin="40"/>
+        </Grid>
+      </Border>
+      <TextBlock x:Name="Footer" Grid.Row="6" Margin="0,8,0,0" Style="{StaticResource Small}"/>
+    </Grid>
+
+    <!-- Slides over the content instead of pushing it, so the table keeps its columns. -->
+    <Border x:Name="Detail" Width="0" HorizontalAlignment="Right" Panel.ZIndex="1" Background="White"
+            BorderBrush="#CFDCE2" BorderThickness="1,0,0,0">
+      <Border.Effect><DropShadowEffect BlurRadius="16" ShadowDepth="0" Opacity="0.18"/></Border.Effect>
+      <DockPanel Width="430" Margin="0">
+        <DockPanel DockPanel.Dock="Top" Margin="20,18,16,6">
+          <Button x:Name="CloseDetail" DockPanel.Dock="Right" Content="✕" Click="OnCloseDetail" Width="30" Height="30"
+                  Background="Transparent" BorderThickness="0" FontSize="16" Cursor="Hand"/>
+          <StackPanel>
+            <TextBlock x:Name="DetailCaption" FontSize="12" Foreground="#486475"/>
+            <TextBlock x:Name="DetailAddress" FontSize="22" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+          </StackPanel>
+        </DockPanel>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,0,16,18">
+          <StackPanel>
+            <Button x:Name="CopyAddress" HorizontalAlignment="Left" Click="OnCopyAddress" Padding="10,5" Margin="0,0,0,12"/>
+            <TextBlock x:Name="DetailSummary" TextWrapping="Wrap" Margin="0,0,0,12"/>
+            <TextBlock x:Name="DetailTimelineLabel" FontWeight="SemiBold" Margin="0,4,0,6"/>
+            <Grid Height="70" Margin="0,0,0,14">
+              <Border Background="#C9D8DF" Height="1" VerticalAlignment="Bottom"/>
+              <UniformGrid x:Name="DetailPlot" Rows="1"/>
+            </Grid>
+            <TextBlock x:Name="DetailAccountsLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <ItemsControl x:Name="DetailAccounts" ItemTemplate="{StaticResource Line}" Margin="0,0,0,14"/>
+            <TextBlock x:Name="DetailNeighborsLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <ItemsControl x:Name="DetailNeighbors" ItemTemplate="{StaticResource Line}" Margin="0,0,0,14"/>
+            <TextBlock x:Name="DetailRecentLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <ItemsControl x:Name="DetailRecent" ItemTemplate="{StaticResource Line}"/>
+          </StackPanel>
+        </ScrollViewer>
+      </DockPanel>
+    </Border>
+  </Grid>
+</Window>
