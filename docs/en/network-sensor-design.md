@@ -37,6 +37,40 @@ dotnet publish src/WPShield.Desktop -c Release -r win-x64 --self-contained true 
 Run `WPShield.Desktop.exe` from that folder in the server's desktop session (Windows Server with the
 Desktop Experience). Only **Port traffic** needs Npcap and administrator rights.
 
+### Attacks
+
+Open **Attacks** to see who is failing to log in to this host. The view reads the last 24 hours of
+failed logons and then follows new ones live:
+
+- **Security 4625** for every logon type. Remote Desktop with NLA and SMB fail as logon type 3, plain
+  Remote Desktop as type 10, IIS basic authentication as type 8.
+- **RdpCoreTS 140** (`Microsoft-Windows-RemoteDesktopServices-RdpCoreTS/Operational`). With NLA,
+  Windows often writes 4625 without the client address; Remote Desktop's own record carries it. A
+  4625 and a 140 for the same attempt, within two seconds, are counted once: the one with the
+  address is kept, and when both have it the 4625 is kept because it names the account.
+
+The cards show failed attempts, distinct source addresses, the share of attempts on account names
+that do not exist (guessing, rather than a known user mistyping) and the last hour. The timeline
+splits each interval into nonexistent accounts and the rest, for 1 hour, 6 hours or 24 hours.
+Select a source to slide in its detail: the accounts it tried, its attempts over time, other
+addresses attacking from the same /24 (IPv4) or /64 (IPv6) network, and its latest attempts. **Esc**
+or **✕** closes it. Search matches an address, a network such as `203.0.113.0/24`, or an account.
+
+What the view will not do:
+
+- **Show an empty board as a quiet host.** Reading the Security log needs administrator rights.
+  Without them the cards show `—`, a banner says the window could not look, and **Reopen as
+  administrator** relaunches it elevated on this view. The rest of the monitor keeps running without
+  elevation.
+- **Show unread time as zero.** A busy host's Security log can cover only hours. Intervals before
+  the oldest record still in the log, or before a bound stopped the read (20,000 records or
+  10 seconds per log), are drawn as **no data**, and the banner names the time the data starts.
+  Enlarging the Security log is a manual server setting.
+- **Trust the account names.** The attacker chose them. They are cleaned of control and format
+  characters and bounded to 64 characters before they are stored or shown.
+- **Decide or block anything.** It reads and shows. Live records are applied once a second and
+  memory holds at most 100,000 records, dropping the oldest and moving the "no data" line with them.
+
 ### Adapter traffic
 
 Open **Adapter traffic** and select a Windows network adapter. Paired bars show received and sent

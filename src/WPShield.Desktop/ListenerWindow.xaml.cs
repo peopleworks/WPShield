@@ -17,6 +17,7 @@ public partial class ListenerWindow : Window
     private AdapterTrafficWindow? trafficWindow;
     private PortTrafficWindow? portTrafficWindow;
     private AuditReferenceWindow? auditWindow;
+    private AttacksWindow? attacksWindow;
     private IReadOnlyList<LocalListenerInventory.Table> latest = [];
 
     public ListenerWindow()
@@ -30,6 +31,7 @@ public partial class ListenerWindow : Window
         TrafficButton.Content = L("Adapter traffic", "Tráfico por adaptador");
         PortTrafficButton.Content = L("Port traffic", "Tráfico por puertos");
         AuditButton.Content = L("Audit references", "Referencias de auditoría");
+        AttacksButton.Content = L("Attacks", "Ataques");
         AllProtocols.Content = L("All protocols", "Todos los protocolos");
         PreviewLabel.Text = L("Research preview", "Vista previa de investigación");
         RefreshButton.Content = L("Refresh", "Actualizar");
@@ -81,7 +83,27 @@ public partial class ListenerWindow : Window
         }
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e) => await RefreshAsync();
+    private async void OnLoaded(object sender, RoutedEventArgs e)
+    {
+        // "Reopen as administrator" in the attacks view relaunches with --attacks to land there again.
+        if (Environment.GetCommandLineArgs().Contains("--attacks")) OpenAttacks(this, e);
+        await RefreshAsync();
+    }
+
+    private void OpenAttacks(object sender, RoutedEventArgs e)
+    {
+        if (attacksWindow is null)
+        {
+            attacksWindow = new AttacksWindow(spanish) { Owner = this };
+            attacksWindow.Closed += (_, _) => attacksWindow = null;
+            attacksWindow.Show();
+        }
+        else
+        {
+            if (attacksWindow.WindowState == WindowState.Minimized) attacksWindow.WindowState = WindowState.Normal;
+            attacksWindow.Activate();
+        }
+    }
 
     private void OpenPortTraffic(object sender, RoutedEventArgs e)
     {

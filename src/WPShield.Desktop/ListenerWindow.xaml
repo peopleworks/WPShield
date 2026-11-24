@@ -56,7 +56,9 @@
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">
           <ListBoxItem x:Name="AllProtocols"/><ListBoxItem Content="TCP"/><ListBoxItem Content="UDP"/>
         </ListBox>
-        <Button x:Name="TrafficButton" Margin="0,18,0,0" Padding="8,8" Background="#294858" Foreground="White"
+        <Button x:Name="AttacksButton" Margin="0,18,0,0" Padding="8,8" Background="#8E3434" Foreground="White"
+                BorderThickness="0" FontWeight="SemiBold" Click="OpenAttacks"/>
+        <Button x:Name="TrafficButton" Margin="0,6,0,0" Padding="8,8" Background="#294858" Foreground="White"
                 BorderThickness="0" Click="OpenTraffic"/>
         <Button x:Name="PortTrafficButton" Margin="0,6,0,0" Padding="8,8" Background="#294858" Foreground="White"
                 BorderThickness="0" Click="OpenPortTraffic"/>
