@@ -1180,10 +1180,12 @@ must complete first.
   different guarantee.
 - `wpshield audit` covers IIS only. It does not yet verify module or system binary signatures (most
   Windows binaries are catalog-signed, which .NET has no API to check), read the host beyond IIS -
-  Remote Desktop sign-ins, WMI subscriptions, cleared event logs, open firewall rules, Defender - or
-  look for a web shell's signature in the IIS logs. Membership in the local Administrators group is
-  direct only, and deny entries are compared by group rather than by mask. See
-  [Audit](docs/en/audit.md#what-it-does-not-check-yet).
+  WMI subscriptions, cleared event logs, open firewall rules, Defender - or look for a web shell's
+  signature in the IIS logs. Listening ports and Remote Desktop logon outcomes are read by
+  `wpshield network-monitor`, not by the audit. Membership in the local Administrators group is
+  direct only, and deny entries are compared by group rather than by mask. Its checks are tested
+  against constructed snapshots; the reader that builds a snapshot from a live server has not yet
+  run against a real IIS host. See [Audit](docs/en/audit.md#what-it-does-not-check-yet).
 - `PHP-CONTENT-001` searches a bounded UTF-8 sample and can be evaded by placing the tag beyond the
   sample window, encoding as UTF-16, or splitting it across the boundary. It is a supporting signal,
   never a sole reason to block.

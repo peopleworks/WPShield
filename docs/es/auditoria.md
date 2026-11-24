@@ -81,6 +81,14 @@ lista a los 25 elementos y dice cuántos quedan.
 El informe lleva nombres reales de sitios, rutas de carpetas y nombres de cuentas. Lo cubre la regla
 `*.jsonl` del `.gitignore` del repositorio; manténgalo fuera de cualquier sitio público.
 
+## Hasta dónde se ha probado
+
+Las comprobaciones se prueban contra instantáneas de una configuración de IIS que las pruebas
+construyen a mano. El lector que construye esa instantánea desde un servidor real, a través de
+`Microsoft.Web.Administration`, **todavía no se ha ejecutado contra un IIS real.** Hasta que se haga,
+lea su primer informe en un servidor real como lo que es, una primera ejecución: una lista vacía
+puede significar que el lector pasó algo por alto, no que no haya nada.
+
 ## Qué no comprueba todavía
 
 Dicho ahora en lugar de descubierto después:
@@ -89,10 +97,25 @@ Dicho ahora en lugar de descubierto después:
   firmados válidamente por Microsoft. La mayoría de los binarios de Windows están firmados por
   catálogo, y .NET no tiene una API para verificarlo, así que necesita su propia pieza de interop
   hecha con cuidado.
-- **El host más allá de IIS.** Inicios de sesión de Escritorio Remoto por dirección de origen,
-  suscripciones de eventos WMI, registros de eventos borrados, el tamaño del registro de seguridad,
-  puertos a la escucha con una regla de firewall abierta a cualquier dirección, y el historial de
+- **El host más allá de IIS.** Suscripciones de eventos WMI, registros de eventos borrados, el tamaño
+  del registro de seguridad, reglas de firewall abiertas a cualquier dirección y el historial de
   Microsoft Defender. La [herramienta de triage](herramienta-de-triage.md) cubre parte de esto hoy.
+- **Los puertos a la escucha y los inicios de sesión por Escritorio Remoto.** Ambos tienen ya su
+  propia herramienta, fuera de la auditoría, y la auditoría no lee ninguna de las dos:
+  - `wpshield network-monitor --listeners --owners` lista los sockets TCP en escucha y los sockets
+    UDP asociados, cada uno con el identificador de proceso que Windows informó para él, y el
+    monitor de escritorio muestra el mismo inventario
+    ([inventario de puertos locales](diseno-sensor-red.md#inventario-de-puertos-locales),
+    [monitor de escritorio](diseno-sensor-red.md#monitor-de-escritorio)). Ninguno compara un puerto
+    con el firewall, así que un puerto a la escucha con una regla abierta a cualquier dirección
+    sigue sin aparecer en ninguna parte.
+  - `wpshield network-monitor --flows --rdp-port <puerto>` asocia cada flujo entrante de Escritorio
+    Remoto observado con el resultado del inicio de sesión en Windows y su número de registro de
+    Seguridad
+    ([evidencia de inicios de sesión por Escritorio Remoto](diseno-sensor-red.md#evidencia-de-inicios-de-sesión-por-escritorio-remoto)).
+    Lee el último minuto del registro Seguridad mientras captura, así que muestra los inicios de
+    sesión que ve ocurrir; ninguna de las dos herramientas guarda un historial por dirección de
+    origen.
 - **El comportamiento en los logs de IIS.** Un script que responde a peticiones POST con un tamaño de
   respuesta distinto cada vez es la firma de un web shell en uso, y la forma más fiable de encontrar
   uno que ninguna firma de antivirus ha detectado.

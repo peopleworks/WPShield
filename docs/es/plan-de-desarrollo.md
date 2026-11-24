@@ -834,10 +834,16 @@ Rate-limit events
 ### Primera fuente de datos: la postura del servidor
 
 `wpshield audit` ya existe (véase [Auditoría](auditoria.md)): lee, sin cambiar nada, la configuración
-de IIS que decide si un sitio comprometido se queda en uno solo. El panel de postura del dashboard la
-mostrará, y se ampliará más allá de IIS (firmas, inicios de sesión RDP, WMI, registros borrados,
-firewall, Defender y la firma de un web shell en los logs de IIS) con las mismas condiciones de solo
-lectura. El `ROADMAP.md` manda si este plan difiere.
+de IIS que decide si un sitio comprometido se queda en uno solo. Sus comprobaciones se prueban contra
+instantáneas construidas en las pruebas; el lector de IIS todavía no se ha ejecutado contra un IIS
+real. El panel de postura del dashboard la mostrará, y se ampliará más allá de IIS (firmas, WMI,
+registros borrados, firewall, Defender y la firma de un web shell en los logs de IIS) con las mismas
+condiciones de solo lectura. El inventario de puertos a la escucha con su PID y los resultados de los
+inicios de sesión por Escritorio Remoto ya existen en el monitor del host
+([inventario de puertos locales](diseno-sensor-red.md#inventario-de-puertos-locales),
+[Escritorio Remoto](diseno-sensor-red.md#evidencia-de-inicios-de-sesión-por-escritorio-remoto)); la
+auditoría todavía no los lee, no compara ningún puerto con el firewall y no guarda un historial de
+inicios de sesión por origen. El `ROADMAP.md` manda si este plan difiere.
 
 ### Acceso inicial
 

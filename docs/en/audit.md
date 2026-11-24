@@ -79,6 +79,14 @@ there are.
 The report carries real site names, folder paths and account names. It is covered by the repository's
 `*.jsonl` ignore rule; keep it out of anything public.
 
+## How far it has been tested
+
+The checks are tested against snapshots of an IIS configuration that the test suite builds by hand.
+The reader that builds that snapshot from a live server, through `Microsoft.Web.Administration`,
+**has not yet run against a real IIS host.** Until it has, read its first report on a real server as
+exactly that, a first run: a list that comes back empty may mean the reader missed something, not
+that nothing is there.
+
 ## What it does not check yet
 
 Stated rather than discovered later:
@@ -86,9 +94,21 @@ Stated rather than discovered later:
 - **Signatures.** Whether every IIS global module, and binaries such as `sethc.exe` and `utilman.exe`,
   are validly signed by Microsoft. Most Windows binaries are catalog-signed, which .NET has no API to
   verify, so this needs its own careful piece of interop.
-- **The host beyond IIS.** Remote Desktop sign-ins by source address, WMI event subscriptions, cleared
-  event logs, the size of the Security log, listening ports with a firewall rule open to any address,
-  and Microsoft Defender's history. The [triage tool](triage-tool.md) covers part of this today.
+- **The host beyond IIS.** WMI event subscriptions, cleared event logs, the size of the Security log,
+  firewall rules open to any address, and Microsoft Defender's history. The
+  [triage tool](triage-tool.md) covers part of this today.
+- **Listening ports and Remote Desktop sign-ins.** Both have their own tools now, outside the audit,
+  and the audit reads neither:
+  - `wpshield network-monitor --listeners --owners` lists the local TCP listeners and UDP bindings
+    with the process ID Windows reported for each, and the desktop monitor shows the same inventory
+    ([local listener inventory](network-sensor-design.md#local-listener-inventory),
+    [desktop monitor](network-sensor-design.md#desktop-monitor)). Neither compares a port with the
+    firewall, so a listening port with a rule open to any address is still not reported anywhere.
+  - `wpshield network-monitor --flows --rdp-port <port>` matches each observed incoming Remote
+    Desktop flow with its Windows logon outcome and Security record ID
+    ([Remote Desktop logon evidence](network-sensor-design.md#remote-desktop-logon-evidence)). It
+    reads the last minute of the Security log while it captures, so it shows the sign-ins it sees
+    happen; neither tool keeps a history of sign-ins by source address.
 - **Behaviour in the IIS logs.** A script that answers POST requests with a different response size
   every time is the signature of a web shell in use, and the most reliable way to find one that no
   signature has caught.
