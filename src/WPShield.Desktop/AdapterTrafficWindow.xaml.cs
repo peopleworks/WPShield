@@ -55,7 +55,7 @@ public partial class AdapterTrafficWindow : Window
         {
             var choices = await Task.Run(() => NetworkInterface.GetAllNetworkInterfaces()
                 .OrderBy(n => n.Name, StringComparer.CurrentCultureIgnoreCase)
-                .Select(n => new Adapter(n.Id, n.Name)).ToArray());
+                .Select(n => new Adapter(n.Id, DisplayText.Clean(n.Name, 120))).ToArray());
             if (closed) return;
             Adapters.ItemsSource = choices;
             Adapters.SelectedItem = choices.FirstOrDefault(a => a.Id == selected);

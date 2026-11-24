@@ -18,6 +18,33 @@ public sealed class ListenerRowTests
         Assert.Equal(expected, Row.Matches(protocol, query));
 
     [Fact]
+    public void FindsARowByProcessName()
+    {
+        var named = Row with { ProcessName = "sqlservr" };
+        Assert.True(named.Matches(null, "SQLSERVR"));
+        Assert.True(named.Matches("TCP", "sqlserv"));
+        Assert.False(Row.Matches(null, "sqlservr"));
+    }
+
+    [Theory]
+    [InlineData("access-denied", "acceso denegado", "access denied")]
+    [InlineData("not-observed", "no aparece en la tabla de propietarios", "not in the owner table")]
+    [InlineData("ambiguous", "propietario ambiguo", "ambiguous owner")]
+    [InlineData("pid-unavailable", "PID no disponible", "PID unavailable")]
+    [InlineData("query-failed", "la consulta falló", "query failed")]
+    [InlineData("invalid-table", "tabla no válida", "invalid table")]
+    [InlineData("table-limit", "tabla demasiado grande", "table too large")]
+    public void ReasonCodesAreTranslated(string code, string spanish, string english)
+    {
+        Assert.Equal(spanish, ListenerWindow.Reason(code, spanish: true));
+        Assert.Equal(english, ListenerWindow.Reason(code, spanish: false));
+    }
+
+    [Fact]
+    public void AnUnknownReasonCodeIsShownCleaned() =>
+        Assert.Equal("new�code", ListenerWindow.Reason("new\u001bcode", spanish: true));
+
+    [Fact]
     public void SelectionFollowsTheBindingAcrossOwnerChanges()
     {
         var unknownOwner = Row with { ProcessId = null, Owner = "—" };

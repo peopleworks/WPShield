@@ -13,11 +13,28 @@ From the repository root on Windows with the .NET 10 SDK and Desktop Runtime, ru
 dotnet run --project src/WPShield.Desktop -c Release -- --en
 ```
 
-Select TCP or UDP in the sidebar, or search by address, exact port, PID or conventional port name.
-The cards show each table's observation time, coverage and IPv4/IPv6 counts. The PID tooltip shows
-the separate owner observation time and the reason for an unknown PID. Use **Refresh** for another
-snapshot or enable **Every 5 s**. Closing the window stops polling. The view reads local socket
-tables in memory and works without Npcap or an HTTP listener. Use `--es` to open the window in Spanish.
+Select TCP or UDP in the sidebar, or search by address, exact port, PID, process name or
+conventional port name. The cards show each table's observation time, coverage and IPv4/IPv6
+counts. The owner column shows the process name and PID, for example `sqlservr · 4120`. The name is
+read just after the socket table, so a process that exits in between shows its PID with "ended or
+unreadable" rather than a guessed name. The tooltip shows the owner observation time and, for an
+unknown owner, the reason in the window's language. Use **Refresh** for another snapshot or enable
+**Every 5 s**. Closing the window stops polling. The view reads local socket tables in memory and
+works without Npcap, elevation or an HTTP listener. Use `--es` to open the window in Spanish.
+
+Names that come from Windows (adapters, capture devices, processes) are shown with control and
+bidirectional-format characters replaced by `�`, and accented letters kept. A read that fails in an
+unexpected way shows a message and leaves the window open.
+
+**On a server without the .NET SDK,** build a self-contained copy on a development machine and carry
+the folder across; nothing is installed on the server:
+
+```powershell
+dotnet publish src/WPShield.Desktop -c Release -r win-x64 --self-contained true -o artifacts\wpshield-desktop
+```
+
+Run `WPShield.Desktop.exe` from that folder in the server's desktop session (Windows Server with the
+Desktop Experience). Only **Port traffic** needs Npcap and administrator rights.
 
 ### Adapter traffic
 

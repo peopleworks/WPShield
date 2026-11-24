@@ -14,6 +14,9 @@ must complete first.
 
 ### Added
 
+- The desktop monitor names the process behind each listener (`sqlservr · 4120`) and finds rows by process name. A process that exits between the socket read and the name read keeps its PID and says so instead of guessing.
+- The desktop monitor documents how to run a self-contained copy on a server that has no .NET SDK.
+
 - The bilingual desktop **Port traffic** view plots the host sensor's observed inbound and outbound IP bytes per second for selected TCP/UDP ports, including gaps and intervals with unknown coverage.
 
 - The bilingual desktop monitor can open saved RDP, SQL Server and IIS audit snapshots, show each source's reported coverage and copy the selected reference as JSON.
@@ -114,6 +117,11 @@ must complete first.
   row of "does not contain" assertions passes just as well against an empty list.
 
 ### Fixed
+
+- An unexpected failure in a desktop read no longer closes the window; it shows a message and the other views keep working.
+- Adapter, capture-device and process names are shown with control and bidirectional-format characters replaced, keeping accented letters.
+- Spanish desktop views no longer show English reason codes such as `access-denied` or `not-observed`.
+- The desktop sidebar no longer truncates "Referencias de auditoría" or shows a horizontal scrollbar.
 
 - **Concurrent multipart capacity now stays reserved through forwarding**, until its bounded
   in-memory buffer is disposed. Previously a slow backend could retain buffers after the inspection

@@ -41,7 +41,7 @@
     </Style>
   </Window.Resources>
   <Grid>
-    <Grid.ColumnDefinitions><ColumnDefinition Width="178"/><ColumnDefinition/></Grid.ColumnDefinitions>
+    <Grid.ColumnDefinitions><ColumnDefinition Width="218"/><ColumnDefinition/></Grid.ColumnDefinitions>
     <DockPanel Background="#162D3B" LastChildFill="True">
       <StackPanel DockPanel.Dock="Top" Margin="16,25,0,34" Orientation="Horizontal">
         <Border Background="#75E2BE" Width="32" Height="32" CornerRadius="9">
@@ -52,7 +52,8 @@
       <TextBlock x:Name="PreviewLabel" DockPanel.Dock="Bottom" Foreground="#B3C7D0" FontSize="12" Margin="18,16" TextWrapping="Wrap"/>
       <StackPanel Margin="10,0">
         <TextBlock x:Name="NavLabel" Foreground="#A6BDC8" FontSize="12" Margin="9,0,0,8"/>
-        <ListBox x:Name="Protocols" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="OnFilterChanged">
+        <ListBox x:Name="Protocols" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="OnFilterChanged"
+                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
           <ListBoxItem x:Name="AllProtocols"/><ListBoxItem Content="TCP"/><ListBoxItem Content="UDP"/>
         </ListBox>
         <Button x:Name="TrafficButton" Margin="0,18,0,0" Padding="8,8" Background="#294858" Foreground="White"
@@ -108,7 +109,7 @@
                     SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E6ECEF"
                     BorderThickness="0" Background="White" AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True">
             <DataGrid.Columns>
-              <DataGridTextColumn Binding="{Binding Protocol}" Width="76" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Protocol}" Width="104" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Address}" Width="2*" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Port}" Width="72" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Family}" Width="68" ElementStyle="{StaticResource CellText}"/>
