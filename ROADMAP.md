@@ -196,45 +196,20 @@ not read as more than they claim:
 
 ## M2.7 — Network layer packet filtering
 
-> Pulled forward from M3 because a production host was observed crashing repeatedly with
-> `0x00000133 — DPC_WATCHDOG_VIOLATION` traced to `mwac.sys` (Malwarebytes Web Access Control)
-> blocking on a kernel spinlock while inspecting inbound connections in DPC context. M2.7 is the
-> project's own network-layer protection: user-mode packet filtering through WinDivert, with a
-> strict per-packet time budget so the filter can never become the watchdog violation it exists to
-> prevent.
->
-> See [network filter design](docs/en/network-filter-design.md) for the complete behaviour.
+The legacy WinDivert engine opened a sniff handle, which copies packets. Discarding a copy
+leaves the original in transit. The CLI refuses `network-filter` before accessing a driver.
 
-- [x] `src/WPShield.NetworkFilter/` — user-mode WinDivert packet filter targeting `net10.0-windows`.
-- [x] `NetworkInspectionAction`, `NetworkInspectionContext`, `NetworkInspectionResult`, and
-  `INetworkInspectionRule` contracts in `WPShield.Abstractions`.
-- [x] `WP-NET-001` — dynamic block list (source IP match, score 100, Block).
-- [x] `WP-NET-002` — rate limiting per source IP per minute (sliding 60-second window).
-- [x] `WP-NET-003` — port-scan detection (distinct destination ports per source IP per minute).
-- [x] `NetworkFilterEngine` — capture loop with 5 ms per-packet inspection budget; slow rules
-  forward the packet uninspected and log a budget warning.
-- [x] `NetworkFilterBuilder` — assembles default rule set from `NetworkFilterConfiguration`.
-- [x] Same JSON Lines log envelope as the gateway and triage tool for forensic correlation.
-- [x] Windows-only project; platform-independent projects remain buildable and testable on Linux.
-
-### What M2.7 does not cover
-
-- **Outbound traffic.** The default WinDivert filter is `tcp.Inbound`; outbound filtering is not implemented.
-- **ICMP or other IP protocols.** Only TCP and UDP headers are parsed.
-- **Deep packet inspection.** Rules see only the first 64 bytes of payload.
-- **Kernel code.** WPShield writes no kernel driver; WinDivert is an externally installed, signed dependency.
-- **TLS decryption.** Only TCP/UDP headers are visible; TLS payloads are opaque.
+- [x] Network inspection contracts and unit-tested block-list, rate and port-scan rules.
+- [ ] Host-wide packet enforcement. [Draft PR #86](https://github.com/peopleworks/WPShield/pull/86)
+  tracks a replacement using Windows Filtering Platform dynamic sessions and its validation on a
+  disposable host. Acceptance includes proving that a connection is blocked and access returns
+  after the enforcing process exits.
 
 ## M2.8 — Security event log monitoring
 
-> Pulled forward from M3 because a production host was observed receiving sustained attacks on
-> Remote Desktop (TCP 3389) in addition to web traffic. `WPShield.NetworkFilter` can block packets
-> by source IP and rate, but it cannot see whether an RDP connection succeeded or failed — that
-> happens inside the authentication session, after the TCP handshake. M2.8 reads the Windows
-> Security event log and detects RDP brute-force and failed-logon patterns, publishing findings
-> that can feed the dynamic block list of `WPShield.NetworkFilter`.
->
-> See [security monitor design](docs/en/security-monitor-design.md) for the complete behaviour.
+The CLI reads the Windows Security event log and reports RDP brute-force and failed-logon
+findings. The integration library has an in-memory block-list sink. Packet enforcement remains
+pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md)
 
 - [x] `src/WPShield.SecurityMonitor/` — Security event log reader targeting `net10.0-windows`.
 - [x] `SecurityInspectionContext`, `SecurityInspectionResult`, `ISecurityInspectionRule`, and
@@ -249,8 +224,7 @@ not read as more than they claim:
 - [x] `src/WPShield.Integration/` — optional bridge project targeting `net10.0-windows`.
 - [x] `NetworkFilterBlockListSink` — `ISecurityEventSink` implementation that adds
   blocking source IPs to `WPShield.NetworkFilter.Rules.BlockListRule`.
-- [x] `SecurityToNetworkFilterBridge` — convenience class wiring `SecurityEventMonitor`,
-  `NetworkFilterEngine`, and `BlockListRule` together.
+- [ ] End-to-end enforcement from an authentication finding, including expiry and recovery.
 
 ### What M2.8 does not cover
 

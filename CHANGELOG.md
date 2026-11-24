@@ -118,6 +118,8 @@ must complete first.
 
 ### Fixed
 
+- The CLI refuses the legacy `network-filter` command before driver access. Its WinDivert sniff handle could not enforce host-wide blocks. Security Monitor findings remain report-only.
+
 - An unexpected failure in a desktop read no longer closes the window; it shows a message and the other views keep working.
 - Adapter, capture-device and process names are shown with control and bidirectional-format characters replaced, keeping accented letters.
 - Spanish desktop views no longer show English reason codes such as `access-denied` or `not-observed`.

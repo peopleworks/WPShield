@@ -2,33 +2,26 @@
 
 WPShield.SecurityMonitor es un **componente en modo usuario, exclusivo de Windows**, que lee
 el registro de eventos de Seguridad de Windows y detecta ataques de autenticación como fuerza
-bruta de Escritorio Remoto (RDP) y fallos repetidos de inicio de sesión. Publica hallazgos en
-un receptor que puede alimentar la lista de bloqueo dinámica de `WPShield.NetworkFilter`,
-cerrando la brecha entre el filtrado a nivel de paquetes y los fallos de autenticación que los
-paquetes por sí solos no pueden revelar.
+bruta de Escritorio Remoto (RDP) y fallos repetidos de inicio de sesión. La CLI muestra los hallazgos al operador.
 
 ## Por qué existe
 
 Un host de producción con WordPress sobre Windows Server fue observado recibiendo ataques
 sostenidos tanto en puertos web (80/443) como en Escritorio Remoto (TCP 3389).
-`WPShield.NetworkFilter` puede bloquear paquetes por IP de origen y tasa, pero no puede ver si
-una conexión RDP tuvo éxito o falló — eso ocurre dentro de la sesión de autenticación, después
-del handshake TCP.
+Los eventos de autenticación de Windows registran el resultado de cada intento observado.
 
 `WPShield.SecurityMonitor` lee el Event ID `4625` (inicio de sesión fallido) y `4624` (inicio
 de sesión exitoso) del registro de Seguridad, identifica el Tipo de Inicio de Sesión `10`
 (RemoteInteractive = RDP) y genera hallazgos cuando una IP de origen supera un umbral
-configurable de fallos. Esos hallazgos pueden publicarse a una lista de bloqueo que
-`NetworkFilter` consume, de modo que la IP del atacante se descarta a nivel de paquete antes de
-que pueda intentar otro inicio de sesión.
+configurable de fallos.
 
 ## Posición en la arquitectura
 
 | Capa | Componente | Qué ve | ¿Bloquea? |
 |---|---|---|---|
 | 1 | Firewall de Windows | Reglas estáticas de IP | Sí |
-| 2 | `WPShield.NetworkFilter` | Encabezados TCP/UDP de paquetes | Sí |
-| 3 | **`WPShield.SecurityMonitor`** | **Registro de Seguridad (resultados de autenticación)** | **Indirectamente** |
+| 2 | `WPShield.NetworkFilter` | Prototipo anterior | No disponible |
+| 3 | **`WPShield.SecurityMonitor`** | **Registro de Seguridad (resultados de autenticación)** | **Solo informa** |
 | 4 | `WPShield.Gateway` | Cuerpos de solicitud HTTP | Sí (cargas) |
 | 5 | IIS + WordPress | Capa de aplicación | No |
 
@@ -193,7 +186,7 @@ while (!cts.Token.IsCancellationRequested)
 
 | Hito | Relación |
 |---|---|
-| M2.7 Filtro de red | Los hallazgos de SecurityMonitor alimentan la lista de bloqueo dinámica de `WPShield.NetworkFilter`. |
+| M2.7 Filtro de red | La CLI informa de los hallazgos. El bloqueo a escala del servidor está pendiente. |
 | M3 Limitación de velocidad | `WP-SEC-001` y `WP-SEC-002` son la mitad de autenticación de la limitación de velocidad; M3 agrega la mitad HTTP. |
 | M4 Observabilidad | Los hallazgos de SecurityMonitor usan el mismo sobre JSON Lines que el gateway. |
 | M6 Servicio de Windows | `SecurityEventMonitor` puede ejecutarse como parte del servicio de Windows de WPShield bajo `NT SERVICE\WPShield`. |

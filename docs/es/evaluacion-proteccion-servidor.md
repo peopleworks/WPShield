@@ -12,8 +12,9 @@ en condiciones equivalentes y medir por separado el efecto de las fuentes de rep
 La primera entrega de WPShield es el monitor pasivo de flujos en un adaptador. La opción
 `--rdp-port` de esta rama añade evidencia de inicios de sesión interactivos remotos de Windows.
 El gateway ya inspecciona rutas y cargas HTTP compatibles y aplica límites por sitio. El monitor
-de seguridad cuenta fallos y el proyecto de integración dispone de un puente opcional hacia el
-filtro de paquetes. Falta verificar la prevención de extremo a extremo para cada servicio.
+de seguridad registra hallazgos. La biblioteca de integración tiene una lista de bloqueo en
+memoria. La CLI solo informa y rechaza `network-filter`. Las pruebas de prevención en el servidor
+dependen del reemplazo documentado en el [PR #86](https://github.com/peopleworks/WPShield/pull/86).
 [Monitor de red](diseno-sensor-red.md) · [Roadmap M2.8](../../ROADMAP.md#m28--security-event-log-monitoring)
 
 | Servicio | Qué documenta RdpGuard | Qué debe demostrar WPShield |
@@ -54,7 +55,7 @@ disponibles en la versión probada antes de decidir qué se puede correlacionar.
 4. Registrar por separado **observación**, **detección** y **prevención verificada**. Para acreditar
    prevención, comprobar el efecto con un cliente de prueba independiente, la continuidad del acceso
    legítimo, la caducidad, el desbloqueo y la recuperación administrativa. La prueba inicial usa
-   Monitor. Las decisiones de bloqueo a escala del servidor siguen el diseño de [ADR 0002](../en/adr/0002-host-level-brute-force-defence.md).
+   Monitor. El ensayo de bloqueo requiere un entorno desechable y un mecanismo de recuperación verificado.
 5. Publicar una ventaja únicamente para el servicio, métrica y configuración medidos. Una mejora
    exige repeticiones comparables, evidencia revisable y resultados sobre disponibilidad y falsos
    positivos. Conservar salidas agregadas y referencias de registro, sin cuentas, credenciales ni

@@ -1468,10 +1468,8 @@ footer p { max-width: 46rem; }
           </tr>
           <tr>
             <th scope="row">Network layer packet filtering</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.7; <code>WPShield.NetworkFilter</code> inspects inbound TCP/UDP in user mode via
-                WinDivert, with a strict per-packet time budget so it cannot become a kernel
-                watchdog violation</td>
+            <td><span class="pill pill--planned">Unavailable</span></td>
+            <td>The CLI refuses the legacy filter. Host-wide enforcement awaits validation.</td>
           </tr>
           <tr>
             <th scope="row">Security event monitoring</th>
@@ -1481,9 +1479,8 @@ footer p { max-width: 46rem; }
           </tr>
           <tr>
             <th scope="row">Security → Network filter bridge</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.8; <code>WPShield.Integration</code> feeds security findings into the dynamic
-                block list of <code>WPShield.NetworkFilter</code></td>
+            <td><span class="pill pill--planned">Planned</span></td>
+            <td>The CLI reports authentication findings. The in-memory sink is a library prototype.</td>
           </tr>
           <tr>
             <th scope="row">Inspection of non-multipart bodies</th>
@@ -1560,10 +1557,8 @@ footer p { max-width: 46rem; }
           </tr>
           <tr>
             <th scope="row">Filtrado de paquetes en capa de red</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>M2.7; <code>WPShield.NetworkFilter</code> inspecciona TCP/UDP entrante en modo
-                usuario vía WinDivert, con un presupuesto de tiempo estricto por paquete para que
-                nunca se convierta en una violación del watchdog del kernel</td>
+            <td><span class="pill pill--planned">No disponible</span></td>
+            <td>La CLI rechaza el filtro anterior. El bloqueo a escala del servidor está pendiente de validación.</td>
           </tr>
           <tr>
             <th scope="row">Monitoreo de eventos de seguridad</th>
@@ -1573,9 +1568,8 @@ footer p { max-width: 46rem; }
           </tr>
           <tr>
             <th scope="row">Puente de seguridad a filtro de red</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>M2.8; <code>WPShield.Integration</code> alimenta los hallazgos de seguridad en la
-                lista de bloqueo dinámica de <code>WPShield.NetworkFilter</code></td>
+            <td><span class="pill pill--planned">Previsto</span></td>
+            <td>La CLI informa de los hallazgos de autenticación. La lista en memoria es un prototipo de biblioteca.</td>
           </tr>
           <tr>
             <th scope="row">Inspección de cuerpos que no son multipart</th>
@@ -2116,8 +2110,8 @@ footer p { max-width: 46rem; }
           <tr><th scope="row"><code>preview</code></th><td>Compare recorded decisions with candidate thresholds offline.</td><td><code>--log-file</code>, <code>--site</code>, <code>--format</code></td></tr>
           <tr>
             <th scope="row"><code>network-filter</code></th>
-            <td>User-mode inbound packet filter via WinDivert. Drops attack traffic before IIS. Never runs in kernel; 5 ms per-packet inspection budget.</td>
-            <td><code>--filter</code>, <code>--max-inspection-time-ms</code>, <code>--max-connections-per-minute</code>, <code>--max-distinct-ports-per-minute</code>, <code>--block-list</code></td>
+            <td>Unavailable in this preview. Running the command exits with code 1.</td>
+            <td><code>--help</code></td>
           </tr>
           <tr>
             <th scope="row"><code>security-monitor</code></th>
@@ -2205,8 +2199,8 @@ footer p { max-width: 46rem; }
           <tr><th scope="row"><code>preview</code></th><td>Compara las decisiones registradas con umbrales candidatos sin conexión.</td><td><code>--log-file</code>, <code>--site</code>, <code>--format</code></td></tr>
           <tr>
             <th scope="row"><code>network-filter</code></th>
-            <td>Filtro de paquetes entrante en modo usuario vía WinDivert. Descarta tráfico de ataque antes de IIS. Nunca corre en kernel; presupuesto de 5 ms por paquete.</td>
-            <td><code>--filter</code>, <code>--max-inspection-time-ms</code>, <code>--max-connections-per-minute</code>, <code>--max-distinct-ports-per-minute</code>, <code>--block-list</code></td>
+            <td>Bloqueo no disponible en esta versión. El comando termina con código 1.</td>
+            <td><code>--help</code></td>
           </tr>
           <tr>
             <th scope="row"><code>security-monitor</code></th>
@@ -2227,29 +2221,6 @@ footer p { max-width: 46rem; }
       </table>
     </div>
 
-    <div class="note" lang="en">
-      <strong>The two new verbs exist because of a real incident.</strong> A production host was
-      rebooting with <code>0x00000133 — DPC_WATCHDOG_VIOLATION</code> traced to
-      <code>mwac.sys</code> (Malwarebytes Web Access Control) blocking on a kernel spinlock while
-      inspecting inbound connections in DPC context. <code>network-filter</code> is the project's
-      own network-layer protection: user mode only, never a kernel spinlock, and a per-packet time
-      budget so it cannot become the watchdog violation it exists to prevent.
-      <code>security-monitor</code> sees what packets cannot: whether an RDP connection succeeded or
-      failed. Pair them through <code>WPShield.Integration</code> so an IP caught failing logons is
-      dropped at the packet layer before it tries again.
-    </div>
-    <div class="note" lang="es">
-      <strong>Los dos verbos nuevos existen por un incidente real.</strong> Un host de producción se
-      reiniciaba con <code>0x00000133 — DPC_WATCHDOG_VIOLATION</code> rastreado hasta
-      <code>mwac.sys</code> (Malwarebytes Web Access Control) bloqueado en un spinlock de kernel
-      mientras inspeccionaba conexiones entrantes en contexto DPC.
-      <code>network-filter</code> es la propia protección de capa de red del proyecto: solo modo
-      usuario, nunca un spinlock de kernel, y un presupuesto de tiempo por paquete para que nunca
-      se convierta en la violación del watchdog que existe para prevenir.
-      <code>security-monitor</code> ve lo que los paquetes no ven: si una conexión RDP tuvo éxito o
-      falló. Úselos juntos a través de <code>WPShield.Integration</code> para que una IP atrapada
-      fallando inicios de sesión sea descartada a nivel de paquete antes de que lo intente otra vez.
-    </div>
   </section>
 
   <section id="docs" class="reveal">

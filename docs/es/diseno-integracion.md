@@ -1,5 +1,7 @@
 # WPShield.Integration — Diseño (Español)
 
+> **Prototipo histórico.** Este documento describe el prototipo con WinDivert. La CLI rechaza `network-filter` y solo informa de los hallazgos de seguridad. El bloqueo a escala del servidor depende del reemplazo y de las pruebas del [PR #86](https://github.com/peopleworks/WPShield/pull/86).
+
 WPShield.Integration es un **proyecto de puente opcional, de adhesión voluntaria**, que
 conecta los hallazgos de `WPShield.SecurityMonitor` con `WPShield.NetworkFilter.BlockListRule`,
 de modo que las IPs detectadas por reglas de seguridad (fuerza bruta de RDP, fallos de
