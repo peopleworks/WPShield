@@ -338,7 +338,7 @@ not read as more than they claim:
 - [x] Chart Windows adapter counters with explicit measurement gaps and pause the display independently of sampling. [Adapter traffic](docs/en/network-sensor-design.md#adapter-traffic)
 
 - [x] Select a saved RDP, SQL Server or IIS audit reference with the keyboard and copy its minimal JSON from the desktop monitor. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference)
-- [ ] Plot interval history from the host monitor. Pausing the view keeps capture running. [Design references](docs/en/networkmanager-evaluation.md)
+- [x] Plot interval history from the host monitor for one adapter and selected ports. Pausing the view keeps capture running. [Traffic history](docs/en/network-sensor-design.md#traffic-history)
 - [ ] Bind management access to 127.0.0.1 initially.
 - [ ] Add English and Spanish views for summary, sites, events, rules, health, configuration, versions, export, and diagnostics.
 - [ ] Add CSRF protection and design Windows-authenticated administrative access before any remote use.

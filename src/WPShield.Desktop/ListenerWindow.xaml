@@ -57,6 +57,8 @@
         </ListBox>
         <Button x:Name="TrafficButton" Margin="0,18,0,0" Padding="8,8" Background="#294858" Foreground="White"
                 BorderThickness="0" Click="OpenTraffic"/>
+        <Button x:Name="PortTrafficButton" Margin="0,6,0,0" Padding="8,8" Background="#294858" Foreground="White"
+                BorderThickness="0" Click="OpenPortTraffic"/>
         <Button x:Name="AuditButton" Margin="0,6,0,0" Padding="8,8" Background="#294858" Foreground="White"
                 BorderThickness="0" Click="OpenAudit"/>
       </StackPanel>

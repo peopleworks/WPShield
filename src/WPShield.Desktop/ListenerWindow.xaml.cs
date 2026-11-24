@@ -15,6 +15,7 @@ public partial class ListenerWindow : Window
     private bool initialized;
     private bool closed;
     private AdapterTrafficWindow? trafficWindow;
+    private PortTrafficWindow? portTrafficWindow;
     private AuditReferenceWindow? auditWindow;
     private IReadOnlyList<LocalListenerInventory.Table> latest = [];
 
@@ -28,6 +29,7 @@ public partial class ListenerWindow : Window
         SourceLabel.Text = L("Network monitor  /  Windows", "Monitor de red  /  Windows");
         NavLabel.Text = L("Inventory", "Inventario");
         TrafficButton.Content = L("Adapter traffic", "Tráfico por adaptador");
+        PortTrafficButton.Content = L("Port traffic", "Tráfico por puertos");
         AuditButton.Content = L("Audit references", "Referencias de auditoría");
         AllProtocols.Content = L("All protocols", "Todos los protocolos");
         PreviewLabel.Text = L("Research preview", "Vista previa de investigación");
@@ -62,6 +64,21 @@ public partial class ListenerWindow : Window
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e) => await RefreshAsync();
+
+    private void OpenPortTraffic(object sender, RoutedEventArgs e)
+    {
+        if (portTrafficWindow is null)
+        {
+            portTrafficWindow = new PortTrafficWindow(spanish, () => inventory.Select(row => row.Port)) { Owner = this };
+            portTrafficWindow.Closed += (_, _) => portTrafficWindow = null;
+            portTrafficWindow.Show();
+        }
+        else
+        {
+            if (portTrafficWindow.WindowState == WindowState.Minimized) portTrafficWindow.WindowState = WindowState.Normal;
+            portTrafficWindow.Activate();
+        }
+    }
 
     private void OpenAudit(object sender, RoutedEventArgs e)
     {

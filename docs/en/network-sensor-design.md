@@ -216,9 +216,21 @@ Snapshots overlap in history; use each interval once when comparing them.
 | `unknown` | The driver counter was unavailable at a boundary. Rates still measure observed bytes. A zero is insufficient to establish an idle network. |
 | `gap` | Packets were skipped, the driver counter rose or reset, capture stopped unexpectedly, sampling exceeded five seconds, or the UTC and monotonic clocks disagreed. Rates are null. Counts and `GapReasons` remain available. |
 
-Npcap flow history stays in memory during capture. A graphical timeline for these port-scoped
-samples and validation on Windows Server with Npcap remain planned. For a live chart covering the
-whole interface, open [Adapter traffic](#adapter-traffic) in the Windows desktop monitor.
+Open **Port traffic** and type 1–64 comma-separated numbers in **TCP/UDP ports** (for example,
+`443,1433,3389`). Alternatively, choose an entry in **Port list** and click **Add port**. Repeat to
+combine ports, or edit the text to remove one. The list includes conventional HTTP, HTTPS, SQL Server
+and RDP ports and ports from the latest local listener inventory. Observed ports are labelled.
+You can prepare the selection in a normal session. To capture, open WPShield as administrator on
+a Windows host with Npcap, enter the selection in that session, choose an adapter and click
+**Start capture**. A TCP or UDP packet matches when either endpoint uses a selected port. Each row
+plots incoming and outgoing IP bytes per second on a shared scale, newest interval first. Hover
+over a row for its UTC dates, observed byte counts and any gap reason codes. A gap displays a dash
+for each rate. Unknown coverage still shows the measured rates.
+
+**Pause chart** holds the displayed intervals while capture continues. Uncheck it to see the
+latest 30 intervals. **Stop** shows the final snapshot and releases the adapter. Closing this
+window also stops its capture. Capture data stays in memory. Live validation on Windows Server
+with Npcap remains pending. For whole-interface counters without Npcap, open [Adapter traffic](#adapter-traffic).
 
 ### Remote Desktop logon evidence
 

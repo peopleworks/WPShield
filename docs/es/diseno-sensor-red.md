@@ -230,9 +230,24 @@ compararlos, cuenta cada intervalo una sola vez.
 | `unknown` | Faltó el contador del controlador en algún extremo. Las tasas miden los bytes observados. Un cero no demuestra que la red estaba inactiva. |
 | `gap` | Hubo paquetes omitidos, aumento o reinicio del contador de descartes, interrupción de captura, más de cinco segundos entre muestras o discrepancia entre los relojes. Las tasas son nulas. Se conservan los bytes y las razones en `GapReasons`. |
 
-El historial de flujos de Npcap permanece en memoria durante la captura. Quedan pendientes la
-gráfica de estas muestras por puerto y la validación en Windows Server con Npcap. Para ver una
-gráfica de toda la interfaz, abra [Tráfico por adaptador](#tráfico-por-adaptador) en el monitor de escritorio.
+Abra **Tráfico por puertos** y escriba entre 1 y 64 números separados por comas en **Puertos TCP/UDP**,
+por ejemplo `443,1433,3389`. También puede elegir una entrada en **Lista de puertos** y pulsar
+**Añadir puerto**. Repita para combinar puertos o borre un número del campo para quitarlo. La lista
+incluye los puertos convencionales de HTTP, HTTPS, SQL Server y RDP y los de la última lectura del
+inventario local. Estos últimos llevan la etiqueta **Observado en este equipo**.
+Puede preparar la selección en una sesión normal. Para capturar, abra WPShield como administrador
+en un equipo Windows con Npcap, indique los puertos en esa sesión, elija un adaptador y pulse
+**Iniciar captura**. Un paquete TCP o UDP coincide si alguno
+de sus extremos usa un puerto seleccionado. Cada fila representa los bytes IP recibidos y enviados
+por segundo en una escala común, con el intervalo más reciente primero. Pase el puntero sobre una
+fila para ver las fechas UTC, los bytes observados y los códigos de los huecos de captura. Cuando
+hay un hueco, ambas tasas muestran un guion. Si la cobertura es desconocida, se muestran las tasas medidas.
+
+**Pausar gráfica** congela los intervalos visibles mientras continúa la captura. Desmárquelo para
+ver los últimos 30 intervalos. **Detener** muestra la lectura final y libera el adaptador. Cerrar
+esta ventana también detiene su captura. Los datos permanecen en memoria. Queda pendiente validar
+la captura en vivo en Windows Server con Npcap. Para ver los contadores de toda la interfaz sin
+Npcap, abra [Tráfico por adaptador](#tráfico-por-adaptador).
 
 ### Evidencia de inicios de sesión por Escritorio Remoto
 

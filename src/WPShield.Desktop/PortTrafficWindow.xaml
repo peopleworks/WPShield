@@ -1,0 +1,64 @@
+<Window x:Class="WPShield.Desktop.PortTrafficWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="WPShield"
+        Width="960" Height="640" MinWidth="780" MinHeight="470" WindowStartupLocation="CenterOwner"
+        Background="#EFF3F6" Foreground="#152C3D" FontFamily="Segoe UI" FontSize="14"
+        Loaded="LoadAdapters" Closing="OnClosing" Closed="OnClosed">
+  <Grid Margin="22,16">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel><TextBlock Text="WPShield  /  Npcap" Foreground="#486475" FontSize="12"/>
+      <TextBlock x:Name="Heading" FontSize="30" FontWeight="SemiBold"/></StackPanel>
+    <DockPanel Grid.Row="1" Margin="0,10,0,6">
+      <Button x:Name="Reload" DockPanel.Dock="Right" Margin="8,0,0,0" Padding="10,4" Click="LoadAdapters"/>
+      <Label x:Name="AdapterLabel" Target="{Binding ElementName=Adapters}"/>
+      <ComboBox x:Name="Adapters" DisplayMemberPath="Label" SelectionChanged="UpdateScope"/>
+    </DockPanel>
+    <StackPanel Grid.Row="2"><DockPanel>
+      <Button x:Name="Stop" DockPanel.Dock="Right" Margin="6,0,0,0" Padding="10,4" IsEnabled="False" Click="StopCapture"/>
+      <Button x:Name="Start" DockPanel.Dock="Right" Margin="6,0,0,0" Padding="10,4" IsEnabled="False"
+              Background="#145856" Foreground="White" Click="StartCapture"/>
+      <Label x:Name="PortLabel" Target="{Binding ElementName=Ports}"/>
+      <TextBox x:Name="Ports" MaxLength="448" Padding="5" VerticalContentAlignment="Center" TextChanged="UpdateScope"/>
+    </DockPanel>
+    <DockPanel Margin="0,6,0,0">
+      <Button x:Name="AddPort" DockPanel.Dock="Right" Margin="6,0,0,0" Padding="10,4" Click="AddSelectedPort"/>
+      <Label x:Name="PortChoicesLabel" Target="{Binding ElementName=PortChoices}"/>
+      <ComboBox x:Name="PortChoices" DisplayMemberPath="Label" SelectedValuePath="Port" DropDownOpened="RefreshPortChoices" SelectionChanged="UpdateScope"/>
+    </DockPanel>
+    <TextBlock x:Name="PortHelp" Margin="2,3,0,0" Foreground="#486475" FontSize="12" TextWrapping="Wrap"/>
+    </StackPanel>
+    <DockPanel Grid.Row="3" Margin="0,14,0,8">
+      <CheckBox x:Name="Pause" DockPanel.Dock="Right" IsEnabled="False" VerticalAlignment="Center" Checked="PauseChanged" Unchecked="PauseChanged"/>
+      <TextBlock x:Name="Scope" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,12,0"/>
+    </DockPanel>
+    <DataGrid Grid.Row="4" x:Name="Rows" IsReadOnly="True" AutoGenerateColumns="False" CanUserSortColumns="False"
+              CanUserReorderColumns="False" HeadersVisibility="Column" RowHeight="40" GridLinesVisibility="Horizontal"
+              HorizontalGridLinesBrush="#DFE8EB" Background="White" AlternatingRowBackground="#F5F9F9" BorderBrush="#CFDCE2">
+      <DataGrid.Resources><Style TargetType="ProgressBar"><Style.Triggers>
+        <DataTrigger Binding="{Binding IsGap}" Value="True"><Setter Property="Visibility" Value="Hidden"/></DataTrigger>
+      </Style.Triggers></Style></DataGrid.Resources>
+      <DataGrid.RowStyle><Style TargetType="DataGridRow"><Setter Property="ToolTip" Value="{Binding Details}"/></Style></DataGrid.RowStyle>
+      <DataGrid.Columns>
+        <DataGridTextColumn x:Name="IntervalColumn" Binding="{Binding Interval}" Width="1.25*"/>
+        <DataGridTemplateColumn x:Name="ReceiveColumn" Width="*">
+          <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Margin="5,2">
+            <TextBlock Text="{Binding Received}"/><ProgressBar Height="5" Maximum="1" Value="{Binding ReceiveFraction}" Foreground="#16776F"/>
+          </StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTemplateColumn x:Name="SendColumn" Width="*">
+          <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Margin="5,2">
+            <TextBlock Text="{Binding Sent}"/><ProgressBar Height="5" Maximum="1" Value="{Binding SendFraction}" Foreground="#5069A7"/>
+          </StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
+        </DataGridTemplateColumn>
+        <DataGridTextColumn x:Name="CoverageColumn" Binding="{Binding Coverage}" Width="1.8*">
+          <DataGridTextColumn.ElementStyle><Style TargetType="TextBlock"><Setter Property="TextWrapping" Value="Wrap"/>
+            <Style.Triggers><DataTrigger Binding="{Binding IsGap}" Value="True">
+              <Setter Property="Foreground" Value="#89561A"/>
+            </DataTrigger></Style.Triggers></Style></DataGridTextColumn.ElementStyle>
+        </DataGridTextColumn>
+      </DataGrid.Columns>
+    </DataGrid>
+    <TextBlock Grid.Row="5" x:Name="Status" Margin="0,8,0,0" TextWrapping="Wrap" Foreground="#365463"/>
+  </Grid>
+</Window>
