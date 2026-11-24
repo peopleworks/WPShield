@@ -4,7 +4,23 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # One pull request per week for the .NET servicing train instead of one per package: the
+    # Microsoft.* and System.* packages move together, and separate PRs conflict with each other.
+    groups:
+      dotnet-servicing:
+        patterns:
+          - "Microsoft.*"
+          - "System.*"
+    ignore:
+      # QuestPDF after 2024.12.3 ships a source-available commercial licence instead of MIT, and from
+      # 2026.9 it stops substituting system fonts, which breaks `wpshield report`. Leaving 2024.12.3 is
+      # a licensing and product decision, not a routine bump (PR #74 was closed for that reason).
+      - dependency-name: "QuestPDF"
   - package-ecosystem: github-actions
     directory: /
     schedule:
       interval: weekly
+    groups:
+      github-actions:
+        patterns:
+          - "*"
