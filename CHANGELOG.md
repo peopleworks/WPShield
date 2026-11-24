@@ -118,6 +118,7 @@ must complete first.
 
 ### Fixed
 
+- The desktop listener inventory checks process start time against each observed PID before displaying or searching by name. It also identifies PIDs skipped at the per-refresh lookup limit.
 - The CLI refuses the legacy `network-filter` command before driver access. Its WinDivert sniff handle could not enforce host-wide blocks. Security Monitor findings remain report-only.
 
 - An unexpected failure in a desktop read no longer closes the window; it shows a message and the other views keep working.

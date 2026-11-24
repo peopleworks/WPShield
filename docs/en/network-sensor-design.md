@@ -15,10 +15,11 @@ dotnet run --project src/WPShield.Desktop -c Release -- --en
 
 Select TCP or UDP in the sidebar, or search by address, exact port, PID, process name or
 conventional port name. The cards show each table's observation time, coverage and IPv4/IPv6
-counts. The owner column shows the process name and PID, for example `sqlservr · 4120`. The name is
-read just after the socket table, so a process that exits in between shows its PID with "ended or
-unreadable" rather than a guessed name. The tooltip shows the owner observation time and, for an
-unknown owner, the reason in the window's language. Use **Refresh** for another snapshot or enable
+counts. The owner column shows the process name and PID, for example `sqlservr · 4120`. Each refresh looks up at most 4,096 distinct PIDs across TCP and UDP. A name appears in the
+column and in search only when the process started before that row’s owner-table observation.
+If the PID now belongs to a newer process or the timestamps coincide, the row keeps the observed
+PID and explains the timing. An unreadable process and a PID skipped at the lookup limit have
+separate labels. The tooltip shows the owner observation time. Use **Refresh** for another snapshot or enable
 **Every 5 s**. Closing the window stops polling. The view reads local socket tables in memory and
 works without Npcap, elevation or an HTTP listener. Use `--es` to open the window in Spanish.
 

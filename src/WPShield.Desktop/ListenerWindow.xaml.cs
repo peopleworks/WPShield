@@ -58,6 +58,9 @@ public partial class ListenerWindow : Window
         "not-observed" => spanish ? "no aparece en la tabla de propietarios" : "not in the owner table",
         "ambiguous" => spanish ? "propietario ambiguo" : "ambiguous owner",
         "pid-unavailable" => spanish ? "PID no disponible" : "PID unavailable",
+        "name-lookup-limit" => spanish ? "límite de consultas de nombres" : "name lookup limit reached",
+        "name-unavailable" => spanish ? "terminó o no se pudo leer" : "ended or unreadable",
+        "start-not-before-sample" => spanish ? "inicio no anterior a la lectura del PID" : "start time at or after PID observation",
         _ => DisplayText.Clean(code, 40)
     };
 
@@ -153,18 +156,16 @@ public partial class ListenerWindow : Window
             {
                 var owner = e.Owner;
                 var pid = owner?.ProcessId?.ToString(CultureInfo.InvariantCulture);
-                var name = owner?.ProcessId is uint id && names.TryGetValue(id, out var found) && found is not null
-                    ? DisplayText.Clean(found, 64) : "";
+                var (name, reason) = owner?.ProcessId is uint id
+                    ? ProcessNames.ForOwner(names, id, owner.ObservedAtUtc)
+                    : ("", owner?.Reason);
                 var shown = (pid, name.Length) switch
                 {
-                    (null, _) => owner is null ? "—" : L("Unknown", "Desconocido") + $" ({Reason(owner.Reason)})",
-                    (_, 0) => pid + "  ·  " + L("ended or unreadable", "terminó o no se pudo leer"),
+                    (null, _) => owner is null ? "—" : L("Unknown", "Desconocido") + $" ({Reason(reason)})",
+                    (_, 0) => pid + "  ·  " + Reason(reason),
                     _ => name + "  ·  " + pid
                 };
-                var detail = owner is null ? "—" : owner.ProcessId is null
-                    ? $"{owner.ObservedAtUtc:u}  ·  {Reason(owner.Reason)}"
-                    : $"{owner.ObservedAtUtc:u}  ·  PID {pid}" + L("; the name is read just after the socket table",
-                        "; el nombre se lee justo después de la tabla de sockets");
+                var detail = owner is null ? "—" : $"{owner.ObservedAtUtc:u}  ·  {shown}";
                 return new ListenerRow(table.Protocol, e.Address, e.Port, e.Family,
                     e.PortHints is { Count: > 0 } hints ? string.Join(", ", hints) : "—", owner?.ProcessId, shown, detail, name);
             })).ToArray();

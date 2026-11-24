@@ -16,10 +16,12 @@ dotnet run --project src/WPShield.Desktop -c Release -- --es
 Seleccione TCP o UDP en la barra lateral o busque por dirección, puerto exacto, PID, nombre del
 proceso o nombre convencional del puerto. Las tarjetas muestran la hora de lectura, la cobertura y
 los recuentos de IPv4 e IPv6. La columna de propietario muestra el proceso y su PID, por ejemplo
-`sqlservr · 4120`. El nombre se lee justo después de la tabla de sockets; si el proceso termina
-entre ambas lecturas, se muestra el PID con "terminó o no se pudo leer" en lugar de adivinar un
-nombre. Pase el puntero sobre esa columna para ver la hora de lectura y, si se desconoce el
-propietario, el motivo en el idioma de la ventana. Pulse **Actualizar** o active **Cada 5 s**. Al
+`sqlservr · 4120`. En cada actualización se consultan hasta 4096 PID distintos entre TCP y UDP.
+El nombre aparece en la columna y en la búsqueda solo si el proceso se inició antes de la
+lectura del propietario de esa fila. Si Windows reutilizó el PID y el proceso es posterior, o
+si las horas coinciden, la fila conserva el PID observado e indica el motivo. La vista distingue
+un proceso que no pudo leer de un PID que quedó fuera del límite de consultas. Al pasar el puntero
+sobre la columna se muestra la hora de la lectura. Pulse **Actualizar** o active **Cada 5 s**. Al
 cerrar la ventana termina la consulta periódica. La vista lee las tablas locales en memoria y
 funciona sin Npcap, sin permisos de administrador y sin servidor HTTP.
 Use `--en` para abrir la ventana en inglés.
