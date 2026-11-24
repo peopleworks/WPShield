@@ -12,6 +12,13 @@ updates:
           - "Microsoft.*"
           - "System.*"
     ignore:
+      # WPShield targets .NET 10 (LTS). A Microsoft.* or System.* major version belongs to the next
+      # .NET release and needs the SDK and target framework to move with it; that is a deliberate
+      # upgrade, not a weekly bump (PR #118 failed exactly this way with an 11.0.0 package).
+      - dependency-name: "Microsoft.*"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "System.*"
+        update-types: ["version-update:semver-major"]
       # QuestPDF after 2024.12.3 ships a source-available commercial licence instead of MIT, and from
       # 2026.9 it stops substituting system fonts, which breaks `wpshield report`. Leaving 2024.12.3 is
       # a licensing and product decision, not a routine bump (PR #74 was closed for that reason).
