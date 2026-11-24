@@ -1,7 +1,11 @@
 # ADR 0006 — Bloqueo en la capa de red dentro de WPShield
 
-- **Estado:** Propuesto
-- **Deciden:** Mantenedores de WPShield
+- **Estado:** Aceptado el 2026-11-24: WPShield bloquea a nivel de servidor por sí mismo, solo en modo
+  Block. El **mecanismo** se enmendó ese mismo día; véase
+  [Enmienda: la Plataforma de filtrado de Windows en lugar de WinDivert](#enmienda-2026-11-24-la-plataforma-de-filtrado-de-windows-en-lugar-de-windivert).
+  El pull request que implementa este ADR sigue como borrador hasta sustituir el mecanismo de bloqueo y
+  superar la validación de la enmienda.
+- **Deciden:** Pedro Hernández (mantenedor)
 - **Sustituye a:** la mitad de red de la decisión del [ADR 0002](0002-defensa-fuerza-bruta-a-nivel-de-host.md)
   (RDP, FTP, SMTP, SQL y SMB "corresponden al proyecto hermano"). La mitad HTTP del ADR 0002 se
   mantiene.
@@ -218,8 +222,80 @@ registran una vez por origen y umbral, no una vez por paquete.
   de un handle eliminan esa razón, y el operador quiere una sola herramienta.
 - **Desviar y reinyectar (el diseño del 2026-10-20).** Descartado en la sección 1.
 
+## Enmienda (2026-11-24): la Plataforma de filtrado de Windows en lugar de WinDivert
+
+La decisión se mantiene: WPShield bloquea direcciones en todo el servidor, solo en modo Block, bajo las
+secciones 2 a 6 y 9. Cambia el **mecanismo** de las secciones 1, 7 y 8 y la primera consecuencia.
+Esas secciones siguen describiendo el bloqueo con WinDivert que este pull request implementa hoy; se
+reescriben en el cambio que lo sustituya.
+
+**El bloqueo pasa a la Plataforma de filtrado de Windows (WFP)** (`fwpuclnt.dll`: `FwpmEngineOpen0`,
+`FwpmSubLayerAdd0`, `FwpmFilterAdd0`), en una sesión abierta con `FWPM_SESSION_FLAG_DYNAMIC`.
+
+Por qué:
+
+- **La sección 2 se conserva tal cual.** Microsoft documenta que todo objeto añadido en una sesión
+  dinámica se borra cuando la sesión termina, incluso si la aplicación falla
+  ([FWPM_SESSION0](https://learn.microsoft.com/windows/win32/api/fwpmtypes/ns-fwpmtypes-fwpm_session0),
+  [buenas prácticas de WFP](https://learn.microsoft.com/windows/win32/fwp/best-practices)). Un bloqueo
+  sigue siendo un objeto del kernel que pertenece al proceso, y al terminar el proceso se levantan
+  todos.
+- **Sin controlador de kernel de terceros.** El motor de filtrado base y el motor de filtros vienen con
+  Windows. No hay `--install-driver`, ni DLL sin firmar, ni dudas sobre quién firmó el controlador, ni
+  nada que reinstalar tras reiniciar ni que descargar.
+- **El servidor que protege este proyecto ya ejecuta un controlador de red de terceros** (la protección
+  del equipo) que lo ha hecho caer. Añadir otro, para una función que solo tiene que descartar tráfico
+  de direcciones conocidas, es un riesgo sin beneficio equivalente.
+- **Sin el límite de 200 objetos por filtro.** Los filtros de WFP llevan condiciones de dirección y
+  prefijo directamente.
+- RdpGuard, el producto con el que se compara el operador, documenta que bloquea mediante la
+  Plataforma de filtrado y no con reglas del Firewall de Windows
+  ([preguntas frecuentes de RdpGuard](https://rdpguard.com/faq.aspx)).
+
+Qué cambia:
+
+- **Sección 1.** Los filtros de bloqueo viven en `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4` y `_V6`, en una
+  subcapa de WPShield, y solo coinciden con direcciones de la lista de bloqueo que no estén en la lista
+  de permitidos. El tráfico benigno sigue sin llegar a ningún proceso de usuario, y sigue sin haber
+  reinyección: WFP no ofrece ninguna.
+- **El observador de SYN se va con WinDivert.** `WP-NET-002` y `WP-NET-003` pierden su fuente. Las
+  peticiones de bloqueo vienen de sensores de registros cuya dirección de origen confirmó un
+  establecimiento TCP: 4625 del registro de seguridad para los tipos de inicio de sesión 3 y 10,
+  RdpCoreTS 140, SQL Server 18456, FTP 530, y el inicio de sesión y XML-RPC de WordPress a través del
+  gateway. La sección 5 se mantiene. Las reglas basadas en SYN pueden volver más adelante mediante ETW,
+  siempre detrás de `--syn-rules-may-block`.
+- **La sección 7** se cumple sola: no hay controlador que cargar. La regla de importación sigue:
+  `fwpuclnt.dll` se resuelve solo desde `System32`.
+- **Sección 8.** Antes del primer bloqueo, el modo Block abre una sesión dinámica, añade un filtro para
+  una dirección RFC 5737, lo vuelve a leer enumerando, comprueba la exclusión de la lista de
+  permitidos y lo borra. Si falla algún paso, Block no arranca. Añadir un filtro requiere permisos de
+  administrador, así que `--check` sin elevación solo puede validar cómo se construyen los filtros.
+- **No es una regla de firewall.** Los filtros dinámicos de WFP no aparecen en la consola del Firewall
+  de Windows ni en `Get-NetFirewallRule`, así que el "las reglas de firewall siguen siendo manuales"
+  del ADR 0005 no cambia. Aparecen en `netsh wfp show filters`. La documentación del operador debe
+  decir dónde mirarlos, porque quien busque un bloqueo en la consola del firewall no lo encontrará.
+
+Validación antes de publicar el modo Block, en una máquina virtual Windows Server desechable y nunca
+primero en el servidor de producción:
+
+1. Un filtro en la subcapa de WPShield rechaza una conexión TCP nueva desde una dirección de prueba a
+   un puerto que abre una regla de *permitir* del Firewall de Windows. Anotar qué pasa con una regla
+   marcada "invalidar reglas de bloqueo".
+2. `taskkill /F` sobre el proceso borra todos los filtros de WPShield en menos de un segundo.
+3. Una sesión RDP ya establecida desde una dirección permitida sobrevive al bloqueo de otra dirección.
+4. 10 000 filtros: tiempo de alta, memoria del motor de filtrado base y latencia al abrir conexiones.
+5. Un producto de protección de terceros con su propio filtrado de red activo a la vez: sin caídas, y
+   sus propios bloqueos sin cambios.
+6. **Qué identidad puede añadir filtros.** El servicio corre como `NT SERVICE\WPShield`, nunca como
+   `LocalSystem`. Si esa cuenta no puede añadir filtros, decidir entre un proceso de bloqueo que
+   arranca un administrador (como `network-filter` hoy) y conceder acceso al SID del servicio con
+   `FwpmEngineSetSecurityInfo0`, que es un ajuste del servidor y por tanto manual.
+
 ## Cuándo revisar esta decisión
 
+- Si el punto 1 de la validación muestra que una regla del Firewall de Windows puede invalidar el
+  bloqueo de WPShield, documentarlo como limitación y hacer que el modo Block lo informe. No añadir
+  reglas de firewall para compensarlo.
 - Si la autoprueba o la primera ejecución real muestran que WinDivert no ordena los rangos de
   direcciones como se espera, se eliminan los rangos y solo se incluyen direcciones exactas.
 - Si este ADR se rechaza, `network-filter` se reduce a Monitor (el observador) y la ruta DROP se
