@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- `WPShield.Evidence`, the local SQLite evidence store of ADR 0007 (accepted, with an amendment for settings and events): failed logons (detailed and hourly), block decisions, coverage intervals so gaps read as "no data", a generic `events` table for new kinds of evidence, and catalog-validated `settings` with an audited `settings_history`. Bounded by age, rows and file size (retention is itself a setting); fixed parameterised queries for every reader; no entry point accepts a stream or raw bytes. `AuthFailure` and the 4625/140 pairing rule moved here so the desktop and the store count attempts the same way. Tested on Linux as well.
+
 - The desktop monitor's **Attacks** view shows failed Windows logons (Security 4625, any logon type, and Remote Desktop's RdpCoreTS 140) for the last 24 hours and then live: totals, a timeline split into nonexistent accounts and the rest, one row per source address with its network neighbours, search, and a slide-in detail per source. It needs administrator rights and offers to reopen elevated; without them it shows `—`, never zero, and intervals the log no longer covers are drawn as "no data".
 - `AuthFailureFeed` in the Security Monitor reads recent failed logons newest first, bounded by records and time, reports how far back each log reaches, and follows new ones through an `EventLogWatcher` subscription. It pairs nothing and decides nothing; the view pairs a 4625 and a 140 of the same attempt so it is counted once.
 

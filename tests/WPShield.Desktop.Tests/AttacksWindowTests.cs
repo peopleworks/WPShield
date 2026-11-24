@@ -1,5 +1,6 @@
 using System.Net;
 using System.Windows;
+using WPShield.Evidence;
 using WPShield.SecurityMonitor;
 using Xunit;
 

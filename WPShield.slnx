@@ -13,6 +13,7 @@
     <Project Path="src/WPShield.NetworkFilter/WPShield.NetworkFilter.csproj" />
     <Project Path="src/WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
     <Project Path="src/WPShield.Integration/WPShield.Integration.csproj" />
+    <Project Path="src/WPShield.Evidence/WPShield.Evidence.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WPShield.Abstractions.Tests/WPShield.Abstractions.Tests.csproj" />
@@ -26,5 +27,6 @@
     <Project Path="tests/WPShield.NetworkFilter.Tests/WPShield.NetworkFilter.Tests.csproj" />
     <Project Path="tests/WPShield.SecurityMonitor.Tests/WPShield.SecurityMonitor.Tests.csproj" />
     <Project Path="tests/WPShield.Integration.Tests/WPShield.Integration.Tests.csproj" />
+    <Project Path="tests/WPShield.Evidence.Tests/WPShield.Evidence.Tests.csproj" />
   </Folder>
 </Solution>

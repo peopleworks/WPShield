@@ -136,9 +136,9 @@ Before modifying code:
 - Add unit tests and appropriate integration tests.
 - Use English for code identifiers and localize user-facing messages.
 - Preserve multi-site isolation.
-- `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`
-  must stay free of ASP.NET Core, YARP, IIS and Windows-only dependencies. The Linux CI leg builds and
-  tests exactly those four so the claim is falsifiable rather than asserted. `Rules.Windows` names the
+- `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows`, `WPShield.Rules.WordPress` and
+  `WPShield.Evidence` must stay free of ASP.NET Core, YARP, IIS and Windows-only dependencies. The Linux
+  CI leg builds and tests exactly those five so the claim is falsifiable rather than asserted. `Rules.Windows` names the
   attack surface its rules understand, not a platform it depends on - which is precisely why it is
   on this list.
 - **The rule packages layer one way: `Rules.WordPress` references `Rules.Windows`, never the reverse.**
@@ -146,6 +146,34 @@ Before modifying code:
   the Windows and IIS hosting surface goes in `Rules.Windows`. A test that measures the two
   together - aggregate scoring, the ordinary-traffic corpus - lives in the WordPress test project,
   the only layer that sees both. ADR 0004, exit condition 1.
+
+## Evidence store
+
+`WPShield.Evidence` is the local SQLite store that ADR 0007 decides
+([docs/en/adr/0007-local-evidence-store.md](docs/en/adr/0007-local-evidence-store.md)). It is what the
+desktop, the CLI and a future MCP server answer from, so these rules protect every answer.
+
+- **One writer for evidence: the WPShield service.** Readers open the store read-only. Settings are
+  the one exception: an elevated operator tool may write them through `EvidenceSettings`, never a reader.
+- **The writer never creates the directory.** `wpshield install` creates it with replaced permissions
+  (SYSTEM, Administrators, the service SID, by SID); a directory created by the writer would inherit
+  `ProgramData`, which every local user can read.
+- **History, never the source of a block.** Nothing restores blocks from `decisions` or feeds stored
+  history to the decision engine at start. ADR 0006's process-lifetime guarantee depends on it.
+- **Never stored: request bodies, query strings, cookies, authorization headers, nonces, tokens,
+  passwords, file contents.** No public entry point of the assembly accepts a `Stream` or raw bytes, and
+  a test enforces it. Account names, subjects and event details are attacker-chosen text: cleaned with
+  `EvidenceText.Clean` and bounded before they are written.
+- **Readers ask through `EvidenceQueries` only:** fixed, parameterised SQL with bounded results. No
+  reader accepts free SQL, and no MCP tool may pass one through.
+- **Everything is bounded and every gap is recorded.** Row and age bounds per table, a file-size
+  bound, pruning that keeps aggregates, and `coverage` intervals so a view draws "no data" where the
+  collector did not run. A quiet period and an unrecorded one must never look alike.
+- **Settings come from the catalog.** A new setting is a `SettingCatalog` entry with a type, bounds and
+  its effect (`NextUse` or `NextStart`); unknown keys are refused and every change is audited in
+  `settings_history`. A label describes an address; it never allows or blocks one.
+- **New kinds of evidence go to `events`** with a lowercase kind and a bounded JSON detail. A dedicated
+  table is added only when a query needs it, with a migration that bumps `EvidenceStore.SchemaVersion`.
 
 ## Operator scripts
 

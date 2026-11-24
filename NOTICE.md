@@ -63,6 +63,7 @@ packages the repository references:
 | Package | Version | License | Used by | Why |
 | --- | --- | --- | --- | --- |
 | [`Yarp.ReverseProxy`](https://github.com/dotnet/yarp) | 2.3.0 | MIT | `WPShield.Gateway` | The forwarding engine. The only third-party component in the request path. |
+| [`Microsoft.Data.Sqlite`](https://github.com/dotnet/efcore) | 10.0.14 | MIT | `WPShield.Evidence` | The local evidence store (ADR 0007). Brings `SQLitePCLRaw` (Apache-2.0) and its native SQLite build (public domain). |
 | [`Microsoft.AspNetCore.TestHost`](https://asp.net/) | 10.0.0 | MIT | `WPShield.Gateway.Tests` | In-process host for the gateway integration suite. |
 | [`Microsoft.NET.Test.Sdk`](https://github.com/microsoft/vstest) | 17.14.1 | MIT | all test projects | Test platform. |
 | [`xunit`](https://github.com/xunit/xunit) | 2.9.3 | Apache-2.0 | all test projects | Test framework. |
