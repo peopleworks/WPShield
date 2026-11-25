@@ -44,8 +44,8 @@ internal sealed class ToolArgumentException : ArgumentException
 /// <remarks>
 /// <para>
 /// <b>Read-only by construction.</b> The store is opened read-only and only <see cref="EvidenceQueries"/>,
-/// <see cref="EvidenceEvents.Query"/>, <see cref="EvidenceEvents.Kinds"/> and the read side of
-/// <see cref="EvidenceSettings"/> are called. No tool blocks, unblocks or changes a setting.
+/// <see cref="WebEvidenceQueries"/>, <see cref="EvidenceEvents.Query"/>, <see cref="EvidenceEvents.Kinds"/> and the
+/// read side of <see cref="EvidenceSettings"/> are called. No tool blocks, unblocks or changes a setting.
 /// </para>
 /// <para>
 /// <b>Attacker text is data.</b> Every string an attacker could have chosen - an account name, an event's
@@ -288,17 +288,7 @@ internal sealed partial class EvidenceTools
                 };
                 body["result"] = new JsonObject
                 {
-                    ["decisions"] = new JsonArray(decisions.Take(limit).Select(d => (JsonNode)new JsonObject
-                    {
-                        ["time"] = Iso(d.Timestamp),
-                        ["action"] = Code(d.Action),
-                        ["target"] = Address(d.Target),
-                        ["rule_id"] = Code(d.RuleId),
-                        ["mode"] = Code(d.Mode),
-                        ["reason"] = Untrusted(d.Reason, 200),
-                        ["requested_by"] = Requester(d.RequestedBy),
-                        ["expires"] = d.ExpiresAt is { } expires ? Iso(expires) : null
-                    }).ToArray()),
+                    ["decisions"] = new JsonArray(decisions.Take(limit).Select(d => (JsonNode)DecisionNode(d)).ToArray()),
                     ["truncated"] = decisions.Count > limit
                 };
                 notes.Add("This is an audit trail, not the current state. A 'block' here is not necessarily in force: blocks live only as long as the process that made them, and WPShield never restores one from this history (ADR 0007, section 5).");
@@ -531,8 +521,14 @@ internal sealed partial class EvidenceTools
     private static JsonObject CoverageStatement(EvidenceQueries queries, TimeRange period, IReadOnlyList<EvidenceCoverage>? rows = null)
     {
         rows ??= queries.Coverage(period.From, period.To);
+        return CoverageStatement(rows, period, rows.Select(r => r.Source).Prepend(EvidenceWriter.RawSource));
+    }
+
+    /// <summary>The same statement for the sources named, in that order, whether or not they recorded anything.</summary>
+    private static JsonObject CoverageStatement(IReadOnlyList<EvidenceCoverage> rows, TimeRange period, IEnumerable<string> sourceNames)
+    {
         var span = period.To - period.From;
-        var names = rows.Select(r => r.Source).Prepend(EvidenceWriter.RawSource).Distinct(StringComparer.Ordinal).Take(MaxGaps);
+        var names = sourceNames.Distinct(StringComparer.Ordinal).Take(MaxGaps);
         var sources = new JsonArray();
         foreach (var name in names)
         {
@@ -739,6 +735,19 @@ internal sealed partial class EvidenceTools
     private JsonNode? Requester(string? requestedBy) => IsChannel(requestedBy) ? JsonValue.Create(requestedBy) : OperatorName(requestedBy);
 
     private static bool IsChannel(string? value) => value is AttemptPairing.SecurityChannel or AttemptPairing.RdpChannel;
+
+    /// <summary>One decision as the decisions tool and the address report show it.</summary>
+    private JsonObject DecisionNode(DecisionRecord d) => new()
+    {
+        ["time"] = Iso(d.Timestamp),
+        ["action"] = Code(d.Action),
+        ["target"] = Address(d.Target),
+        ["rule_id"] = Code(d.RuleId),
+        ["mode"] = Code(d.Mode),
+        ["reason"] = Untrusted(d.Reason, 200),
+        ["requested_by"] = Requester(d.RequestedBy),
+        ["expires"] = d.ExpiresAt is { } expires ? Iso(expires) : null
+    };
 
     private JsonNode? OperatorName(string? name) =>
         name is null ? null : access.DetailedRecords ? Untrusted(name, 64) : JsonValue.Create("withheld");

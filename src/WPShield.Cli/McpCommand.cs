@@ -34,8 +34,9 @@ internal static class McpCommand
         on stdin and stdout; its own messages go to stderr. It opens no network port.
 
         Tools: attacks_summary, top_sources, source_history, attack_timeline, coverage, decisions,
-        evidence_kinds, evidence_events, list_settings, address_labels. None of them blocks,
-        unblocks or changes a setting.
+        evidence_kinds, evidence_events, list_settings, address_labels, web_summary,
+        web_top_sources, web_findings, address_report. None of them blocks, unblocks or changes a
+        setting.
 
           --store <path>   The evidence store to read.
                            Default: %ProgramData%\WPShield\evidence\wpshield-evidence.db

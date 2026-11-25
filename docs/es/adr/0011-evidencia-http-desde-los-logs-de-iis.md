@@ -235,5 +235,12 @@ nada. La primera semana medirá cuánto tráfico legítimo atrapa.
   lo comprueba. El indicador `live` de un hallazgo se conserva para la enmienda del ADR 0009 que algún
   día pueda usarlo.
 - **La pestaña Web del escritorio** lee mediante `WebEvidenceQueries`.
-  Las herramientas MCP previstas deben impedir que los nombres de sitio salgan
-  del servidor si el operador no lo permite.
+- **Las herramientas MCP, como se construyeron (2026-11-25).** `web_summary`, `web_top_sources` y
+  `web_findings` leen solo `WebEvidenceQueries` y aceptan los rangos que acepta `wpshield web`. Una
+  cuarta herramienta, `address_report`, reúne en una sola respuesta los inicios de sesión fallidos de
+  una dirección, sus decisiones, su evidencia web, su etiqueta y si está en la lista de permitidos. Sin
+  `mcp.detailed_records` devuelven ID de sitio, conteos, ID de reglas y observaciones, métodos y
+  estados; con él añaden los nombres de sitio, las rutas normalizadas, los agentes de usuario y los
+  remedios de los sitios, cada uno envuelto como no confiable. El analista recibe las cuatro, con menos
+  parámetros opcionales de los que ve un cliente MCP, para no pasarse del presupuesto de los esquemas
+  estrictos (ver `docs/es/analista.md`).

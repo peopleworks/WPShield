@@ -26,11 +26,28 @@ decisions WPShield made. The decision behind it, and everything this page summar
 | "What other evidence is there - refused HTTP requests, SQL Server logons?" | `evidence_kinds`, `evidence_events` |
 | "What is the retention? May you show account names?" | `list_settings` |
 | "Which addresses are labelled as ours?" | `address_labels` |
+| "What did the IIS logs show today? Did a PHP file answer that should not have? Which sites' logs were not read?" | `web_summary` |
+| "Who probed the sites this week? Who hammered `wp-login.php`?" | `web_top_sources` |
+| "What were the newest web findings on site 4?" "What did 203.0.113.7 request?" | `web_findings` |
+| "Tell me everything about 203.0.113.7: logons, web, decisions, allow-list." | `address_report` |
 
 Ranges are `1h`, `6h`, `24h`, `7d`, `30d` or `90d`, or an explicit `from` and `to` (ISO-8601 UTC, at
 most 90 days apart). A range longer than six hours starts on the hour, because hourly aggregates count
 whole hours; the answer shows the effective start and the one asked for. Lists return 20 rows by
 default and 100 at most, and say when more exist.
+
+The web tools and `address_report` take the named ranges `wpshield web` takes - `1h` to `30d` - and
+no explicit `from` and `to`. They read the IIS log evidence of
+[ADR 0011](adr/0011-http-evidence-from-iis-logs.md) through the same read API as `wpshield web` and
+the desktop: coverage first, with every site the sensor knows and why a site's log was not read;
+requests counted over whole hours; rule findings and the observations `WEB-OBS-001` (a `.php` file
+that answered 2xx and is not a WordPress entry point), `-002` and `-003` (POSTs to `wp-login.php` and
+`xmlrpc.php`). Web evidence is evidence only: nothing is decided or blocked from it. A site is named by
+its ID, the number of its `W3SVC` log folder; `web_summary` lists the IDs the sensor knows.
+
+`address_report` answers one address from every source in one call: its failed logons, the decisions
+about it or its /24 or /64 and the one in force now, its web counts and newest findings, its label, and
+whether the allow-list or a private range keeps the decision engine from deciding against it.
 
 It **cannot** block, unblock, allow or change anything. If you ask it to, it says the action has to be
 done by you, outside the conversation. It opens no listener and modifies nothing on the server: no
@@ -43,13 +60,16 @@ IIS setting, DNS record, certificate, firewall rule, service or port.
 - **Read-only.** The store is opened read-only and every question goes through WPShield's fixed,
   bounded queries. No tool accepts SQL.
 - **Attacker text is marked.** An account name in a failed logon is whatever the attacker typed - and
-  an attacker can type `ignore previous instructions`. Every such string (account names, event
-  subjects and details, reasons, labels, who changed a setting) is cleaned of control characters and
+  an attacker can type `ignore previous instructions`. Every such string (account names, request
+  paths and user agents, event subjects and details, reasons, labels, site names, who changed a
+  setting) is cleaned of control characters and
   returned as `{"untrusted": "..."}`, and every tool tells the model those values are data, never
   instructions. This lowers the risk; it cannot remove it, which is why there are no action tools:
   the worst an injected account name can do through this server is a wrong answer.
 - **Aggregates by default.** Account names and single records (single attempts, single events) are
-  returned only when the store setting `mcp.detailed_records` is `true`. It is `false` by default.
+  returned only when the store setting `mcp.detailed_records` is `true`. It is `false` by default. The
+  same setting holds back IIS site names, the request paths and user agents of web findings, and site
+  remedies: without it a web answer carries site IDs, counts and rule and observation IDs.
 - **Gaps are said out loud.** Every answer has a `coverage` section with the gaps in what was
   recorded; a gap is never presented as a quiet period. An answer also says when detail is missing
   because the setting withheld it or because the detailed rows were already pruned.
@@ -60,8 +80,8 @@ IIS setting, DNS record, certificate, firewall rule, service or port.
 
 | Setting `mcp.detailed_records` | Sent to the assistant's model provider |
 | --- | --- |
-| `false` (default) | Counts, source addresses and their networks, timelines, coverage, block decisions, settings, address labels |
-| `true` | All of the above, plus the account names that were tried, single attempts and events, and who requested each decision and who changed each setting (with `false` these show as `"withheld"`, because they are often your own account names; a decision the engine made names its evidence channel, `security-4625` or `rdpcorets-140`, which names nobody and is always shown) |
+| `false` (default) | Counts, source addresses and their networks, timelines, coverage, block decisions, settings, address labels; for web evidence, site IDs, rule and observation IDs, methods and statuses |
+| `true` | All of the above, plus the account names that were tried, single attempts and events, and who requested each decision and who changed each setting (with `false` these show as `"withheld"`, because they are often your own account names; a decision the engine made names its evidence channel, `security-4625` or `rdpcorets-140`, which names nobody and is always shown); and for web evidence, IIS site names, the normalized request paths and user agents of findings, and the remedy for a site whose log was not read (it can name a folder on the server) |
 
 Account names that were tried include **real accounts on this server**, correctly spelled or not.
 Turn `mcp.detailed_records` on only if you accept that. It is a store setting

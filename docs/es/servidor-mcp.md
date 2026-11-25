@@ -26,12 +26,31 @@ esta página, es la [ADR 0008](adr/0008-servidor-mcp-de-solo-lectura.md).
 | "¿Qué otra evidencia hay: solicitudes HTTP rechazadas, inicios de sesión de SQL Server?" | `evidence_kinds`, `evidence_events` |
 | "¿Cuál es la retención? ¿Puedes mostrar nombres de cuenta?" | `list_settings` |
 | "¿Qué direcciones están etiquetadas como nuestras?" | `address_labels` |
+| "¿Qué mostraron hoy los logs de IIS? ¿Respondió un PHP que no debía? ¿Qué logs de sitios no se leyeron?" | `web_summary` |
+| "¿Quién sondeó los sitios esta semana? ¿Quién martilleó `wp-login.php`?" | `web_top_sources` |
+| "¿Cuáles fueron los hallazgos web más recientes del sitio 4?" "¿Qué pidió 203.0.113.7?" | `web_findings` |
+| "Cuéntame todo sobre 203.0.113.7: inicios de sesión, web, decisiones, lista de permitidos." | `address_report` |
 
 Los rangos son `1h`, `6h`, `24h`, `7d`, `30d` o `90d`, o un `from` y un `to` explícitos (ISO-8601 en
 UTC, separados como mucho por 90 días). Un rango de más de seis horas empieza en una hora en punto,
 porque los agregados por hora cuentan horas completas; la respuesta muestra el inicio efectivo y el
 que se pidió. Las listas devuelven 20 filas por defecto y 100 como máximo, y
 dicen cuándo hay más.
+
+Las herramientas web y `address_report` aceptan los rangos con nombre que acepta `wpshield web`, de
+`1h` a `30d`, y no un `from` y un `to` explícitos. Leen la evidencia de los logs de IIS del
+[ADR 0011](adr/0011-evidencia-http-desde-los-logs-de-iis.md) con la misma API de lectura que
+`wpshield web` y el escritorio: primero la cobertura, con cada sitio que el sensor conoce y por qué no
+se leyó el log de un sitio; las solicitudes contadas por horas completas; los hallazgos de las reglas y
+las observaciones `WEB-OBS-001` (un archivo `.php` que respondió 2xx y no es un punto de entrada de
+WordPress), `-002` y `-003` (POST a `wp-login.php` y a `xmlrpc.php`). La evidencia web es solo
+evidencia: nada se decide ni se bloquea a partir de ella. Un sitio se nombra por su ID, el número de su
+carpeta de log `W3SVC`; `web_summary` lista los ID que conoce el sensor.
+
+`address_report` responde sobre una dirección desde todas las fuentes en una sola llamada: sus inicios
+de sesión fallidos, las decisiones sobre ella o su /24 o /64 y la que está en vigor ahora, sus conteos
+web y sus hallazgos más recientes, su etiqueta, y si la lista de permitidos o un rango privado impiden
+que el motor de decisiones decida contra ella.
 
 **No puede** bloquear, desbloquear, permitir ni cambiar nada. Si se le pide, dice que esa acción la
 tiene que hacer usted, fuera de la conversación. No abre nada que escuche y no modifica nada en el
@@ -46,14 +65,17 @@ ni puertos.
   acotadas de WPShield. Ninguna herramienta acepta SQL.
 - **El texto del atacante va marcado.** El nombre de cuenta de un inicio de sesión fallido es lo que
   tecleó el atacante, y un atacante puede teclear `ignore previous instructions`. Cada una de esas
-  cadenas (nombres de cuenta, asuntos y detalles de eventos, motivos, etiquetas, quién cambió un
-  ajuste) se limpia de caracteres de control y se devuelve como `{"untrusted": "..."}`, y cada
+  cadenas (nombres de cuenta, rutas y agentes de usuario de las solicitudes, asuntos y detalles de
+  eventos, motivos, etiquetas, nombres de sitio, quién cambió un ajuste) se limpia de caracteres de
+  control y se devuelve como `{"untrusted": "..."}`, y cada
   herramienta le dice al modelo que esos valores son datos, nunca instrucciones. Esto reduce el
   riesgo; no puede eliminarlo, y por eso no hay herramientas de acción: lo peor que puede lograr un
   nombre de cuenta inyectado a través de este servidor es una respuesta equivocada.
 - **Agregados por defecto.** Los nombres de cuenta y los registros sueltos (intentos sueltos, eventos
   sueltos) solo se devuelven si el ajuste del almacén `mcp.detailed_records` vale `true`. Por defecto
-  vale `false`.
+  vale `false`. El mismo ajuste retiene los nombres de los sitios de IIS, las rutas y agentes de
+  usuario de los hallazgos web y los remedios de los sitios: sin él, una respuesta web lleva ID de
+  sitio, conteos e ID de reglas y observaciones.
 - **Los huecos se dicen en voz alta.** Cada respuesta tiene una sección `coverage` con los huecos de lo
   registrado; un hueco nunca se presenta como un periodo tranquilo. Una respuesta también dice cuándo
   falta detalle porque el ajuste lo retuvo o porque las filas detalladas ya se podaron.
@@ -64,8 +86,8 @@ ni puertos.
 
 | Ajuste `mcp.detailed_records` | Se envía al proveedor del modelo del asistente |
 | --- | --- |
-| `false` (por defecto) | Conteos, direcciones de origen y sus redes, líneas de tiempo, cobertura, decisiones de bloqueo, ajustes, etiquetas de direcciones |
-| `true` | Todo lo anterior, más los nombres de cuenta probados, los intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste (con `false` aparecen como `"withheld"`, porque suelen ser nombres de cuentas propias; una decisión del motor nombra su canal de evidencia, `security-4625` o `rdpcorets-140`, que no identifica a nadie y siempre se muestra) |
+| `false` (por defecto) | Conteos, direcciones de origen y sus redes, líneas de tiempo, cobertura, decisiones de bloqueo, ajustes, etiquetas de direcciones; de la evidencia web, ID de sitio, ID de reglas y observaciones, métodos y estados |
+| `true` | Todo lo anterior, más los nombres de cuenta probados, los intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste (con `false` aparecen como `"withheld"`, porque suelen ser nombres de cuentas propias; una decisión del motor nombra su canal de evidencia, `security-4625` o `rdpcorets-140`, que no identifica a nadie y siempre se muestra); y de la evidencia web, los nombres de los sitios de IIS, las rutas normalizadas y los agentes de usuario de los hallazgos, y el remedio de un sitio cuyo log no se leyó (puede nombrar una carpeta del servidor) |
 
 Entre los nombres de cuenta probados hay **cuentas reales de este servidor**, bien o mal escritas.
 Active `mcp.detailed_records` solo si acepta eso. Es un ajuste del almacén

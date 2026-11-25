@@ -11,7 +11,7 @@ using WPShield.Evidence;
 namespace WPShield.Cli.Tests.Analyst;
 
 /// <summary>
-/// The analyst's tools are the MCP server's: the same ten, the same descriptions, the same answers
+/// The analyst's tools are the MCP server's: the same fourteen, the same descriptions, the same answers
 /// with the same untrusted wrapping and the same <c>mcp.detailed_records</c> gate - and schemas that
 /// strict tool use accepts.
 /// </summary>
@@ -76,12 +76,12 @@ public sealed class McpAnalystToolsTests : IDisposable
     }
 
     [Fact]
-    public void TheToolsAreExactlyTheMcpServersTenWithTheirDescriptions()
+    public void TheToolsAreExactlyTheMcpServersFourteenWithTheirDescriptions()
     {
         var mcp = WPShieldMcpTools.Collection(Evidence()).ToDictionary(t => t.ProtocolTool.Name, t => t.ProtocolTool.Description);
         var tools = Tools();
 
-        Assert.Equal(10, tools.Count);
+        Assert.Equal(14, tools.Count);
         Assert.Equal(mcp.Keys.Order(StringComparer.Ordinal), tools.Select(t => t.Name));
         foreach (var tool in tools)
         {
@@ -113,6 +113,42 @@ public sealed class McpAnalystToolsTests : IDisposable
         // The API's limits for strict schemas, across every tool in one request.
         Assert.True(tools.Count <= 20);
         Assert.True(optional <= 24, $"{optional} optional parameters; strict tool use allows 24.");
+    }
+
+    /// <summary>
+    /// Fourteen tools with every optional parameter would need 32, over the strict-schema budget of 24. The
+    /// analyst is offered fewer; MCP clients keep every parameter, and the tool's default applies to the rest.
+    /// </summary>
+    [Fact]
+    public void TheAnalystLeavesOutOnlyTheListedParametersAndMcpClientsKeepThem()
+    {
+        var mcp = WPShieldMcpTools.Collection(Evidence()).ToDictionary(t => t.ProtocolTool.Name, t => t.ProtocolTool.InputSchema);
+        var analyst = Tools().ToDictionary(t => t.Name);
+
+        foreach (var (tool, omitted) in McpAnalystTools.ServerDefaults)
+            foreach (var name in omitted)
+            {
+                Assert.True(mcp[tool].GetProperty("properties").TryGetProperty(name, out _), $"MCP clients must still see {tool}.{name}");
+                Assert.Null(analyst[tool].InputSchema["properties"]![name]);
+            }
+        Assert.NotNull(analyst["top_sources"].InputSchema["properties"]!["limit"]);
+        Assert.Equal(["range"], analyst["web_findings"].InputSchema["properties"]!.AsObject().Select(p => p.Key));
+        Assert.Equal(["address"], analyst["address_report"].InputSchema["required"]!.AsArray().Select(r => (string)r!));
+    }
+
+    [Fact]
+    public void AnOmittedParameterIsRefusedAndTheToolsDefaultApplies()
+    {
+        Seed(detailed: false);
+        var tools = Tools().ToDictionary(t => t.Name);
+
+        var refused = tools["decisions"].Invoke(new JsonObject { ["limit"] = 5 }, CancellationToken.None);
+        var answered = tools["web_findings"].Invoke(new JsonObject { ["range"] = "24h" }, CancellationToken.None);
+
+        Assert.True(refused.IsError);
+        Assert.Contains("has no argument", refused.Json, StringComparison.Ordinal);
+        Assert.False(answered.IsError, answered.Json);
+        Assert.Equal(Evidence().WebFindings("24h").ToJson(), answered.Json);
     }
 
     [Fact]

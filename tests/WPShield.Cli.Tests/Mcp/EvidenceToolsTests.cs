@@ -8,7 +8,7 @@ using WPShield.Evidence;
 namespace WPShield.Cli.Tests.Mcp;
 
 /// <summary>
-/// The ten tools of <c>wpshield mcp</c> against a real store in a temporary directory, filled with
+/// The fourteen tools of <c>wpshield mcp</c> against a real store in a temporary directory, filled with
 /// synthetic RFC 5737 addresses. The protocol is not involved: these are the safety rules of ADR 0008.
 /// </summary>
 public sealed partial class EvidenceToolsTests : IDisposable
@@ -39,7 +39,11 @@ public sealed partial class EvidenceToolsTests : IDisposable
         ("evidence_kinds", t => t.EvidenceKinds("24h")),
         ("evidence_events", t => t.EvidenceEventsOfKind("http.request-refused", "24h")),
         ("list_settings", t => t.ListSettings()),
-        ("address_labels", t => t.AddressLabels())
+        ("address_labels", t => t.AddressLabels()),
+        ("web_summary", t => t.WebSummary("24h")),
+        ("web_top_sources", t => t.WebTopSources("24h")),
+        ("web_findings", t => t.WebFindings("24h")),
+        ("address_report", t => t.AddressReport("203.0.113.7", "24h"))
     ];
 
     // ---------------------------------------------------------------------------------------------
