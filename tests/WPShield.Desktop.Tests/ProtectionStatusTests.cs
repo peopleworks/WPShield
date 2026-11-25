@@ -149,6 +149,10 @@ public sealed class ProtectionStatusTests
     }
 
     [Fact]
+    public void AServiceThatDoesNotExistIsNotInstalledNotUnreadable() =>
+        Assert.Equal(new ServiceReading(ServiceState.NotInstalled), ServiceReader.Read("WPShieldAbsent" + Guid.NewGuid().ToString("N")));
+
+    [Fact]
     public void PlannedSensorsAreTheRoadmapsAndRecordNothing()
     {
         var planned = ProtectionStatus.Planned(spanish: false);
@@ -160,6 +164,7 @@ public sealed class ProtectionStatusTests
             Assert.Equal(Tone.Grey, p.Tone);
             Assert.Equal("planned", p.Status);
             Assert.Contains("not recording", p.Tooltip, StringComparison.Ordinal);
+            Assert.Contains("ADR 0007", p.Tooltip, StringComparison.Ordinal);
         });
     }
 
@@ -235,11 +240,11 @@ public sealed class ProtectionStatusTests
     [Fact]
     public void ANetworkTakesItsOwnLabelOrABroaderOneNeverThatOfAnAddressInsideIt()
     {
-        var labels = JsonNode.Parse("""{"203.0.113.0":"One host","203.0.113.0/28":"Narrower","198.51.0.0/16":"Provider","2001:db8:5::/48":"Lab"}""");
+        var labels = JsonNode.Parse("""{"203.0.113.0":"One host","203.0.113.0/28":"Narrower","192.0.2.0/24":"Lab network","2001:db8:5::/48":"Lab"}""");
         var matcher = AddressLabels.From(labels);
 
         Assert.Equal("", ProtectionStatus.LabelOf(labels, matcher, "203.0.113.0/24"));
-        Assert.Equal("Provider", ProtectionStatus.LabelOf(labels, matcher, "198.51.100.0/24"));
+        Assert.Equal("Lab network", ProtectionStatus.LabelOf(labels, matcher, "192.0.2.0/24"));
         Assert.Equal("Lab", ProtectionStatus.LabelOf(labels, matcher, "2001:db8:5::/64"));
         Assert.Equal("One host", ProtectionStatus.LabelOf(labels, matcher, "203.0.113.0"));
     }

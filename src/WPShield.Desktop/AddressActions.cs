@@ -155,13 +155,18 @@ internal static class AddressActions
 
     /// <summary>
     /// The warning Allow shows when the address behaves like an attacker: attempts on names that do not
-    /// exist, or a would-block decision in force. <see langword="null"/> when there is neither.
+    /// exist, or a would-block decision in force. <see langword="null"/> when there is neither. A count that could not
+    /// be read is said, never left out: nobody could look is not "none".
     /// </summary>
+    /// <param name="source">The address's row in the range shown, or <see langword="null"/> when it could not be read.</param>
     /// <param name="period">The range the counts come from, in words, such as "the last 24 hours".</param>
     internal static string? AllowWarning(AttackSource? source, int? wouldBlock, string period, bool spanish)
     {
         var parts = new List<string>();
-        if (source is { UnknownAttempts: > 0 } s)
+        if (source is null)
+            parts.Add(L(spanish, $"how many of its attempts in {period} named accounts that do not exist could not be read",
+                $"no se pudo leer cuántos de sus intentos en {period} usaron cuentas que no existen"));
+        else if (source is { UnknownAttempts: > 0 } s)
             parts.Add(L(spanish,
                 $"in {period} {s.UnknownAttempts:N0} of its {s.Attempts:N0} attempts named accounts that do not exist - guessing names, which a colleague mistyping a password does not do",
                 $"en {period} {s.UnknownAttempts:N0} de sus {s.Attempts:N0} intentos usaron cuentas que no existen: adivina nombres, algo que no hace un compañero que se equivoca de contraseña"));

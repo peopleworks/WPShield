@@ -43,6 +43,25 @@ public sealed class ProtectionWindowTests
         new EvidenceSettings(store).Set(AddressLabels.SettingKey, """{"203.0.113.0/24":"Scanner network"}""", "LAB\\earlier", "names");
     });
 
+    [Fact]
+    public Task BeforeTheFirstReadNothingIsClaimedNeitherAFailureNorAValue() =>
+        DesktopDispatcher.RunAsync(() =>
+        {
+            var window = new ProtectionWindow(false, null, () => new ServiceReading(ServiceState.Running));
+            try
+            {
+                Assert.Equal("Reading…", window.CollectorText.Text);
+                Assert.Equal("Reading…", window.ServiceText.Text);
+                Assert.Equal("Reading…", window.LogonStatus.Text);
+                Assert.Equal(Visibility.Collapsed, window.Banner.Visibility);
+                Assert.Equal("—", window.WouldBlockValue.Text);
+                Assert.Equal("In force (—)", window.TabInForce.Content);
+                Assert.Contains("Reading the evidence store", window.Empty.Text, StringComparison.Ordinal);
+            }
+            finally { window.Close(); }
+            return Task.CompletedTask;
+        });
+
     [Theory]
     [InlineData(false, "administrator", "Could not read the store", "not read")]
     [InlineData(true, "administrador", "No se pudo leer el almacén", "sin lectura")]

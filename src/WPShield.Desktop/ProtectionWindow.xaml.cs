@@ -171,6 +171,11 @@ public partial class ProtectionWindow : Window
 
     private void Render()
     {
+        if (readAt is null)
+        {
+            RenderReading();
+            return;
+        }
         var now = DateTimeOffset.UtcNow;
         var collector = ProtectionStatus.Collector(read);
         Paint(ProtectionStatus.CollectorLine(collector, spanish), CollectorText, CollectorDetail, CollectorDot);
@@ -208,6 +213,33 @@ public partial class ProtectionWindow : Window
         Empty.Text = ProtectionStatus.Empty(read, tab, searching: all.Count > 0, spanish);
         Empty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         Footer.Text = FooterText(rows.Count, all.Count);
+    }
+
+    /// <summary>Before the first read: nothing is claimed, neither a failure nor a value.</summary>
+    private void RenderReading()
+    {
+        var reading = L("Reading…", "Leyendo…");
+        foreach (var (title, detail, dot) in new[] { (CollectorText, CollectorDetail, CollectorDot), (ServiceText, ServiceDetail, ServiceDot) })
+        {
+            title.Text = reading;
+            detail.Text = "";
+            dot.Fill = Grey;
+        }
+        ModeText.Text = "—";
+        ModeDetail.Text = "";
+        Banner.Visibility = Visibility.Collapsed;
+        LogonText.Text = ProtectionStatus.Logons(ProtectionStatus.Collector(null), serviceRead, spanish).Name;
+        LogonStatus.Text = reading;
+        LogonDot.Fill = Grey;
+        LogonChip.ToolTip = null;
+        foreach (var value in new[] { WouldBlockValue, ProtectedValue, RefusedValue, ReportValue }) value.Text = "—";
+        TabInForce.Content = ProtectionStatus.TabTitle(DecisionTab.InForce, "—", spanish);
+        TabDay.Content = ProtectionStatus.TabTitle(DecisionTab.Day, "—", spanish);
+        TabMonth.Content = ProtectionStatus.TabTitle(DecisionTab.Month, "—", spanish);
+        Rows.ItemsSource = Array.Empty<ProtectionRow>();
+        Empty.Text = L("Reading the evidence store…", "Leyendo el almacén de evidencia…");
+        Empty.Visibility = Visibility.Visible;
+        Footer.Text = Empty.Text;
     }
 
     private string FooterText(int shown, int listed)

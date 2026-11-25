@@ -173,9 +173,9 @@ configurado pero a ciegas o su cobertura indica un problema, con una informació
 la causa y el remedio (para un registro de seguridad ilegible: añadir `NT SERVICE\WPShield` a Lectores
 del registro de eventos y reiniciar el servicio, o ejecutar `wpshield evidence collect` con elevación
 si no hay servicio); en gris si no se registra nada o no se pudo leer el almacén. **Inicios de sesión
-de SQL Server** y **Solicitudes a los sitios (gateway)** están en la hoja de ruta y aparecen punteados
-y deshabilitados, marcados **planificado**: ninguno se registra en el almacén, así que el motor no los
-ve.
+de SQL Server** y **Solicitudes a los sitios (gateway)** aparecen punteados y deshabilitados, marcados
+**planificado**: la [ADR 0007](adr/0007-almacen-local-de-evidencia.md) nombra ambos como fuentes
+futuras del almacén de evidencia, pero ninguno se registra aún en él, así que el motor no los ve.
 
 **Decisiones (Monitor).** Cuatro recuentos: decisiones **bloquearía** vigentes ahora, y registros
 **protegida**, **rechazada** e **informe** de las últimas 24 horas, contados con exactitud en el

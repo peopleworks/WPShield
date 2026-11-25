@@ -848,7 +848,9 @@ public partial class AttacksWindow : Window
         else
         {
             ActionText.Text = AddressActions.AllowConfirmation(address, spanish);
-            var source = detailSource?.Address == address ? detailSource : null;
+            // The detail's source, or the selected row while the detail is still being read: both carry the count.
+            var source = detailSource?.Address == address ? detailSource
+                : Rows.SelectedItem is AttackSource row && row.Address == address ? row : null;
             var warning = AddressActions.AllowWarning(source, AddressActions.WouldBlockInForce(storeProblem is null ? decisions : null, address,
                 DateTimeOffset.UtcNow), Period(), spanish);
             ActionWarningText.Text = warning ?? "";

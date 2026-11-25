@@ -66,11 +66,14 @@ internal static class ServiceReader
     /// <summary>ERROR_SERVICE_DOES_NOT_EXIST: the one answer that means "not installed".</summary>
     private const int DoesNotExist = 1060;
 
-    internal static ServiceReading Read()
+    internal static ServiceReading Read() => Read(Installer.ServiceName);
+
+    /// <summary>One service's state. Only "the service does not exist" is "not installed"; any other failure is "could not be read".</summary>
+    internal static ServiceReading Read(string name)
     {
         try
         {
-            using var controller = new ServiceController(Installer.ServiceName);
+            using var controller = new ServiceController(name);
             return new(controller.Status switch
             {
                 ServiceControllerStatus.Running => ServiceState.Running,
@@ -359,15 +362,17 @@ internal static class ProtectionStatus
     [
         new(L(spanish, "SQL Server logins", "Inicios de sesión de SQL Server"), Tone.Grey, L(spanish, "planned", "planificado"),
             L(spanish, "Planned, not recording. 'wpshield network-monitor --sql-instance' reads one instance's login outcomes on demand; nothing records " +
-                    "them into this store, so the decision engine does not see them. On the roadmap: M4 and the Windows service protection benchmark.",
+                    "them into this store, so the decision engine does not see them. On the roadmap (M4, the Windows service protection benchmark); " +
+                    "ADR 0007 names SQL Server as a later source of the evidence store.",
                 "Planificado, sin registrar. 'wpshield network-monitor --sql-instance' lee bajo demanda los resultados de inicio de sesión de una " +
-                    "instancia; nada los registra en este almacén, así que el motor de decisiones no los ve. En la hoja de ruta: M4 y la evaluación " +
-                    "de protección de servicios de Windows."), Planned: true),
+                    "instancia; nada los registra en este almacén, así que el motor de decisiones no los ve. En la hoja de ruta (M4, la evaluación " +
+                    "de protección de servicios de Windows); la ADR 0007 nombra SQL Server como fuente futura del almacén de evidencia."), Planned: true),
         new(L(spanish, "Requests to the sites (gateway)", "Solicitudes a los sitios (gateway)"), Tone.Grey, L(spanish, "planned", "planificado"),
             L(spanish, "Planned, not recording. The gateway inspects requests and writes its own request evidence, but nothing records it into this " +
-                    "store, so the decision engine does not see it. On the roadmap: M3 and M4.",
+                    "store, so the decision engine does not see it. ADR 0007 names the gateway's HTTP evidence as a later source of the evidence store.",
                 "Planificado, sin registrar. El gateway inspecciona las solicitudes y escribe su propia evidencia, pero nada la registra en este " +
-                    "almacén, así que el motor de decisiones no la ve. En la hoja de ruta: M3 y M4."), Planned: true)
+                    "almacén, así que el motor de decisiones no la ve. La ADR 0007 nombra la evidencia HTTP del gateway como fuente futura del " +
+                    "almacén de evidencia."), Planned: true)
     ];
 
     /// <summary>The big counts: would-block in force, and protected, refused and report in the last 24 hours.</summary>

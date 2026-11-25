@@ -138,6 +138,9 @@ public sealed class AddressActionsTests
         Assert.Contains("2 decisiones «bloquearía» vigentes", AddressActions.AllowWarning(null, 2, "las últimas 24 horas", spanish: true),
             StringComparison.Ordinal);
         Assert.Contains("could not be read", AddressActions.AllowWarning(null, null, "the last hour", spanish: false), StringComparison.Ordinal);
+        // A count nobody could read is said, not dropped.
+        Assert.Contains("how many of its attempts in the last 7 days named accounts that do not exist could not be read",
+            AddressActions.AllowWarning(null, 0, "the last 7 days", spanish: false), StringComparison.Ordinal);
         Assert.Null(AddressActions.AllowWarning(source with { UnknownAttempts = 0 }, 0, "the last 24 hours", spanish: false));
     }
 

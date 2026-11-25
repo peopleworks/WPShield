@@ -161,9 +161,10 @@ network)** is green when it recorded within the allowance; amber when it is conf
 its coverage reports a problem, with a tooltip that names the cause and the remedy (for an unreadable
 Security log: add `NT SERVICE\WPShield` to Event Log Readers and restart the service, or run
 `wpshield evidence collect` elevated when there is no service); grey when nothing is recording or the
-store could not be read. **SQL Server logins** and **Requests to the sites (gateway)** are on the
-roadmap and drawn dotted and disabled, marked **planned**: neither is recorded into the store, so the
-engine does not see them.
+store could not be read. **SQL Server logins** and **Requests to the sites (gateway)** are drawn
+dotted and disabled, marked **planned**: [ADR 0007](adr/0007-local-evidence-store.md) names both as
+later sources of the evidence store, but neither is recorded into it yet, so the engine does not see
+them.
 
 **Decisions (Monitor).** Four counts: **would block** decisions in force now, and **protected**,
 **refused** and **report** records of the last 24 hours, counted exactly in the store. **In force**,
