@@ -104,7 +104,7 @@ public sealed class DecisionEngineTests
     // =============================================================================================
 
     private IEnumerable<AuthFailure> Guessing(string ip, params string[] names) =>
-        names.Select((name, i) => Failure(i * 10, ip, name, "unknown-account")).ToArray();
+        names.Select((name, i) => Failure(i * 10.0, ip, name, "unknown-account")).ToArray();
 
     [Fact]
     public void NonexistentAccounts_BelowTheThresholdDecideNothing()
@@ -141,7 +141,7 @@ public sealed class DecisionEngineTests
     public void NonexistentAccounts_IgnoreAccountsThatExist()
     {
         var failures = new[] { "pedro", "maria", "ana", "juan", "luis", "rosa", "carlos", "elena", "jose" }
-            .Select((name, i) => Failure(i * 10, "198.51.100.9", name, "bad-password"));
+            .Select((name, i) => Failure(i * 10.0, "198.51.100.9", name, "bad-password"));
 
         Assert.Empty(Observe(Engine(), failures));
     }
@@ -166,7 +166,7 @@ public sealed class DecisionEngineTests
     // =============================================================================================
 
     private IEnumerable<AuthFailure> Spread(string prefix, int count, string suffix = "") =>
-        Enumerable.Range(1, count).Select(i => Failure(i * 10, $"{prefix}{i}{suffix}")).ToArray();
+        Enumerable.Range(1, count).Select(i => Failure(i * 10.0, $"{prefix}{i}{suffix}")).ToArray();
 
     [Fact]
     public void Network_BelowTheThresholdDecidesNothing()
@@ -207,7 +207,7 @@ public sealed class DecisionEngineTests
     public void Network_AddressesOfDifferentNetworksDoNotAddUp()
     {
         // One address in each of twelve /64s, each trying its own account so HOST-AUTH-004 stays out of it.
-        var failures = Enumerable.Range(1, 12).Select(i => Failure(i * 10, $"2001:db8:{i:x}::7", $"user{i}"));
+        var failures = Enumerable.Range(1, 12).Select(i => Failure(i * 10.0, $"2001:db8:{i:x}::7", $"user{i}"));
 
         Assert.Empty(Observe(Engine(), failures));
     }
@@ -229,7 +229,7 @@ public sealed class DecisionEngineTests
 
     /// <summary>One address per /64 so that HOST-AUTH-003 stays out of it.</summary>
     private IEnumerable<AuthFailure> OneAccountFrom(int addresses, string account = "administrador", string reason = "bad-password") =>
-        Enumerable.Range(1, addresses).Select(i => Failure(i * 10, $"2001:db8:0:{i:x}::1", account, reason)).ToArray();
+        Enumerable.Range(1, addresses).Select(i => Failure(i * 10.0, $"2001:db8:0:{i:x}::1", account, reason)).ToArray();
 
     [Fact]
     public void SharedAccount_BelowTheThresholdReportsNothing()
@@ -266,7 +266,7 @@ public sealed class DecisionEngineTests
     public void SharedAccount_CountsTheAccountIgnoringCase()
     {
         var failures = OneAccountFrom(5, "Administrador").Concat(
-            Enumerable.Range(6, 5).Select(i => Failure(i * 10, $"2001:db8:0:{i:x}::1", "ADMINISTRADOR")));
+            Enumerable.Range(6, 5).Select(i => Failure(i * 10.0, $"2001:db8:0:{i:x}::1", "ADMINISTRADOR")));
 
         Assert.Single(Observe(Engine(), failures), d => d.RuleId == DecisionRules.SharedAccount);
     }
