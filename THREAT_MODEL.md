@@ -463,6 +463,23 @@ answer before it is opened, not after. Transitive package versions are not centr
 transitive bump can arrive unreviewed. Releases are not code-signed; that is an M6 item. Dependabot
 *security* alerts are a repository setting that is not yet enabled.
 
+### T14 — Host-wide WFP enforcement
+
+A block affects every site on the host. Only operator input or log evidence with a TCP-confirmed
+remote address can request it. Monitor opens no WFP session. Block requires a non-empty allow-list,
+checks active RDP connections before startup and dynamic additions, and applies the allow-list
+at admission and filter construction.
+
+Windows handles traffic in its network stack. WPShield imports `fwpuclnt.dll` from System32,
+self-tests a probe against the real engine, and keeps filters in one dynamic session. Updates
+commit in transactions. If one fails, WPShield closes the session to lift all its filters.
+Enforcement, evidence state and enumeration are bounded.
+
+A hung process can retain its filters past their TTL until it is terminated. Firewall arbitration,
+forced-exit timing and coexistence with endpoint protection are lab acceptance checks.
+[ADR 0006](docs/en/adr/0006-network-layer-blocking.md) ·
+[Disposable-VM checks](docs/en/network-filter-vm-validation.md)
+
 ---
 
 ## Required safeguards

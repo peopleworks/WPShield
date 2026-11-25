@@ -1,6 +1,8 @@
 # ADR 0002 — Where brute-force defence belongs
 
-- **Status:** Proposed
+- **Status:** Network half superseded by [ADR 0006](0006-network-layer-blocking.md), accepted
+  2026-11-24: WPShield blocks host-wide itself, through process-lifetime kernel filters that are not
+  firewall rules, and the sibling project will not be built. The HTTP half stands.
 - **Deciders:** WPShield maintainers
 - **Affects:** M3 (rate limiting and automated behaviour), and a possible sibling project
 

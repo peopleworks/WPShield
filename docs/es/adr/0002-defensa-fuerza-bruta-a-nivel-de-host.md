@@ -1,6 +1,9 @@
 # ADR 0002 — Dónde vive la defensa contra fuerza bruta
 
-- **Estado:** Propuesta
+- **Estado:** Su mitad de red queda sustituida por la [ADR 0006](0006-bloqueo-en-capa-de-red.md),
+  aceptada el 2026-11-24: WPShield bloquea a nivel de servidor por sí mismo, con filtros del kernel que
+  viven lo que vive el proceso y que no son reglas de firewall, y el proyecto hermano no se construirá.
+  La mitad HTTP se mantiene.
 - **Deciden:** Mantenedores de WPShield
 - **Afecta a:** M3 (limitación de tasa y comportamiento automatizado), y a un posible proyecto hermano
 

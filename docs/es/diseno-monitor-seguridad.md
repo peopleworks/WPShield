@@ -2,32 +2,39 @@
 
 WPShield.SecurityMonitor es un **componente en modo usuario, exclusivo de Windows**, que lee
 el registro de eventos de Seguridad de Windows y detecta ataques de autenticación como fuerza
-bruta de Escritorio Remoto (RDP) y fallos repetidos de inicio de sesión. La CLI muestra los hallazgos al operador.
+bruta de Escritorio Remoto (RDP) y fallos repetidos de inicio de sesión. Publica hallazgos en
+un receptor que puede alimentar la lista de bloqueo dinámica de `WPShield.NetworkFilter`,
+cerrando la brecha entre el filtrado a nivel de paquetes y los fallos de autenticación que los
+paquetes por sí solos no pueden revelar.
 
 ## Por qué existe
 
 Un host de producción con WordPress sobre Windows Server fue observado recibiendo ataques
 sostenidos tanto en puertos web (80/443) como en Escritorio Remoto (TCP 3389).
-Los eventos de autenticación de Windows registran el resultado de cada intento observado.
+`WPShield.NetworkFilter` puede bloquear una dirección remota cuando WFP autoriza la conexión. El
+registro de Seguridad indica si la autenticación RDP posterior se completó o falló.
 
 `WPShield.SecurityMonitor` lee el Event ID `4625` (inicio de sesión fallido) y `4624` (inicio
 de sesión exitoso) del registro de Seguridad, identifica el Tipo de Inicio de Sesión `10`
 (RemoteInteractive = RDP) y genera hallazgos cuando una IP de origen supera un umbral
-configurable de fallos.
+configurable de fallos. Cuando el monitor lea solo eventos nuevos (véase *Limitaciones
+conocidas*), esos hallazgos podrán publicarse en la lista de bloqueo del filtro de red, de modo que
+la dirección del atacante se descarte a nivel de paquete antes de que pueda intentar otro inicio de
+sesión.
 
 ## Posición en la arquitectura
 
 | Capa | Componente | Qué ve | ¿Bloquea? |
 |---|---|---|---|
 | 1 | Firewall de Windows | Reglas estáticas de IP | Sí |
-| 2 | `WPShield.NetworkFilter` | Prototipo anterior | No disponible |
-| 3 | **`WPShield.SecurityMonitor`** | **Registro de Seguridad (resultados de autenticación)** | **Solo informa** |
+| 2 | `WPShield.NetworkFilter` | Intentos nuevos de conexión TCP entrante (encabezados IP y TCP) | Sí, en modo Block |
+| 3 | **`WPShield.SecurityMonitor`** | **Registro de Seguridad (resultados de autenticación)** | **Indirectamente** |
 | 4 | `WPShield.Gateway` | Cuerpos de solicitud HTTP | Sí (cargas) |
 | 5 | IIS + WordPress | Capa de aplicación | No |
 
 El monitor no bloquea tráfico directamente. Emite hallazgos (puntuación, acción, evidencia) a
 un `ISecurityEventSink`. Una implementación del operador decide qué hacer: escribir en el log
-JSON Lines, publicar IPs en la lista de bloqueo dinámica de `NetworkFilter`, alertar, etc.
+JSON Lines, solicitar bloqueos al filtro de red, alertar, etc.
 
 ## Responsabilidades
 
@@ -186,22 +193,39 @@ while (!cts.Token.IsCancellationRequested)
 
 | Hito | Relación |
 |---|---|
-| M2.7 Filtro de red | La CLI informa de los hallazgos. El bloqueo a escala del servidor está pendiente. |
+| M2.7 Filtro de red | `WPShield.Integration` convierte los hallazgos de SecurityMonitor en solicitudes de bloqueo; el proceso independiente acepta entradas del operador. La conexión con el motor de decisión requiere otro ADR. |
 | M3 Limitación de velocidad | `WP-SEC-001` y `WP-SEC-002` son la mitad de autenticación de la limitación de velocidad; M3 agrega la mitad HTTP. |
 | M4 Observabilidad | Los hallazgos de SecurityMonitor usan el mismo sobre JSON Lines que el gateway. |
 | M6 Servicio de Windows | `SecurityEventMonitor` puede ejecutarse como parte del servicio de Windows de WPShield bajo `NT SERVICE\WPShield`. |
 
+## Limitaciones conocidas
+
+Aparecieron al conectar el monitor con el filtro de red (ADR 0006). Son la razón de que
+`WPShield.Integration` todavía no esté conectado a `wpshield network-filter`.
+
+- **El primer escaneo lee el registro de Seguridad entero a memoria.** `WinEventLogReader` consulta
+  desde el evento más antiguo y reúne cada coincidencia en una lista. En un host con un registro de
+  Seguridad de 2 GB eso es una lectura sin límite, y cada dirección que alguna vez acumuló suficientes
+  inicios de sesión fallidos en una ventana produce un hallazgo de golpe. El arreglo es el del
+  ADR 0002: suscribirse a los eventos nuevos con `EventLogWatcher` y `readExistingEvents: false`.
+- **`WP-SEC-001` no ve la fuerza bruta RDP bajo Network Level Authentication.** Cuenta solo
+  `LogonType 10`. Con NLA, lo predeterminado en RDP, los inicios de sesión fallidos se registran como
+  `LogonType 3`, así que esta regla nunca se dispara con ellos. `WP-SEC-002`, que cuenta cada 4625 por
+  dirección, sí.
+- **La lista de permitidos es una comparación exacta de cadenas**, así que un rango CIDR, o la forma
+  IPv6 mapeada de IPv4 de una dirección permitida, no coincide. Para bloquear, la autoridad es la lista
+  de permitidos del filtro de red.
+
 ## Fuera del alcance
 
-- Bloqueo en tiempo real (el monitor es de sondeo vía `ScanOnce`; no se suscribe a flujos de eventos en vivo).
+- Bloqueo en tiempo real. Hoy el monitor sondea con `ScanOnce`; la lectura por suscripción es el paso siguiente 3.
 - Leer otros registros de eventos (Sistema, Aplicación) — solo Seguridad.
 - Descifrar o inspeccionar el contenido de sesiones RDP.
 
 ## Pasos siguientes
 
-1. Confirmar que `src/WPShield.SecurityMonitor/` tiene como destino `net10.0` con `[assembly: SupportedOSPlatform("windows")]`
-   — para que el gateway `net10.0` pueda alojar el recolector de evidencia mientras el analizador de plataforma rechaza a
-   quien lo llame sin comprobar — y referencia solo a `WPShield.Abstractions` y `WPShield.Evidence`.
+1. Confirmar que `src/WPShield.SecurityMonitor/` tiene como destino `net10.0-windows` y referencia solo a `WPShield.Abstractions`.
 2. Agregar pruebas unitarias para `RdpBruteForceRule` y `FailedLogonRule`.
-3. Agregar una implementación de ejemplo de `ISecurityEventSink` que publique en `WPShield.NetworkFilter.BlockListRule`.
-4. Escribir `docs/en/security-monitor-design.md` como espejo de este documento.
+3. Sustituir el lector que reproduce el registro por una suscripción con `EventLogWatcher` y, después,
+   conectar `WPShield.Integration.NetworkFilterBlockListSink` (que ya solicita bloqueos a través de
+   `NetworkFilterService.RequestBlock`) a `wpshield network-filter`.

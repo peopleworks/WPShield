@@ -61,7 +61,7 @@ Use the read-only `wpshield mcp` server with Claude Desktop or Claude Code to as
 
 ## Current limits
 
-- Host-level blocking is unavailable on `main`. ADR 0006 is accepted and the enforcer is under review in [PR #86](https://github.com/peopleworks/WPShield/pull/86).
+- Host-wide WFP blocking is a research preview for disposable Windows Server VMs. Monitor is the default. [Network filter and validation](docs/en/network-filter-design.md)
 - Production traffic remains outside the approved scope. During M1 and M2, run the gateway on loopback only.
 
 ## Status

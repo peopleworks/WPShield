@@ -111,6 +111,12 @@ must complete first.
   See the [English](docs/en/request-evidence.md) and [Spanish](docs/es/evidencia-solicitudes.md)
   field references. Reader-1 remains an evaluation plan, with no runtime integration.
 
+- **Host-wide blocking uses Windows Filtering Platform in the lab.** The `network-filter` command
+  defaults to Monitor. Explicit Block mode checks the allow-list and RDP clients, then adds IPv4
+  and IPv6 filters in a dynamic session. `--check` reports WFP access for the current identity.
+  The standalone command enforces operator entries. The decision engine is separate.
+  [English design](docs/en/network-filter-design.md) · [Diseño en español](docs/es/diseno-filtro-red.md)
+
 - **The rules are two packages now: `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`.** This
   is the first half of [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md)'s first exit
   condition. Five of the eleven rules contain nothing about WordPress - `WP-PATH-002`, `IIS-PATH-001`,

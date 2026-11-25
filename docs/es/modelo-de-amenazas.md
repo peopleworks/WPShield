@@ -497,6 +497,23 @@ transitivo puede llegar sin revisión. Las publicaciones no están firmadas con 
 elemento de M6. Las alertas *de seguridad* de Dependabot son una opción del repositorio que todavía no
 está habilitada.
 
+### T14 — Bloqueo WFP en todo el servidor
+
+Un bloqueo afecta a todos los sitios. Solo puede solicitarlo el operador o un registro que
+confirme la dirección remota por TCP. Monitor no abre sesiones WFP. Block exige una lista de
+permitidos, comprueba las conexiones RDP al arrancar y antes de añadir bloqueos dinámicos, y aplica
+la lista tanto al admitir entradas como al construir filtros.
+
+El tráfico pasa por la pila de red de Windows. WPShield importa `fwpuclnt.dll` desde System32,
+ejecuta una autoprueba con el motor real y mantiene los filtros en una sesión dinámica. Las
+actualizaciones se aplican en transacciones. Si una falla, WPShield cierra la sesión y se levantan
+sus filtros. El conjunto de bloqueos, el estado de evidencia y la enumeración están acotados.
+
+Si el proceso se cuelga puede retener filtros después del TTL hasta que termine. El arbitraje con
+el firewall, el tiempo de retirada tras una terminación forzada y la convivencia con la protección
+de endpoint se verifican en el laboratorio.
+[ADR 0006](adr/0006-bloqueo-en-capa-de-red.md) · [Pruebas en VM desechable](validacion-filtro-red-vm.md)
+
 ---
 
 ## Salvaguardas requeridas

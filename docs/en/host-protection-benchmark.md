@@ -35,9 +35,8 @@ a service, a site or a login outcome requires independent evidence. [Host flow v
 | Microsoft VPN / RRAS | RemoteAccess event 20271 and IPsec event 4652. [RRAS](https://rdpguard.com/ms-vpn-rras-brute-force-protection.aspx) | **Planned.** Distinguish a VPN authentication refusal from a negotiation failure and identify the available source address. |
 
 WPShield's Security Monitor reports RDP and generic failed-logon findings. The integration
-library has an in-memory block-list sink. The CLI leaves findings observational and refuses
-`network-filter`. Host-wide prevention trials depend on the replacement tracked in
-[draft PR #86](https://github.com/peopleworks/WPShield/pull/86). The flow view independently
+library has an in-memory block-list sink. The standalone CLI has a WFP enforcer for operator
+entries. Host-wide prevention trials run only in the [disposable VM](network-filter-vm-validation.md). The flow view independently
 reads audit evidence. M3 handles HTTP decisions in the gateway.
 Monitor remains the default. M1/M2 listeners remain loopback-only. [Security monitor design](security-monitor-design.md) · [Network filter design](network-filter-design.md) · [ADR 0002](adr/0002-host-level-brute-force-defence.md) · [Roadmap](../../ROADMAP.md)
 

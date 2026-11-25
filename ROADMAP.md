@@ -202,22 +202,20 @@ not read as more than they claim:
   would let a command escape it. That is weaker, and the documentation says so rather than implying
   otherwise.
 
-## M2.7 — Network layer packet filtering
+## M2.7 — Host-wide network filtering
 
-The legacy WinDivert engine opened a sniff handle, which copies packets. Discarding a copy
-leaves the original in transit. The CLI refuses `network-filter` before accessing a driver.
-
-- [x] Network inspection contracts and unit-tested block-list, rate and port-scan rules.
-- [ ] Host-wide packet enforcement. [Draft PR #86](https://github.com/peopleworks/WPShield/pull/86)
-  tracks a replacement using Windows Filtering Platform dynamic sessions and its validation on a
-  disposable host. Acceptance includes proving that a connection is blocked and access returns
-  after the enforcing process exits.
+- [x] Operator address blocks at the IPv4 and IPv6 ALE receive/accept layers in a dynamic WFP
+  session. Monitor is the default. Block requires an allow-list, RDP safety checks and a native
+  self-test. [ADR 0006](docs/en/adr/0006-network-layer-blocking.md)
+- [ ] Complete the six [Windows Server VM checks](docs/en/network-filter-vm-validation.md) in
+  [PR #86](https://github.com/peopleworks/WPShield/pull/86), including connection refusal and
+  recovery after process termination.
 
 ## M2.8 — Security event log monitoring
 
 The CLI reads the Windows Security event log and reports RDP brute-force and failed-logon
-findings. The integration library has an in-memory block-list sink. Packet enforcement remains
-pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md)
+findings. The integration library can submit qualified failed logons to the WFP block set.
+The standalone enforcer accepts operator entries. [Security monitor design](docs/en/security-monitor-design.md)
 
 - [x] `src/WPShield.SecurityMonitor/` — Windows-only Security event log reader (`net10.0`, declared
   `SupportedOSPlatform("windows")`), and the evidence collector the service hosts (ADR 0007).
@@ -232,7 +230,7 @@ pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md
   platform-independent projects remain buildable and testable on Linux.
 - [x] `src/WPShield.Integration/` — optional bridge project targeting `net10.0-windows`.
 - [x] `NetworkFilterBlockListSink` — `ISecurityEventSink` implementation that adds
-  blocking source IPs to `WPShield.NetworkFilter.Rules.BlockListRule`.
+  TCP-confirmed source addresses to `NetworkFilterService` with a TTL.
 - [ ] End-to-end enforcement from an authentication finding, including expiry and recovery.
 
 ### What M2.8 does not cover
@@ -244,7 +242,9 @@ pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md
 
 ## M3 — Rate limiting and automated behavior
 
-> **M3 refuses requests. It does not touch the firewall.** [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md) records why: a brute-force blocker's job is to modify firewall rules automatically, which is the inverse of an invariant this project depends on for deployment onto shared hosts. The HTTP half belongs here, inline, where the real client address is already resolved; RDP, FTP, SMTP and SQL belong to a sibling project with its own safety contract.
+> **M3 refuses HTTP requests inline, where the gateway has resolved the real client address.**
+> The network half of [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md) is superseded
+> by [ADR 0006](docs/en/adr/0006-network-layer-blocking.md), which governs host-wide WFP filters.
 
 > Per-IP limiting is meaningless until WPShield can resolve the real client address. Under the
 > traffic path chosen in [ADR 0001](docs/en/adr/0001-production-traffic-path.md) every request
@@ -312,7 +312,7 @@ pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md
 - [ ] Publish results by service and version for attribution, false positives, time to detection,
       resource use and recovery. Record observation, detection and verified prevention separately.
       A packet seen on a service port does not establish an authentication outcome.
-- [ ] Evaluate host-wide enforcement separately under [ADR 0002](docs/en/adr/0002-host-level-brute-force-defence.md).
+- [ ] Evaluate host-wide enforcement separately under [ADR 0006](docs/en/adr/0006-network-layer-blocking.md).
       The monitoring benchmark starts in Monitor mode and leaves firewall policy under operator control.
 
 ## M5 — Local multilingual dashboard

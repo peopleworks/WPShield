@@ -2,32 +2,36 @@
 
 WPShield.SecurityMonitor is a **Windows-only, user-mode component** that reads the Windows
 Security event log and detects authentication attacks such as RDP brute force and repeated
-failed logons. The CLI reports these findings to the operator.
+failed logons. It publishes findings to a sink that can feed the dynamic block list of
+`WPShield.NetworkFilter`, closing the gap between packet-level filtering and authentication
+failures that packets alone cannot reveal.
 
 ## Why it exists
 
 A production WordPress host on Windows Server was observed receiving sustained attacks on
-both web ports (80/443) and Remote Desktop (TCP 3389). Windows authentication events record
-the outcome of a logon attempt.
+both web ports (80/443) and Remote Desktop (TCP 3389). `WPShield.NetworkFilter` can block a remote address at WFP connection authorization. The
+Security log records whether the subsequent RDP authentication succeeded or failed.
 
 `WPShield.SecurityMonitor` reads Event ID `4625` (failed logon) and `4624` (logon success)
 from the Security log, identifies Logon Type `10` (RemoteInteractive = RDP), and raises
-findings when a source IP exceeds a configurable failure threshold.
+findings when a source IP exceeds a configurable failure threshold. Once the monitor reads
+new events only (see *Known limitations*), those findings can be published to the network
+filter's block list, so the attacker's address is dropped at the packet layer before it can
+attempt another logon.
 
 ## Position in the architecture
 
 | Layer | Component | What it sees | Blocks? |
 |---|---|---|---|
 | 1 | Windows Firewall | Static IP rules | Yes |
-| 2 | `WPShield.NetworkFilter` | Legacy prototype | Unavailable |
-| 3 | **`WPShield.SecurityMonitor`** | **Security event log (auth results)** | **Report only** |
+| 2 | `WPShield.NetworkFilter` | New inbound TCP connection attempts (IP and TCP headers) | Yes, in Block mode |
+| 3 | **`WPShield.SecurityMonitor`** | **Security event log (auth results)** | **Indirectly** |
 | 4 | `WPShield.Gateway` | HTTP request bodies | Yes (uploads) |
 | 5 | IIS + WordPress | Application layer | No |
 
 The monitor does not block traffic directly. It emits findings (score, action, evidence) to
 an `ISecurityEventSink`. An operator-provided sink implementation decides what to do:
-write to the JSON Lines log, publish IPs to the `NetworkFilter` dynamic block list, alert,
-etc.
+write to the JSON Lines log, request blocks from the network filter, alert, etc.
 
 ## Responsibilities
 
@@ -183,22 +187,37 @@ while (!cts.Token.IsCancellationRequested)
 
 | Milestone | Relationship |
 |---|---|
-| M2.7 Network filter | The CLI reports findings. Host-wide enforcement is pending. |
+| M2.7 Network filter | `WPShield.Integration` turns SecurityMonitor findings into block requests; the standalone enforcer accepts operator entries. Any decision-engine connection requires a separate ADR. |
 | M3 Rate limiting | `WP-SEC-001` and `WP-SEC-002` are the authentication half of rate limiting; M3 adds the HTTP half. |
 | M4 Observability | SecurityMonitor findings use the same JSON Lines log envelope as the gateway. |
 | M6 Windows Service | `SecurityEventMonitor` can run as part of the WPShield Windows service under `NT SERVICE\WPShield`. |
 
+## Known limitations
+
+Found while wiring the monitor to the network filter (ADR 0006). They are why
+`WPShield.Integration` is not connected to `wpshield network-filter` yet.
+
+- **The first scan reads the whole Security log into memory.** `WinEventLogReader` queries from the
+  oldest event and collects every match into a list. On a host with a 2 GB Security log that is an
+  unbounded read, and every address that ever failed enough logons in one window produces a finding
+  at once. The fix is ADR 0002's: subscribe to new events with `EventLogWatcher` and
+  `readExistingEvents: false`.
+- **`WP-SEC-001` misses RDP brute force under Network Level Authentication.** It counts only
+  `LogonType 10`. With NLA, the RDP default, failed logons are recorded as `LogonType 3`, so this rule
+  never fires for them. `WP-SEC-002`, which counts every 4625 per address, does.
+- **The allow-list is an exact string match**, so a CIDR range or an IPv4-mapped IPv6 form of an
+  allow-listed address does not match. The network filter's allow-list is the authority for blocking.
+
 ## Out of scope
 
-- Real-time blocking (the monitor is polling-based via `ScanOnce`; it does not subscribe to live event streams).
+- Real-time blocking. Today the monitor polls with `ScanOnce`; reading by subscription is next step 3.
 - Reading other event logs (System, Application) — only Security.
 - Decrypting or inspecting RDP session contents.
 
 ## Next steps
 
-1. Confirm `src/WPShield.SecurityMonitor/` targets `net10.0` with `[assembly: SupportedOSPlatform("windows")]` - so the
-   `net10.0` gateway can host the evidence collector while the platform analyzer refuses unguarded callers - and references
-   only `WPShield.Abstractions` and `WPShield.Evidence`.
+1. Confirm `src/WPShield.SecurityMonitor/` targets `net10.0-windows` and references only `WPShield.Abstractions`.
 2. Add unit tests for `RdpBruteForceRule` and `FailedLogonRule`.
-3. Add an example `ISecurityEventSink` implementation that publishes to `WPShield.NetworkFilter.BlockListRule`.
-4. Write `docs/es/diseno-monitor-seguridad.md` mirroring this document.
+3. Replace the replaying reader with an `EventLogWatcher` subscription, then wire
+   `WPShield.Integration.NetworkFilterBlockListSink` (which already requests blocks through
+   `NetworkFilterService.RequestBlock`) into `wpshield network-filter`.

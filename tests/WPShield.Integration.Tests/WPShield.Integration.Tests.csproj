@@ -15,4 +15,9 @@
     <ProjectReference Include="../../src/WPShield.Integration/WPShield.Integration.csproj" />
   </ItemGroup>
 
+  <!-- Share the in-memory WFP session and test fixtures. -->
+  <ItemGroup>
+    <Compile Include="../WPShield.NetworkFilter.Tests/Support/*.cs" Link="Support/%(Filename)%(Extension)" />
+  </ItemGroup>
+
 </Project>
