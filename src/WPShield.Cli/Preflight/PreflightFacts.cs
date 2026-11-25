@@ -51,6 +51,13 @@ internal interface IHostFacts
 
     bool FileExists(string path);
     IReadOnlyList<string> ChildDirectories(string path);
+
+    /// <summary>
+    /// Whether <c>NT SERVICE\WPShield</c> is in Event Log Readers (<c>S-1-5-32-573</c>), which the
+    /// evidence collector needs to read the Security log. Asked only when the service exists, because
+    /// before that the account does not resolve.
+    /// </summary>
+    GroupMembership EventLogReadersMembership();
 }
 
 internal sealed record InstalledService(string State, string? Account, string? ImagePath);
@@ -197,6 +204,9 @@ internal sealed class HostFacts : IHostFacts
             return [];
         }
     }
+
+    public GroupMembership EventLogReadersMembership() =>
+        LocalGroupMembership.Read(WPShield.SecurityMonitor.EvidenceCollector.EventLogReadersSid, $@"NT SERVICE\{ServiceName}");
 
     private static bool ReadElevation()
     {

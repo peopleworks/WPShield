@@ -1,4 +1,5 @@
 using System.Globalization;
+using WPShield.SecurityMonitor;
 
 namespace WPShield.Cli.Preflight;
 
@@ -464,8 +465,78 @@ internal sealed class PreflightRunner(IHostFacts host, IIisFacts iis, PreflightO
 
         CheckDirectory(report, "PRE-015", _options.InstallPath, "Installation directory", blocker: false);
         CheckDirectory(report, "PRE-016", _options.LogPath, "Log directory", blocker: true);
+        CheckEventLogReaders(report);
 
         CheckNothingUnderAWebRoot(report);
+    }
+
+    /// <summary>
+    /// <c>PRE-020</c>. The evidence collector reads the Security log as <c>NT SERVICE\WPShield</c>,
+    /// which needs Event Log Readers (ADR 0007, section 1).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A blocker with the command, never applied: group membership is a server setting, and this
+    /// verb reads and reports. Without it the store records every period as unavailable - honest,
+    /// and useless.
+    /// </para>
+    /// <para>
+    /// <b>Before the service exists this is Info, not a blocker.</b> The account does not resolve
+    /// until <c>wpshield install</c> registers the service, so the remedy could not be applied yet,
+    /// and <c>wpshield setup</c> would stop on a blocker nobody can clear at that point. An
+    /// unreadable membership is a blocker: "nobody could look" is not "not a member", and certainly
+    /// not "a member".
+    /// </para>
+    /// </remarks>
+    private void CheckEventLogReaders(PreflightReport report)
+    {
+        const string Id = "PRE-020";
+        const string Account = @"NT SERVICE\WPShield";
+        var remedy =
+            $"From an elevated PowerShell: {EvidenceCollector.EventLogReadersRemedy} - then restart the service " +
+            "(Restart-Service WPShield), because a service reads its group memberships when it starts. Nothing in " +
+            "WPShield adds the account for you.";
+
+        if (_host.WPShieldService is null)
+        {
+            report.Add(
+                Id, PreflightStatus.Info, "Event Log Readers can be checked once the service exists",
+                $"{Account} resolves only after 'wpshield install' registers the service. To record failed logons " +
+                $"it must be a member of Event Log Readers ({EvidenceCollector.EventLogReadersSid}): after installing, " +
+                $"run {EvidenceCollector.EventLogReadersRemedy} and this preflight again.",
+                data: PreflightReport.Fields(("serviceInstalled", false), ("group", EvidenceCollector.EventLogReadersSid)));
+            return;
+        }
+
+        var membership = _host.EventLogReadersMembership();
+
+        if (membership.IsMember is null)
+        {
+            report.Add(
+                Id, PreflightStatus.Blocker, "Event Log Readers membership could not be read",
+                $"Whether {Account} can read the Security log is unknown: {membership.Problem ?? "no reason was reported"}.",
+                $"Run this elevated. If it still cannot be read, check by hand with Get-LocalGroupMember -SID " +
+                $"{EvidenceCollector.EventLogReadersSid}, and if the account is missing: {remedy}",
+                PreflightReport.Fields(("group", EvidenceCollector.EventLogReadersSid), ("readable", false)));
+            return;
+        }
+
+        if (membership.IsMember == true)
+        {
+            report.Add(
+                Id, PreflightStatus.Pass, "The service account can read the Security log",
+                $"{Account} is a member of Event Log Readers ({EvidenceCollector.EventLogReadersSid}). If it was added " +
+                "after the service last started, restart the service once.",
+                data: PreflightReport.Fields(("group", EvidenceCollector.EventLogReadersSid), ("member", true)));
+            return;
+        }
+
+        report.Add(
+            Id, PreflightStatus.Blocker, "The service account cannot read the Security log",
+            $"{Account} is not a member of Event Log Readers ({EvidenceCollector.EventLogReadersSid}), so the evidence " +
+            "store records no failed logon and marks every period unavailable.",
+            remedy,
+            PreflightReport.Fields(("group", EvidenceCollector.EventLogReadersSid), ("member", false)));
     }
 
     private void CheckDirectory(PreflightReport report, string id, string path, string what, bool blocker)

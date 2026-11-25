@@ -186,6 +186,61 @@ public sealed class InstallerTests
         Assert.Equal(FileSystemRights.Modify, environment.Rights[@"C:\ProgramData\WPShield\logs"]);
     }
 
+    /// <summary>
+    /// The evidence store's directory (ADR 0007): created by the install, never by the writer, with
+    /// replaced permissions and modify for the service, its only writer.
+    /// </summary>
+    [Fact]
+    public void TheEvidenceDirectoryIsCreatedAndHardenedWithModifyForTheService()
+    {
+        var environment = Ready();
+
+        Install(environment);
+
+        Assert.Contains($"CreateDirectory:{Installer.DefaultEvidencePath}", environment.Mutations);
+        Assert.Contains($"HardenDirectory:{Installer.DefaultEvidencePath}", environment.Mutations);
+        Assert.Equal(FileSystemRights.Modify, environment.Rights[Installer.DefaultEvidencePath]);
+        Assert.True(
+            environment.Mutations.IndexOf("SetServiceIdentity") <
+            environment.Mutations.IndexOf($"HardenDirectory:{Installer.DefaultEvidencePath}"));
+    }
+
+    /// <summary>One source for the path: the directory hardened is the one the collector writes to.</summary>
+    [Fact]
+    public void TheEvidenceDirectoryIsTheDirectoryOfTheStoresDefaultPath()
+    {
+        Assert.Equal(Path.GetDirectoryName(WPShield.Evidence.EvidenceStore.DefaultPath), Installer.DefaultEvidencePath);
+        Assert.Equal(Installer.DefaultEvidencePath, new InstallOptions { SourcePath = Source }.EvidencePath);
+    }
+
+    [Fact]
+    public void AnEvidencePathInsideAServedDirectory_IsRefused()
+    {
+        var environment = Ready();
+        environment.Served.Add(@"C:\inetpub\wwwroot");
+
+        Assert.Throws<CliArgumentException>(
+            () => Install(environment, o => o with { EvidencePath = @"C:\inetpub\wwwroot\WPShield\evidence" }));
+
+        Assert.Empty(environment.Mutations);
+    }
+
+    /// <summary>
+    /// The Event Log Readers step is the operator's, so the install names it - by SID, because the
+    /// group's name is localized - and does not perform it.
+    /// </summary>
+    [Fact]
+    public void TheClosingNotesNameTheEventLogReadersStepBySidAndDoNotPerformIt()
+    {
+        var environment = Ready();
+
+        Install(environment);
+
+        Assert.Contains(environment.Lines, line => line.Contains(
+            @"Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'", StringComparison.Ordinal));
+        Assert.DoesNotContain(environment.Mutations, mutation => mutation.Contains("Group", StringComparison.OrdinalIgnoreCase));
+    }
+
     [Fact]
     public void TheServiceIsNotStartedUnlessAsked()
     {
@@ -295,6 +350,25 @@ public sealed class InstallerTests
 
         Assert.DoesNotContain(@"DeleteDirectory:C:\ProgramData\WPShield\logs", environment.Mutations);
         Assert.Contains(environment.Lines, line => line.Contains("--remove-logs", StringComparison.Ordinal));
+    }
+
+    /// <summary>
+    /// The evidence store outlives an uninstall, with no flag to remove it (ADR 0007, section 7), and
+    /// the uninstall says so rather than leaving it to be discovered.
+    /// </summary>
+    [Fact]
+    public void TheEvidenceStoreIsKeptOnUninstallAndTheUninstallSaysSo()
+    {
+        var environment = Ready();
+        environment.IisReadable = true;
+        environment.Directories.Add(Installer.DefaultEvidencePath);
+
+        Uninstall(environment, o => o with { RemoveFiles = true, RemoveLogs = true });
+
+        Assert.DoesNotContain($"DeleteDirectory:{Installer.DefaultEvidencePath}", environment.Mutations);
+        Assert.Contains(environment.Lines, line =>
+            line.Contains($"kept: {Installer.DefaultEvidencePath}", StringComparison.Ordinal) &&
+            line.Contains("never removes the evidence store", StringComparison.Ordinal));
     }
 
     /// <summary>

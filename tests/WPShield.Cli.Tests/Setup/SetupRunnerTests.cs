@@ -339,6 +339,7 @@ public sealed class SetupRunnerTests : IDisposable
         public DirectoryFacts DescribeDirectory(string path) => new(Directory.Exists(path), []);
         public bool FileExists(string path) => File.Exists(path);
         public IReadOnlyList<string> ChildDirectories(string path) => [];
+        public GroupMembership EventLogReadersMembership() => new(true);
     }
 
     private sealed class FakeIis : IIisFacts

@@ -1,5 +1,7 @@
 using System.Security.AccessControl;
 using WPShield.Cli.Preflight;
+using WPShield.Evidence;
+using WPShield.SecurityMonitor;
 
 namespace WPShield.Cli.Install;
 
@@ -8,6 +10,12 @@ internal sealed record InstallOptions
     public required string SourcePath { get; init; }
     public string InstallPath { get; init; } = Installer.DefaultInstallPath;
     public string LogPath { get; init; } = @"C:\ProgramData\WPShield\logs";
+
+    /// <summary>
+    /// The evidence store's directory. Not an option: it is the directory of the gateway's default
+    /// <c>Evidence:Path</c>, so the directory this hardens is the one the collector writes to.
+    /// </summary>
+    public string EvidencePath { get; init; } = Installer.DefaultEvidencePath;
     public string? ConfigurationPath { get; init; }
     public bool AllowWebRootPaths { get; init; }
     public bool Start { get; init; }
@@ -38,6 +46,13 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
     /// <summary>Where an install lands unless told otherwise, and what a preview assumes.</summary>
     public const string DefaultInstallPath = @"C:\Program Files\WPShield";
 
+    /// <summary>
+    /// Derived from <see cref="EvidenceStore.DefaultPath"/> rather than written a second time. This
+    /// installer once hardened a log directory the gateway never wrote to; one source for the path
+    /// is what keeps the evidence directory from repeating that.
+    /// </summary>
+    public static readonly string DefaultEvidencePath = Path.GetDirectoryName(EvidenceStore.DefaultPath)!;
+
     public const string ServiceName = "WPShield";
     public const string ServiceDisplayName = "WPShield gateway";
     public const string VirtualAccount = @"NT SERVICE\WPShield";
@@ -60,6 +75,7 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
         Say($"Source      : {_options.SourcePath}");
         Say($"Install to  : {_options.InstallPath}");
         Say($"Logs to     : {_options.LogPath}  (written into {SettingsFileName}, not just created)");
+        Say($"Evidence to : {_options.EvidencePath}  (the default Evidence:Path; the collector never creates it)");
         Say($"Service     : {ServiceName}{(existing is null ? " (new)" : $" (upgrade, currently {existing.State})")}");
         Say($"Identity    : {VirtualAccount}");
 
@@ -74,7 +90,7 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
         }
 
         Step("2. Create the directories");
-        foreach (var directory in new[] { _options.InstallPath, _options.LogPath })
+        foreach (var directory in new[] { _options.InstallPath, _options.LogPath, _options.EvidencePath })
         {
             if (_environment.DirectoryExists(directory))
             {
@@ -128,7 +144,7 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
             () => _environment.ConfigureServiceRecovery(ServiceName));
 
         Step("5. Lock down the directories");
-        Do($"replace the permissions on {_options.InstallPath} and {_options.LogPath}", () =>
+        Do($"replace the permissions on {_options.InstallPath}, {_options.LogPath} and {_options.EvidencePath}", () =>
         {
             var sid = _environment.ResolveServiceSid(ServiceName);
 
@@ -142,13 +158,20 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
             _environment.HardenDirectory(_options.LogPath, FileSystemRights.Modify, sid);
             Say($"{_options.LogPath}: SYSTEM and Administrators full, service modify");
 
+            // Modify on the evidence store (ADR 0007): the service is its only writer. Replaced, not
+            // added to - a directory that inherited ProgramData would let every local user read the
+            // failed-logon history and the block decisions.
+            _environment.HardenDirectory(_options.EvidencePath, FileSystemRights.Modify, sid);
+            Say($"{_options.EvidencePath}: SYSTEM and Administrators full, service modify");
+
             var broad = _environment.BroadAccess(_options.InstallPath)
                 .Concat(_environment.BroadAccess(_options.LogPath))
+                .Concat(_environment.BroadAccess(_options.EvidencePath))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
             Say(broad.Length == 0
-                ? "no unprivileged account can read either directory"
+                ? "no unprivileged account can read any of the three directories"
                 : $"WARNING: a broad group still has access: {string.Join(", ", broad)}");
         });
 
@@ -228,7 +251,7 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
         var roots = _environment.ServedDirectories();
         var offences = new List<string>();
 
-        foreach (var candidate in new[] { _options.InstallPath, _options.LogPath })
+        foreach (var candidate in new[] { _options.InstallPath, _options.LogPath, _options.EvidencePath })
         {
             foreach (var root in roots)
             {
@@ -281,12 +304,16 @@ internal sealed class Installer(IInstallEnvironment environment, InstallOptions 
             ? $"  1. Read back the site table the gateway resolves at startup. The configuration is in place:"
             : $"  1. Put {OverlayFileName} in place. 'wpshield preflight' prints one.");
         _environment.Report($"     {Path.Combine(_options.InstallPath, OverlayFileName)}");
-        _environment.Report("  2. Start the service and confirm it listens, before any IIS change.");
-        _environment.Report("  3. Add the private loopback binding to each site.");
-        _environment.Report("  4. Add the rewrite rule, ordered BEFORE any catch-all the site already has,");
+        _environment.Report("  2. Let the service read the Security log, so it can record failed logons. This");
+        _environment.Report("     is a server setting, so it is yours to make; preflight reports it as PRE-020:");
+        _environment.Report($"     {EvidenceCollector.EventLogReadersRemedy}");
+        _environment.Report("     A service reads its group memberships when it starts: restart it afterwards.");
+        _environment.Report("  3. Start the service and confirm it listens, before any IIS change.");
+        _environment.Report("  4. Add the private loopback binding to each site.");
+        _environment.Report("  5. Add the rewrite rule, ordered BEFORE any catch-all the site already has,");
         _environment.Report("     with its serverVariables block, and translate the header in wp-config.php.");
         _environment.Report("     'wpshield preflight' prints all three.");
-        _environment.Report("  5. Watch the log with the sites in Monitor mode before changing anything to Block.");
+        _environment.Report("  6. Watch the log with the sites in Monitor mode before changing anything to Block.");
         _environment.Report(string.Empty);
         _environment.Report("Know the bypass before you enable the rule: once IIS forwards to the gateway,");
         _environment.Report("stopping this service DOES NOT bypass WPShield - it takes the site down, because");
