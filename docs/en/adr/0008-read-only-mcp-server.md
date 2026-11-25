@@ -110,6 +110,9 @@ With the setting `false`:
   the attacker-chosen part. The maintainer may want to overrule this for kinds whose subject is a
   normalized path rather than a name; that would be a change to this ADR, not a quiet exception.
 
+- `decisions` and `list_settings` return `"withheld"` in place of who requested a decision or changed
+  a setting: that is often an operator's own account name.
+
 Returned regardless of the setting: source addresses (the subject of every question), counts,
 coverage, block decisions (WPShield's own records about an address, not attempts), settings and
 labels.
@@ -135,7 +138,9 @@ detailed rows, and the counts come from hourly aggregates).
 ### 6. Bounded
 
 Ranges are `1h`, `6h`, `24h`, `7d`, `30d` or `90d`, or an explicit ISO-8601 `from` and `to` at most
-90 days apart and not in the future. Lists take a `limit` from 1 to 100 (default 20). A timeline has
+90 days apart and not in the future. A range longer than six hours starts on the hour: hourly
+aggregates count whole hours, and an answer whose detailed count and hourly timeline covered different
+periods would contradict itself; the answer gives the effective start and the one asked for. Lists take a `limit` from 1 to 100 (default 20). A timeline has
 at most 200 buckets. Arguments outside these bounds are refused with a message the model can correct
 from, not clamped silently.
 
@@ -145,7 +150,8 @@ An assistant sends every tool result to its model provider - for Claude Desktop 
 Anthropic. With the default setting that is counts, source addresses and their networks, coverage,
 block decisions, settings and labels. **Labels name your own addresses** ("office", "home"), and they
 leave the host too. With `mcp.detailed_records` set to `true`, the account names that were tried
-leave as well, and those include real accounts on the server. The operator documentation says this
+leave as well, and those include real accounts on the server, together with who requested each
+decision and who changed each setting. The operator documentation says this
 before it shows the configuration.
 
 ### 8. Elevation, and its cost

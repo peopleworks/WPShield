@@ -28,10 +28,13 @@ decisions WPShield made. The decision behind it, and everything this page summar
 | "Which addresses are labelled as ours?" | `address_labels` |
 
 Ranges are `1h`, `6h`, `24h`, `7d`, `30d` or `90d`, or an explicit `from` and `to` (ISO-8601 UTC, at
-most 90 days apart). Lists return 20 rows by default and 100 at most, and say when more exist.
+most 90 days apart). A range longer than six hours starts on the hour, because hourly aggregates count
+whole hours; the answer shows the effective start and the one asked for. Lists return 20 rows by
+default and 100 at most, and say when more exist.
 
 It **cannot** block, unblock, allow or change anything. If you ask it to, it says the action has to be
-done by you, outside the conversation.
+done by you, outside the conversation. It opens no listener and modifies nothing on the server: no
+IIS setting, DNS record, certificate, firewall rule, service or port.
 
 ## The safety model
 
@@ -58,12 +61,13 @@ done by you, outside the conversation.
 | Setting `mcp.detailed_records` | Sent to the assistant's model provider |
 | --- | --- |
 | `false` (default) | Counts, source addresses and their networks, timelines, coverage, block decisions, settings, address labels |
-| `true` | All of the above, plus the account names that were tried and single attempts and events |
+| `true` | All of the above, plus the account names that were tried, single attempts and events, and who requested each decision and who changed each setting (with `false` these show as `"withheld"`, because they are often your own account names) |
 
 Account names that were tried include **real accounts on this server**, correctly spelled or not.
 Turn `mcp.detailed_records` on only if you accept that. It is a store setting
 ([ADR 0007](adr/0007-local-evidence-store.md), amendment) changed by an elevated operator tool, never
-through the assistant, and `wpshield mcp` reads it when it starts: restart the assistant's connection
+through the assistant. **No `wpshield` verb changes it yet**, so today it stays `false` unless a tool
+built on `EvidenceSettings` sets it. `wpshield mcp` reads it when it starts: restart the assistant's connection
 to the server after changing it. `list_settings` shows the stored value and the one in effect when they
 differ.
 
@@ -116,6 +120,12 @@ claude mcp add wpshield -- C:\Tools\WPShield\wpshield.exe mcp
 ```
 
 Then start `claude` from the same elevated terminal and check the server with `/mcp`.
+
+## Turn it off
+
+Remove the `wpshield` entry from `claude_desktop_config.json` and restart Claude Desktop, or run
+`claude mcp remove wpshield` for Claude Code. Nothing else needs undoing: the server changes nothing on
+the host, and the evidence store keeps being written by the WPShield service either way.
 
 ## When it answers with an error
 

@@ -28,11 +28,15 @@ esta página, es la [ADR 0008](adr/0008-servidor-mcp-de-solo-lectura.md).
 | "¿Qué direcciones están etiquetadas como nuestras?" | `address_labels` |
 
 Los rangos son `1h`, `6h`, `24h`, `7d`, `30d` o `90d`, o un `from` y un `to` explícitos (ISO-8601 en
-UTC, separados como mucho por 90 días). Las listas devuelven 20 filas por defecto y 100 como máximo, y
+UTC, separados como mucho por 90 días). Un rango de más de seis horas empieza en una hora en punto,
+porque los agregados por hora cuentan horas completas; la respuesta muestra el inicio efectivo y el
+que se pidió. Las listas devuelven 20 filas por defecto y 100 como máximo, y
 dicen cuándo hay más.
 
 **No puede** bloquear, desbloquear, permitir ni cambiar nada. Si se le pide, dice que esa acción la
-tiene que hacer usted, fuera de la conversación.
+tiene que hacer usted, fuera de la conversación. No abre nada que escuche y no modifica nada en el
+servidor: ni ajustes de IIS, ni registros DNS, ni certificados, ni reglas de firewall, ni servicios,
+ni puertos.
 
 ## El modelo de seguridad
 
@@ -61,12 +65,14 @@ tiene que hacer usted, fuera de la conversación.
 | Ajuste `mcp.detailed_records` | Se envía al proveedor del modelo del asistente |
 | --- | --- |
 | `false` (por defecto) | Conteos, direcciones de origen y sus redes, líneas de tiempo, cobertura, decisiones de bloqueo, ajustes, etiquetas de direcciones |
-| `true` | Todo lo anterior, más los nombres de cuenta probados y los intentos y eventos sueltos |
+| `true` | Todo lo anterior, más los nombres de cuenta probados, los intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste (con `false` aparecen como `"withheld"`, porque suelen ser nombres de cuentas propias) |
 
 Entre los nombres de cuenta probados hay **cuentas reales de este servidor**, bien o mal escritas.
 Active `mcp.detailed_records` solo si acepta eso. Es un ajuste del almacén
 ([ADR 0007](adr/0007-almacen-local-de-evidencia.md), enmienda) que cambia una herramienta de operador
-elevada, nunca el asistente, y `wpshield mcp` lo lee al arrancar: reinicie la conexión del asistente con
+elevada, nunca el asistente. **Todavía no hay un verbo de `wpshield` que lo cambie**, así que hoy sigue
+en `false` salvo que lo ponga una herramienta construida sobre `EvidenceSettings`. `wpshield mcp` lo lee
+al arrancar: reinicie la conexión del asistente con
 el servidor después de cambiarlo. `list_settings` muestra el valor guardado y el que está en vigor
 cuando no coinciden.
 
@@ -118,6 +124,12 @@ claude mcp add wpshield -- C:\Tools\WPShield\wpshield.exe mcp
 ```
 
 Luego arranque `claude` desde esa misma terminal elevada y compruebe el servidor con `/mcp`.
+
+## Desactivarlo
+
+Quite la entrada `wpshield` de `claude_desktop_config.json` y reinicie Claude Desktop, o ejecute
+`claude mcp remove wpshield` en Claude Code. No hay nada más que deshacer: el servidor no cambia nada
+en el equipo, y el servicio WPShield sigue escribiendo el almacén de evidencia de todos modos.
 
 ## Cuando responde con un error
 

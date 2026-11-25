@@ -111,6 +111,9 @@ Con el ajuste en `false`:
   son la parte que elige el atacante. El mantenedor puede querer cambiar esto para tipos cuyo asunto
   es una ruta normalizada y no un nombre; sería un cambio a esta ADR, no una excepción silenciosa.
 
+- `decisions` y `list_settings` devuelven `"withheld"` en lugar de quién pidió una decisión o cambió un
+  ajuste: suele ser el nombre de la cuenta del propio operador.
+
 Se devuelven sea cual sea el ajuste: las direcciones de origen (el tema de cada pregunta), los
 conteos, la cobertura, las decisiones de bloqueo (registros del propio WPShield sobre una dirección,
 no intentos), los ajustes y las etiquetas.
@@ -137,7 +140,10 @@ más antiguo que las filas detalladas, y los conteos salen de los agregados por 
 ### 6. Acotado
 
 Los rangos son `1h`, `6h`, `24h`, `7d`, `30d` o `90d`, o un `from` y un `to` explícitos en ISO-8601
-separados como mucho por 90 días y no en el futuro. Las listas aceptan un `limit` de 1 a 100 (20 por
+separados como mucho por 90 días y no en el futuro. Un rango de más de seis horas empieza en una hora
+en punto: los agregados por hora cuentan horas completas, y una respuesta cuyo conteo detallado y cuya
+línea de tiempo por horas cubrieran periodos distintos se contradiría; la respuesta da el inicio
+efectivo y el que se pidió. Las listas aceptan un `limit` de 1 a 100 (20 por
 defecto). Una línea de tiempo tiene como mucho 200 intervalos. Los argumentos fuera de estos límites se
 rechazan con un mensaje del que el modelo puede corregirse, no se recortan en silencio.
 
@@ -147,7 +153,8 @@ Un asistente envía cada resultado de herramienta al proveedor de su modelo; par
 Claude Code, Anthropic. Con el ajuste por defecto eso son conteos, direcciones de origen y sus redes,
 cobertura, decisiones de bloqueo, ajustes y etiquetas. **Las etiquetas nombran direcciones propias**
 ("oficina", "casa"), y también salen. Con `mcp.detailed_records` en `true` salen además los nombres de
-cuenta probados, y entre ellos hay cuentas reales del servidor. La documentación del operador lo dice
+cuenta probados, y entre ellos hay cuentas reales del servidor, junto con quién pidió cada decisión y
+quién cambió cada ajuste. La documentación del operador lo dice
 antes de mostrar la configuración.
 
 ### 8. La elevación, y lo que cuesta
