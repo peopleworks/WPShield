@@ -30,6 +30,13 @@ public static class AttemptPairing
     public const string RdpChannel = "rdpcorets-140";
     public static readonly TimeSpan Window = TimeSpan.FromSeconds(2);
 
+    /// <summary>
+    /// How many earlier records one record is compared with. A flood of thousands of failures in the
+    /// same instant would otherwise make pairing quadratic; past this bound a pair may be missed, which
+    /// counts one attempt twice rather than stalling the collector.
+    /// </summary>
+    public const int MaxCandidates = 256;
+
     public static bool IsSameAttempt(AuthFailure a, AuthFailure b)
     {
         if (a.Channel == b.Channel || (a.Timestamp - b.Timestamp).Duration() > Window) return false;
@@ -57,7 +64,7 @@ public static class AttemptPairing
         foreach (var failure in failures.OrderBy(f => f.Timestamp))
         {
             var partner = -1;
-            for (var i = kept.Count - 1; i >= 0 && failure.Timestamp - kept[i].Timestamp <= Window; i--)
+            for (var i = kept.Count - 1; i >= 0 && i >= kept.Count - MaxCandidates && failure.Timestamp - kept[i].Timestamp <= Window; i--)
             {
                 if (IsSameAttempt(kept[i], failure)) { partner = i; break; }
             }

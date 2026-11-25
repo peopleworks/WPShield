@@ -123,6 +123,8 @@ must complete first.
 
 ### Fixed
 
+- The evidence timeline treats only the failed-logon collector's own coverage as covering failed logons; another source's coverage no longer hides a gap. Pairing a 4625 with its RdpCoreTS 140 compares each record with at most 256 earlier ones, so a flood of failures in one instant cannot make the collector or the desktop quadratic.
+
 - The desktop listener inventory checks process start time against each observed PID before displaying or searching by name. It also identifies PIDs skipped at the per-refresh lookup limit.
 - The CLI refuses the legacy `network-filter` command before driver access. Its WinDivert sniff handle could not enforce host-wide blocks. Security Monitor findings remain report-only.
 

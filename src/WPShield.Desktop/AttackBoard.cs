@@ -86,9 +86,10 @@ internal sealed class AttackBoard
 
     private int FindPartner(AuthFailure incoming, int index)
     {
-        for (var i = index - 1; i >= 0 && incoming.Timestamp - failures[i].Timestamp <= SameAttempt; i--)
+        // Bounded like AttemptPairing.Pair, so a flood in one instant cannot make each live record a full scan.
+        for (var i = index - 1; i >= 0 && i >= index - AttemptPairing.MaxCandidates && incoming.Timestamp - failures[i].Timestamp <= SameAttempt; i--)
             if (AttemptPairing.IsSameAttempt(failures[i], incoming)) return i;
-        for (var i = index; i < failures.Count && failures[i].Timestamp - incoming.Timestamp <= SameAttempt; i++)
+        for (var i = index; i < failures.Count && i < index + AttemptPairing.MaxCandidates && failures[i].Timestamp - incoming.Timestamp <= SameAttempt; i++)
             if (AttemptPairing.IsSameAttempt(failures[i], incoming)) return i;
         return -1;
     }
