@@ -1,6 +1,6 @@
 # ADR 0013 — Datos del host y centro de mando
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada (2026-11-25, Pedro Hernández), con las seis decisiones que se recogen al final
 - **Deciden:** Pedro Hernández (mantenedor)
 - **Afecta a:** el recolector de evidencia, `WPShield.Evidence`, `wpshield` (un verbo nuevo, `host`,
   y `audit`), el servidor MCP y el analista, y el escritorio
@@ -85,8 +85,9 @@ el binario no está firmado con Authenticode por Microsoft. Se omiten las tareas
 cuya acción es un binario firmado por Microsoft.
 
 - **Cuentas:** nombre, si está habilitada, si pertenece a Administradores o a Usuarios de Escritorio
-  remoto, último inicio de sesión, antigüedad de la contraseña y si nunca caduca. No se leen ni el
-  nombre completo ni la descripción.
+  remoto, último inicio de sesión, antigüedad de la contraseña y si nunca caduca. No se lee la
+  descripción. El nombre completo solo se lee en memoria, para el indicador de más abajo, y nunca se
+  guarda, se registra ni se devuelve.
 - **Servicios:** nombre, nombre para mostrar, estado, modo de inicio, cuenta con la que corre y ruta
   del ejecutable. La firma del ejecutable se informa como `signed by <sujeto>`, `unsigned` o
   `not checked`.
@@ -108,6 +109,22 @@ El texto de los argumentos nunca llega al almacén, a una línea de log ni a una
 **La verificación de firmas está acotada.** Los resultados de `WinVerifyTrust` se guardan en caché
 por ruta, tamaño y fecha de última escritura. Cada instantánea verifica como máximo 300 binarios; el
 resto queda `not checked` hasta la siguiente.
+
+**¿Prueban los atacantes los nombres completos de las cuentas?** En el servidor del incidente, los
+atacantes probaron nombres que parecían los nombres completos de cuentas locales reales. Una lista
+así no sale de un diccionario. Sale del propio servidor: de su pantalla de inicio de sesión, o de los
+meses de intrusión. Por eso la instantánea de cuentas calcula un indicador, en el propio equipo:
+
+1. Lee en memoria, en vivo, los nombres completos de las cuentas locales.
+2. Los compara con los nombres de cuenta distintos que se probaron en los últimos 30 días de inicios
+   fallidos del almacén de evidencia. La comparación ignora mayúsculas, acentos y espacios repetidos.
+3. Guarda en la instantánea solo el resultado: `full_name_targeted` (true o false) y `matches`
+   (cuántas cuentas locales tuvieron su nombre completo probado). Nunca un nombre.
+4. Descarta los nombres completos al escribir la instantánea.
+
+El indicador es un recuento, no un detalle del host. Las herramientas MCP y el analista lo devuelven
+sin necesidad de `mcp.host_details`, y se muestra en el panel de ataques RDP/SMB. Si los nombres
+completos no se pueden leer, queda `unknown`, nunca `false`.
 
 Un cambio entre dos instantáneas del inventario se registra como un evento de clase
 `host.inventory-change`: un elemento añadido, quitado, o con otro ejecutable, otra cuenta u otra
@@ -167,10 +184,11 @@ IIS (ADR 0011, tal como se construyó). Así el reloj de "grupos movidos" avanza
 tenga que acordarse de correr nada. Un `wpshield audit` manual también registra su resumen como
 instantánea de postura.
 
-Escribir esa fila en el almacén del propio WPShield no es un cambio en el servidor. La última línea
-del audit pasa a ser: "Nothing on this server was changed. A summary was recorded in WPShield's
-evidence store." Si el almacén no se puede abrir, el audit corre igual y dice que el resumen no se
-registró.
+**Esto escribe solo en el almacén de evidencia del propio WPShield, nunca en el servidor.** Ni la
+instantánea de postura del recolector ni `wpshield audit` tocan un ajuste de IIS, un grupo, un
+permiso, un servicio, una tarea o una regla del firewall. La última línea del audit lo dice tal cual:
+"Nothing on this server was changed. A summary was recorded in WPShield's evidence store." Si el
+almacén no se puede abrir, el audit corre igual y su última línea dice que el resumen no se registró.
 
 **Almacenamiento: esquema 3, aditivo.** Un almacén escrito por una versión anterior conserva todas
 sus filas, como exige AGENTS.md desde el esquema 2, y una prueba abre con el código nuevo un almacén
@@ -194,10 +212,10 @@ de esquema 2 escrito literalmente:
 - un presupuesto de tiempo por instantánea. Un dato que lo supera se guarda como `partial`, nunca a
   medio escribir.
 
-**Dónde corre primero.** Igual que el sensor web, los datos del host empiezan en `evidence collect`,
-que corre elevado. Llevarlos al servicio, bajo `NT SERVICE\WPShield`, exige una tabla de permisos por
-dato con sus remedios, y vendrá en una enmienda cuando el recolector del servicio lea también los
-logs de IIS.
+**Dónde corre primero: solo en `evidence collect`.** Igual que el sensor web, los datos del host
+empiezan en `evidence collect`, que corre elevado. Llevarlos al servicio, bajo
+`NT SERVICE\WPShield`, exige una tabla de permisos por dato con sus remedios. Eso vendrá después, en
+una enmienda, cuando el recolector del servicio lea también los logs de IIS.
 
 ### 4. Nunca cambia nada
 
@@ -233,7 +251,8 @@ sección 7), así que estos detalles necesitan su propio interruptor.
 - números de puerto, protocolos y veredictos de exposición;
 - el **nombre de archivo** del ejecutable de un proceso que escucha (`mysqld.exe`), sin su ruta,
   porque un veredicto de exposición no significa nada sin él;
-- horas de reinicio y códigos de parada.
+- horas de reinicio y códigos de parada;
+- el indicador `full_name_targeted` y su recuento de coincidencias, nunca los nombres.
 
 Los nombres de sitios, cuentas, servicios y tareas, las rutas y las direcciones de origen del RDP se
 sustituyen por `"withheld"`, y la respuesta dice qué ajuste los liberaría.
@@ -281,11 +300,11 @@ nunca es verde.**
 | Panel | Muestra | Fuente | Cuando no hay datos |
 | --- | --- | --- | --- |
 | WPShield | Recolector corriendo, cobertura de cada sensor (registro de seguridad, RDP, logs de IIS "N de M sitios leídos") y antigüedad del registro más reciente | Cobertura de la evidencia, sitios del sensor web | "El recolector no corre desde ..." en rojo; un sensor que no cubre dice por qué |
-| Ataques RDP/SMB | Intentos por minuto frente a la mediana horaria de 7 días; decisiones en vigor (Monitor); la red más activa | Evidencia, `decisions` | Los huecos se dibujan como "sin datos", como en Ataques |
+| Ataques RDP/SMB | Intentos por minuto frente a la mediana horaria de 7 días; decisiones en vigor (Monitor); la red más activa; **"los atacantes prueban los nombres completos de tus cuentas: sí (N)"** | Evidencia, `decisions`, el indicador `full_name_targeted` | Los huecos se dibujan como "sin datos", como en Ataques; el indicador muestra `unknown` si no se pudieron leer los nombres completos |
 | Web | Peticiones por minuto, hallazgos de reglas, POST a login y a xmlrpc. **`WEB-OBS-001`**: rojo si es mayor que cero; verde solo si se leyeron todos los sitios durante todo el rango | Evidencia web (ADR 0011) | Con cobertura incompleta, la luz de `WEB-OBS-001` se pone gris, nunca verde |
 | Salud del servidor | Tiempo encendido; **reinicios inesperados en 30 días, con sus códigos de parada**; CPU, memoria y disco, con tendencias | `host_health`, `host_health_hourly`, eventos de reinicio | Instantánea desactualizada o ilegible: gris, con antigüedad y razón |
 | Postura | **Grupos movidos: N de M**, con barra de progreso y su historia; PHP mapeado a nivel servidor; carpetas de sitios escribibles; solapes con FTP; hora de la última instantánea de postura | `iis_posture` | "Todavía no hay instantánea de postura" en gris, con el remedio (arrancar el recolector elevado o correr `wpshield audit`) |
-| Exposición | Cada escucha abierta a cualquier dirección, con su veredicto. En rojo SMB (139, 445), RPC (135), SQL Server (1433), MySQL (3306, 33060), PostgreSQL (5432), VNC (5900) y WinRM (5985, 5986) cuando están abiertos a cualquiera | `listening_ports` | Los veredictos `unknown` se listan como desconocidos, nunca como cerrados |
+| Exposición | Cada escucha abierta a cualquier dirección, con su veredicto. En rojo SMB (139, 445), RPC (135), SQL Server (1433), MySQL (3306, 33060), PostgreSQL (5432), VNC (5900) y WinRM (5985, 5986) cuando están abiertos a cualquiera. Un puerto restringido a direcciones concretas no va en rojo. El remedio que se muestra es restringir la regla a las direcciones que lo necesitan, nunca ocultar el puerto | `listening_ports` | Los veredictos `unknown` se listan como desconocidos, nunca como cerrados |
 | Analista | Activado o apagado; ejecuciones y tokens de entrada de hoy frente a `analyst.daily_runs` y `analyst.daily_input_tokens`; hora del último informe | Almacén del analista (ADR 0010) | Apagado se muestra como apagado, no como error |
 | Salientes | — | Aplazado (sección 1.4) | Siempre "todavía no se mide: necesita un sensor propio" |
 
@@ -326,6 +345,25 @@ sensor.
   pesado, las superficies se contradicen, y un modelo podría hacer que se sondee el host. Rechazada
   por las razones de la sección 3.
 - **Reutilizar `mcp.detailed_records`.** Rechazada en la sección 5: gobierna otro contenido.
+
+## Decisiones al aceptarlo (2026-11-25)
+
+Pedro Hernández aceptó este ADR con estas seis decisiones:
+
+1. **`mcp.host_details`** es un ajuste auditado nuevo, apagado por defecto y separado de
+   `mcp.detailed_records` (sección 5).
+2. **Postura:** el recolector corre los chequeos del audit cada 6 horas, y un `wpshield audit` manual
+   registra su resumen. Los dos escriben solo en el almacén de evidencia del propio WPShield, nunca en
+   el servidor, y la última línea del audit lo dice (sección 3).
+3. **La lista roja de exposición se mantiene:** SMB, RPC, SQL Server, MySQL, PostgreSQL, VNC y WinRM
+   abiertos a cualquiera. Un puerto restringido a direcciones concretas no va en rojo. El remedio es
+   restringir, nunca ocultar (sección 6).
+4. **Cadencias y retención tal como están escritas** (sección 3).
+5. **Los nombres completos de las cuentas quedan fuera** del almacén, de las herramientas MCP y del
+   analista. Un indicador local, `full_name_targeted` con `matches`, registra si los atacantes los
+   prueban, solo como un booleano y un recuento (sección 1.3).
+6. **Los datos del host empiezan solo en `evidence collect`.** El servicio viene después, en una
+   enmienda (sección 3).
 
 ## Cuándo revisar esta decisión
 

@@ -1,6 +1,6 @@
 # ADR 0013 — Host facts and the command center
 
-- **Status:** Proposed
+- **Status:** Accepted (2026-11-25, Pedro Hernández), with the six decisions recorded at the end
 - **Deciders:** Pedro Hernández (maintainer)
 - **Affects:** the evidence collector, `WPShield.Evidence`, `wpshield` (a new `host` verb, and
   `audit`), the MCP server and the analyst, the desktop
@@ -77,7 +77,8 @@ not Authenticode-signed by Microsoft. Tasks under `\Microsoft\` whose action is 
 binary are skipped.
 
 - **Accounts:** name, enabled, member of Administrators or of Remote Desktop Users, last logon, age of
-  the password, and whether it never expires. The full name and the description are not read.
+  the password, and whether it never expires. The description is not read. The full name is read only
+  in memory, for the indicator below, and is never stored, logged or returned.
 - **Services:** name, display name, state, start mode, run-as account and the executable's path. The
   executable's signature is reported as `signed by <subject>`, `unsigned` or `not checked`.
 - **Tasks:** path and name, state, run-as principal, last and next run, and the action's executable
@@ -97,6 +98,22 @@ The argument text never reaches the store, a log line or an answer.
 
 **Signature checks are bounded.** `WinVerifyTrust` results are cached by path, size and last-write
 time. Each snapshot verifies at most 300 binaries; the rest stay `not checked` until the next one.
+
+**Are attackers trying the accounts' full names?** On the incident host, attackers tried names that
+looked like the full names of real local accounts. A list like that does not come from a dictionary.
+It comes from the server itself: its logon screen, or the months of the intrusion. So the accounts
+snapshot computes one indicator, locally:
+
+1. Read the full names of the local accounts, live, into memory.
+2. Compare them with the distinct account names tried in the last 30 days of failed logons in the
+   evidence store. The comparison ignores case, accents and repeated spaces.
+3. Store only the result in the snapshot: `full_name_targeted` (true or false) and `matches` (how
+   many local accounts had their full name tried). Never a name.
+4. Discard the full names when the snapshot is written.
+
+The indicator is a count, not a host detail. It is returned by the MCP tools and the analyst without
+`mcp.host_details`, and shown on the RDP/SMB attacks panel. If the full names cannot be read, it is
+`unknown`, never `false`.
 
 A change between two inventory snapshots is recorded as an event of kind `host.inventory-change`:
 an item added, removed, or changed in executable, account or signature. That is the "a task
@@ -154,9 +171,11 @@ cadence. The CLI hands it the audit reader, as it hands it the IIS site list (AD
 So the "pools moved" gauge moves without the operator remembering to run anything. A manual
 `wpshield audit` also records its summary as a posture snapshot.
 
-Writing that row to WPShield's own store is not a change to the server. The audit's closing line
-becomes: "Nothing on this server was changed. A summary was recorded in WPShield's evidence store."
-When the store cannot be opened, the audit still runs and says the summary was not recorded.
+**This writes to WPShield's own evidence store only, never to the server.** No IIS setting, pool,
+permission, service, task or firewall rule is touched, by the collector's posture snapshot or by
+`wpshield audit`. The audit's closing line says exactly that: "Nothing on this server was changed. A
+summary was recorded in WPShield's evidence store." When the store cannot be opened, the audit still
+runs and its closing line says the summary was not recorded.
 
 **Storage: schema 3, additive.** A store written by an earlier build keeps every row, as AGENTS.md
 requires since schema 2, and a test opens a literal schema-2 store with the new code:
@@ -178,10 +197,10 @@ requires since schema 2, and a test opens a literal schema-2 store with the new 
   stored, and the overflow is recorded;
 - a time budget per snapshot. A fact that exceeds it is stored as `partial`, never left half-written.
 
-**Where it runs first.** Like the web sensor, host facts start in `evidence collect`, which runs
-elevated. Running them in the service under `NT SERVICE\WPShield` needs a permission table per fact
-and the remedies for each, and it follows in an amendment when the service collector reads the IIS
-logs too.
+**Where it runs first: `evidence collect` only.** Like the web sensor, host facts start in
+`evidence collect`, which runs elevated. Running them in the service under `NT SERVICE\WPShield`
+needs a permission table per fact and the remedies for each. That comes later, in an amendment, when
+the service collector reads the IIS logs too.
 
 ### 4. Never changes anything
 
@@ -214,7 +233,8 @@ to the assistant's model provider (ADR 0008, section 7), so these details need t
 - port numbers, protocols and exposure verdicts;
 - the executable **file name** of a listening process (`mysqld.exe`), without its path, because an
   exposure verdict means nothing without it;
-- restart times and bugcheck codes.
+- restart times and bugcheck codes;
+- the `full_name_targeted` indicator and its count of matches, never the names.
 
 Names of sites, accounts, services and tasks, paths, and RDP source addresses are replaced by
 `"withheld"`, and the answer says which setting would release them.
@@ -260,11 +280,11 @@ time and turns grey when its data is missing or stale. **Grey is never green.**
 | Panel | Shows | Source | When there is no data |
 | --- | --- | --- | --- |
 | WPShield | Collector running, each sensor's coverage (Security log, RDP, IIS logs "N of M sites read"), age of the newest record | Evidence coverage, web sensor sites | "Collector not running since ..." in red; a sensor that is not covering says why |
-| RDP/SMB attacks | Attempts per minute against the 7-day hourly median; decisions in force (Monitor); the most active network | Evidence, `decisions` | Gaps drawn as "no data", as in Attacks |
+| RDP/SMB attacks | Attempts per minute against the 7-day hourly median; decisions in force (Monitor); the most active network; **"attackers try your accounts' full names: yes (N)"** | Evidence, `decisions`, the `full_name_targeted` indicator | Gaps drawn as "no data", as in Attacks; the indicator shows `unknown` when the full names could not be read |
 | Web | Requests per minute, rule findings, login and xmlrpc POSTs. **`WEB-OBS-001`**: red when above zero; green only when every site was read for the whole range | Web evidence (ADR 0011) | Incomplete coverage turns the `WEB-OBS-001` light grey, never green |
 | Server health | Uptime; **unexpected restarts in 30 days, with their bugcheck codes**; CPU, memory and disk, with trends | `host_health`, `host_health_hourly`, restart events | Stale or unreadable snapshot: grey, with age and reason |
 | Posture | **Pools moved: N of M**, with a progress bar and its history; PHP mapped at the server level; writable site folders; FTP overlaps; time of the last posture snapshot | `iis_posture` | "No posture snapshot yet" in grey, with the remedy (start the collector elevated, or run `wpshield audit`) |
-| Exposure | Each listener open to any address, with its verdict. Red for SMB (139, 445), RPC (135), SQL Server (1433), MySQL (3306, 33060), PostgreSQL (5432), VNC (5900) and WinRM (5985, 5986) when open to any | `listening_ports` | `unknown` verdicts are listed as unknown, never as closed |
+| Exposure | Each listener open to any address, with its verdict. Red for SMB (139, 445), RPC (135), SQL Server (1433), MySQL (3306, 33060), PostgreSQL (5432), VNC (5900) and WinRM (5985, 5986) when open to any. A port restricted to specific addresses is not red. The remedy shown is to restrict the rule to the addresses that need it, never to hide the port | `listening_ports` | `unknown` verdicts are listed as unknown, never as closed |
 | Analyst | Enabled or off; runs and input tokens today against `analyst.daily_runs` and `analyst.daily_input_tokens`; time of the last report | Analyst store (ADR 0010) | Off is shown as off, not as an error |
 | Outbound | — | Deferred (section 1.4) | Always "not measured yet: needs its own sensor" |
 
@@ -303,6 +323,24 @@ read API. That is the same order as the web view, which waited for its sensor.
   surfaces disagree, and a model could make the host be probed. Rejected for the reasons in section
   3.
 - **Reusing `mcp.detailed_records`.** Rejected in section 5: it governs different content.
+
+## Decisions on acceptance (2026-11-25)
+
+Pedro Hernández accepted this ADR with these six decisions:
+
+1. **`mcp.host_details`** is a new audited setting, off by default, separate from
+   `mcp.detailed_records` (section 5).
+2. **Posture:** the collector runs the audit's checks every 6 hours, and a manual `wpshield audit`
+   records its summary. Both write to WPShield's own evidence store only, never to the server, and the
+   audit's closing line says so (section 3).
+3. **The exposure red list stays:** SMB, RPC, SQL Server, MySQL, PostgreSQL, VNC and WinRM when open
+   to any. A port restricted to specific addresses is not red. The remedy is to restrict, never to
+   hide (section 6).
+4. **Cadences and retention as written** (section 3).
+5. **Account full names stay out** of the store, the MCP tools and the analyst. A local indicator,
+   `full_name_targeted` with `matches`, records whether attackers try them, as a boolean and a count
+   only (section 1.3).
+6. **Host facts start in `evidence collect` only.** The service follows in an amendment (section 3).
 
 ## Revisiting this decision
 
