@@ -188,7 +188,38 @@
         </DockPanel>
         <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="20,0,16,18">
           <StackPanel>
-            <Button x:Name="CopyAddress" HorizontalAlignment="Left" Click="OnCopyAddress" Padding="10,5" Margin="0,0,0,12"/>
+            <WrapPanel Margin="0,0,0,6">
+              <Button x:Name="CopyAddress" Click="OnCopyAddress" Padding="10,5" Margin="0,0,8,6"/>
+              <!-- Label and Allow write settings, so they are enabled only when the Settings window could; the note says why not. -->
+              <Button x:Name="LabelButton" Click="OnLabel" Padding="10,5" Margin="0,0,8,6" IsEnabled="False" ToolTipService.ShowOnDisabled="True"/>
+              <Button x:Name="AllowButton" Click="OnAllow" Padding="10,5" Margin="0,0,0,6" IsEnabled="False" ToolTipService.ShowOnDisabled="True"/>
+            </WrapPanel>
+            <TextBlock x:Name="ActionNote" Style="{StaticResource Small}" Margin="0,0,0,10" Visibility="Collapsed"/>
+            <Border x:Name="ActionEditor" Background="#F6F9FA" BorderBrush="#CFDCE2" BorderThickness="1" CornerRadius="6"
+                    Padding="12,10" Margin="0,0,0,12" Visibility="Collapsed">
+              <StackPanel>
+                <TextBlock x:Name="ActionTitle" FontWeight="SemiBold" Margin="0,0,0,4"/>
+                <TextBlock x:Name="ActionText" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,8"/>
+                <Border x:Name="ActionWarning" Background="#FFF4DF" BorderBrush="#E9C27A" BorderThickness="1" CornerRadius="6"
+                        Padding="10,7" Margin="0,0,0,8" Visibility="Collapsed">
+                  <TextBlock x:Name="ActionWarningText" TextWrapping="Wrap" FontSize="12" Foreground="#5E3F0B"/>
+                </Border>
+                <StackPanel x:Name="LabelFields">
+                  <Label x:Name="LabelCaption" Target="{Binding ElementName=LabelBox}" Padding="0,0,0,3"/>
+                  <TextBox x:Name="LabelBox" MaxLength="64" Padding="6,3" Margin="0,0,0,8" TextChanged="OnActionText"/>
+                </StackPanel>
+                <Label x:Name="ActionReasonCaption" Target="{Binding ElementName=ActionReason}" Padding="0,0,0,3"/>
+                <TextBox x:Name="ActionReason" MaxLength="200" Padding="6,3" Margin="0,0,0,8" TextChanged="OnActionText"/>
+                <TextBlock x:Name="ActionValidation" TextWrapping="Wrap" FontSize="12" Foreground="#9A2F2F" Margin="0,0,0,6"
+                           Visibility="Collapsed"/>
+                <StackPanel Orientation="Horizontal">
+                  <Button x:Name="ActionSave" Click="OnActionSave" Padding="12,5" Margin="0,0,8,0" IsEnabled="False"
+                          ToolTipService.ShowOnDisabled="True"/>
+                  <Button x:Name="ActionCancel" Click="OnActionCancel" Padding="12,5"/>
+                </StackPanel>
+              </StackPanel>
+            </Border>
+            <TextBlock x:Name="ActionStatus" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12" Visibility="Collapsed"/>
             <Border x:Name="DetailNoteBox" Background="#FFF4DF" BorderBrush="#E9C27A" BorderThickness="1" CornerRadius="6"
                     Padding="10,7" Margin="0,0,0,12" Visibility="Collapsed">
               <TextBlock x:Name="DetailNote" TextWrapping="Wrap" FontSize="12" Foreground="#5E3F0B"/>
