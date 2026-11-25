@@ -53,6 +53,7 @@ Usa este índice para encontrar las guías del operador y las referencias técni
 | ADR 0010 — an optional AI analyst · Un analista de IA opcional | [An optional AI analyst](en/adr/0010-an-optional-ai-analyst.md) | [Un analista de IA opcional](es/adr/0010-un-analista-de-ia-opcional.md) |
 | ADR 0011 — HTTP evidence from the IIS logs · Evidencia HTTP desde los logs de IIS | [HTTP evidence from the IIS logs](en/adr/0011-http-evidence-from-iis-logs.md) | [Evidencia HTTP desde los logs de IIS](es/adr/0011-evidencia-http-desde-los-logs-de-iis.md) |
 | ADR 0012 — WPShield Packs · WPShield Packs | [WPShield Packs: data, never code](en/adr/0012-wpshield-packs.md) | [WPShield Packs: datos, nunca código](es/adr/0012-wpshield-packs.md) |
+| ADR 0013 — host facts and the command center · Datos del host y centro de mando | [Host facts and the command center](en/adr/0013-host-facts-and-the-command-center.md) | [Datos del host y centro de mando](es/adr/0013-datos-del-host-y-centro-de-mando.md) |
 
 The threat model's English original sits at the repository root, because `README.md`, `SECURITY.md`
 and `AGENTS.md` all point readers there; its Spanish translation lives here with the other pairs.
