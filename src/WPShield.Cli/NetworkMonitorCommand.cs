@@ -228,10 +228,9 @@ internal static class NetworkMonitorCommand
         {
             interfaces = read();
         }
-        catch (Exception ex) when (ex.GetBaseException() is DllNotFoundException or BadImageFormatException or EntryPointNotFoundException
-            || ex is InvalidOperationException or SharpPcap.PcapException or UnauthorizedAccessException or System.Net.NetworkInformation.NetworkInformationException)
+        catch (Exception ex) when (CaptureFailure.IsCaptureFailure(ex))
         {
-            error.WriteLine("ERROR: cannot enumerate capture interfaces. Check the Npcap installation and access permissions.");
+            error.WriteLine("ERROR: " + CaptureFailure.Describe(ex));
             return 1;
         }
         if (arguments.Has("--json"))

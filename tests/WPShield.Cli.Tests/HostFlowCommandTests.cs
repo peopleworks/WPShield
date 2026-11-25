@@ -75,7 +75,20 @@ public sealed class HostFlowCommandTests
         output.GetStringBuilder().Clear();
         Assert.Equal(1, NetworkMonitorCommand.ListInterfaces(args, output, error, () => throw new DllNotFoundException()));
         Assert.Empty(output.ToString());
-        Assert.Contains("Npcap", error.ToString());
+        Assert.StartsWith("ERROR: Npcap is not installed on this computer", error.ToString(), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ARefusalIsNotReportedAsAMissingNpcap()
+    {
+        using var output = new StringWriter();
+        using var error = new StringWriter();
+        var args = CliOptions.Parse(["--list-interfaces"]);
+
+        Assert.Equal(1, NetworkMonitorCommand.ListInterfaces(args, output, error, () => throw new UnauthorizedAccessException()));
+
+        Assert.StartsWith("ERROR: Npcap refused access to the capture adapters", error.ToString(), StringComparison.Ordinal);
+        Assert.DoesNotContain("not installed", error.ToString(), StringComparison.Ordinal);
     }
 
     [Fact]

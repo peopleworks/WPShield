@@ -165,9 +165,56 @@ public sealed class PortTrafficWindowTests
                 Assert.False(view.Start.IsEnabled);
                 await view.ReadAdaptersAsync();
                 Assert.Empty(view.Adapters.Items);
-                Assert.Contains("Npcap", view.Status.Text);
+                Assert.Contains("Npcap is not installed", view.Status.Text);
             }
             finally { view.Close(); }
+        });
+
+    [Theory]
+    [InlineData(false, "dll", "Npcap is not installed on this computer")]
+    [InlineData(true, "dll", "Npcap no está instalado en este equipo")]
+    [InlineData(true, "initializer", "Npcap no está instalado en este equipo")]
+    [InlineData(true, "entry-point", "No se pudo cargar el Npcap instalado")]
+    [InlineData(false, "unauthorized", "Npcap refused access to the capture adapters")]
+    [InlineData(true, "unauthorized", "Npcap negó el acceso a los adaptadores de captura")]
+    [InlineData(false, "other", "Cannot list capture adapters (InvalidOperationException)")]
+    [InlineData(true, "other", "No se pudo leer la lista de adaptadores (InvalidOperationException)")]
+    public Task AFailedInventorySaysWhichCauseItIs(bool spanish, string kind, string expected) =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            Exception failure = kind switch
+            {
+                "dll" => new DllNotFoundException("wpcap.dll"),
+                "initializer" => new TypeInitializationException("SharpPcap.LibPcap.LibPcapSafeNativeMethods", new DllNotFoundException("wpcap.dll")),
+                "entry-point" => new EntryPointNotFoundException("pcap_findalldevs"),
+                "unauthorized" => new UnauthorizedAccessException(),
+                _ => new InvalidOperationException("synthetic \u001b[31m message")
+            };
+            var view = new PortTrafficWindow(spanish, true, () => throw failure, (_, _, _, _) => throw new Exception("Unexpected capture"));
+            try
+            {
+                await view.ReadAdaptersAsync();
+                Assert.StartsWith(expected, view.Status.Text, StringComparison.Ordinal);
+                Assert.DoesNotContain("synthetic", view.Status.Text, StringComparison.Ordinal);
+                Assert.False(view.Start.IsEnabled);
+            }
+            finally { view.Close(); }
+        });
+
+    [Theory]
+    [InlineData(false, "not who is attacking: for that, use Attacks.")]
+    [InlineData(true, "no quién ataca: para eso está Ataques.")]
+    public Task TheWindowSaysWhatItMeasuresAndWhatItDoesNot(bool spanish, string ending) =>
+        DesktopDispatcher.RunAsync(() =>
+        {
+            var view = new PortTrafficWindow(spanish, false, () => [], (_, _, _, _) => throw new Exception("Unexpected capture"));
+            try
+            {
+                Assert.EndsWith(ending, view.Purpose.Text, StringComparison.Ordinal);
+                Assert.Contains("Npcap", view.Purpose.Text, StringComparison.Ordinal);
+            }
+            finally { view.Close(); }
+            return Task.CompletedTask;
         });
 
     [Fact]

@@ -660,6 +660,15 @@ latest 30 intervals. **Stop** shows the final snapshot and releases the adapter.
 window also stops its capture. Capture data stays in memory. Live validation on Windows Server
 with Npcap remains pending. For whole-interface counters without Npcap, open [Adapter traffic](#adapter-traffic).
 
+The window says under its heading that it measures how much traffic there is, not who is
+attacking; the **Attacks** view answers that. When the adapters cannot be listed, the status line names the
+cause rather than a generic "check Npcap": Npcap is not installed (`wpcap.dll` could not be found;
+only this window and `wpshield network-monitor` need it, and installing a packet-capture driver
+is the operator's decision, after checking Npcap's license terms for use on servers), the installed
+Npcap could not be loaded (an incompatible or outdated version, or the wrong architecture), Npcap
+refused access, or another failure, shown by its exception type name only. `network-monitor
+--list-interfaces` prints the same causes.
+
 ### Remote Desktop logon evidence
 
 On the monitored server, specify its configured local Remote Desktop TCP port. The account running

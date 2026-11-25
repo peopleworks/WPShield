@@ -145,6 +145,7 @@ must complete first.
 
 ### Fixed
 
+- The desktop's **Port traffic** window and `wpshield network-monitor --list-interfaces` said "Check Npcap and access permissions" for every failure to list capture adapters, which an operator without Npcap reads as a permissions problem. They now name the cause: Npcap is not installed (and only traffic capture needs it; installing the driver is the operator's decision), the installed Npcap could not be loaded, Npcap refused access, or another failure shown by its exception type name, never by a native message. The window also says under its heading what it measures, and that it shows how much traffic there is, not who is attacking.
 - The evidence timeline treats only the failed-logon collector's own coverage as covering failed logons; another source's coverage no longer hides a gap. Pairing a 4625 with its RdpCoreTS 140 compares each record with at most 256 earlier ones, so a flood of failures in one instant cannot make the collector or the desktop quadratic.
 - An evidence-store timeline drew its newest bucket as "no data" while the collector was running, and a day with a service restart as "no data" even when the two recorded intervals touched. The newest bucket now allows the same two minutes `CoveredFrom` does, and touching intervals of one source are joined; a real gap is still never bridged.
 - The desktop listener inventory checks process start time against each observed PID before displaying or searching by name. It also identifies PIDs skipped at the per-refresh lookup limit.
