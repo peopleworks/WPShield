@@ -32,7 +32,7 @@ if you establish a new invariant, record it there.
 | `src/WPShield.Rules.WordPress/` | Rules that need WordPress knowledge to decide. References `Rules.Windows`, never the reverse. |
 | `src/WPShield.Gateway/` | Kestrel and YARP, startup validation, forwarding. The only project allowed HTTP concerns. |
 | `src/WPShield.Service/` | The engine demonstration. It is what the worked example in the README runs. |
-| `tests/` | xUnit. 215 tests today, all of which run in about a second. |
+| `tests/` | xUnit test projects. |
 | `docs/en/`, `docs/es/` | Paired operator and architecture documentation. Neither language is the translation of the other; both are maintained. `docs/README.md` indexes them. |
 | `docs/assets/` | Figures used inside the documentation, as light/dark SVG pairs. |
 | `assets/` | The project mark, the hero figure and the social preview. |
