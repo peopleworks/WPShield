@@ -1,88 +1,83 @@
-<div align="center">
-
 # WPShield
 
-**WPShield — Windows Power Shield.** An open-source security gateway for Windows Server and IIS.
-
-<sub>The name states a direction. <b>The eleven rules today read uploads and request paths</b>: one is
-WordPress-specific, five consult WordPress's own filename rewrite as a second opinion, and five are
-plain Windows, IIS, PHP and filename rules that fire on a site that has never run WordPress.
-<b>Nothing yet reads the .NET application surface</b> — no rule looks for <code>.env</code>,
-<code>.git</code>, a backup left in a web root, or an exposed admin path.
-<a href="docs/en/adr/0004-what-wpshield-stands-for.md">ADR 0004</a> records the gap, and a correction
-to what it originally claimed.</sub>
-
-**[See how it works →](https://peopleworks.github.io/WPShield/)**
-
-[![Build](https://github.com/peopleworks/WPShield/actions/workflows/build.yml/badge.svg)](https://github.com/peopleworks/WPShield/actions/workflows/build.yml)
-[![Status: research preview](https://img.shields.io/badge/status-research%20preview-orange?style=flat-square)](ROADMAP.md)
-[![License](https://img.shields.io/github/license/peopleworks/WPShield?style=flat-square&color=blue)](LICENSE)
-[![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4?style=flat-square&logo=dotnet&logoColor=white)](https://dotnet.microsoft.com/)
-[![Windows Server and IIS](https://img.shields.io/badge/Windows%20Server-IIS-0078D4?style=flat-square&logo=windows&logoColor=white)](https://learn.microsoft.com/iis/)
-[![WordPress](https://img.shields.io/badge/WordPress-multi--site%20hosting-21759B?style=flat-square&logo=wordpress&logoColor=white)](https://wordpress.org/)
-[![GitHub stars](https://img.shields.io/github/stars/peopleworks/WPShield?style=flat-square&logo=github)](https://github.com/peopleworks/WPShield/stargazers)
-[![by PeopleWorks](https://img.shields.io/badge/by-PeopleWorks-636f61?style=flat-square)](https://mvp.microsoft.com/en-US/mvp/profile/24060a02-dbc6-44ec-bca5-c213ff9835c5)
-
-[Choose an operator task](docs/en/operator-reference.md#choose-an-operator-task) · [What a finding looks like](docs/en/gateway-reference.md#what-a-finding-looks-like) · [Architecture](docs/en/gateway-reference.md#architecture) · [How it compares](docs/en/evaluation-reference.md#how-it-compares) · [Getting started](docs/en/operator-reference.md#getting-started) · [Roadmap](docs/en/operator-reference.md#roadmap) · [Contributing](#contributing) · [Security](SECURITY.md) · [Español](docs/es/)
-
-</div>
+WPShield (Windows Power Shield) watches IIS and WordPress sites on Windows Server so you can see the requests that reach your sites, follow failed logons to the host and ask an assistant about the recorded evidence.
 
 > [!IMPORTANT]
-> WPShield is an early research preview. Do not place it in front of a production site yet. During M1 and M2, the gateway must remain bound to loopback and must not replace public IIS bindings.
+> **Research preview. WPShield is not approved for production traffic.** Keep the gateway on loopback during M1 and M2 and leave public IIS bindings in place.
 
-## Documentation
+[Attacks on the host](#attacks-on-the-host) · [Requests to the sites](#requests-to-the-sites) · [Ask about it](#ask-about-it) · [Español](docs/es/)
 
-[English and Spanish documentation index](docs/README.md)
+## Attacks on the host
 
-- [Gateway reference](docs/en/gateway-reference.md) · [Referencia del gateway](docs/es/referencia-gateway.md)
-- [Operator reference](docs/en/operator-reference.md) · [Referencia del operador](docs/es/referencia-operador.md)
-- [Evaluation reference](docs/en/evaluation-reference.md) · [Referencia de evaluación](docs/es/referencia-evaluacion.md)
+The desktop’s **Attacks** view shows failed RDP, SMB and other network logons from the last 24 hours and updates live. The **7 d** and **30 d** views use the evidence store. Address labels help identify known sources in the desktop and in `wpshield attacks`. [Attacks guide](docs/en/network-sensor-design.md#attacks)
 
-[Roadmap](ROADMAP.md) · [Security policy](SECURITY.md) · [Support](SUPPORT.md) · [Changelog](CHANGELOG.md)
+![The Attacks view charts synthetic failed logons over time and groups them by source address, with an operator label beside the matching addresses.](docs/assets/attacks-en.png)
 
-## Contributing
+## Requests to the sites
 
-Community contributions are welcome, especially in these areas:
+In the lab, the gateway sits in front of IIS and runs in **Monitor** by default. It records findings for executable uploads, `web.config` and suspicious request paths. [Gateway reference](docs/en/gateway-reference.md)
 
-- Safe gateway validation and synthetic integration tests.
-- Bounded streaming and multipart parsing.
-- Explainable WordPress rules with benign test fixtures.
-- Rules for the .NET-on-IIS surface — `.env`, `.git`, stray backups, exposed admin paths — chosen
-  against real request logs rather than a threat model. See [ADR 0004](docs/en/adr/0004-what-wpshield-stands-for.md),
-  exit condition 1.
-- False-positive research for legitimate WordPress and plugin behavior.
-- English and Spanish documentation and localization.
-- Windows Server, IIS, Elementor, and Google Site Kit compatibility testing.
-- Privacy-preserving observability and operational guidance.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/site-requests-dark.svg">
+  <img src="docs/assets/site-requests-light.svg" alt="In Monitor mode, the gateway forwards the request to its assigned IIS site and records the upload rule that fired.">
+</picture>
 
-Before opening a pull request:
+## Ask about it
 
-1. Read [CONTRIBUTING.md](CONTRIBUTING.md), [SECURITY.md](SECURITY.md), and [AGENTS.md](AGENTS.md).
-2. Keep the change focused and defensive.
-3. Add or update tests.
-4. Document false-positive and operational risks.
-5. Update both English and Spanish documentation for user-facing behavior.
-6. Run the full validation commands from [Getting started](docs/en/operator-reference.md#getting-started).
+Use the read-only `wpshield mcp` server with Claude Desktop or Claude Code to ask about failed logons, source history and gaps in recorded evidence. [MCP setup and what leaves the host](docs/en/mcp-server.md)
 
-By participating, you agree to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/ask-evidence-dark.svg">
+  <img src="docs/assets/ask-evidence-light.svg" alt="An assistant asks about a synthetic address and receives its recorded history and coverage from the read-only evidence store.">
+</picture>
 
-## License
+## Quick start
 
-WPShield is available under the [MIT License](LICENSE). See [NOTICE.md](NOTICE.md) for third-party trademarks and the project's position on defensive use.
+1. Download the research-preview ZIP and matching `.sha256` file from [Releases](https://github.com/peopleworks/WPShield/releases) when available. The CLI steps require `wpshield.exe`. If Releases is empty or offers only the gateway, [build the gateway and CLI together on a machine with the SDK](docs/en/operator-reference.md#build-the-release-to-carry-to-the-server).
+2. Replace `preview.zip` with the archive’s filename. Compare the displayed hash with the matching `.sha256` file before extracting.
 
-## Credits
+   ```powershell
+   Get-FileHash -LiteralPath .\preview.zip -Algorithm SHA256
+   ```
 
-Created by **Pedro Hernández — PeopleWorks**,
-[Microsoft MVP for .NET](https://mvp.microsoft.com/en-US/mvp/profile/24060a02-dbc6-44ec-bca5-c213ff9835c5).
+3. On the lab host, open an elevated PowerShell session in the extracted folder. Run the read-only preflight and review its report before evaluating the gateway.
 
-Built on [.NET 10](https://dotnet.microsoft.com/) · [ASP.NET Core and Kestrel](https://learn.microsoft.com/aspnet/core/fundamentals/servers/kestrel) · [YARP](https://github.com/dotnet/yarp), the only third-party component in the request path · [xUnit](https://xunit.net/)
+   ```powershell
+   .\wpshield.exe preflight
+   ```
 
-Built for the people who keep WordPress running on Windows Server — *para quienes sostienen WordPress sobre Windows Server e IIS.*
+4. To watch live logons from a source checkout on the lab host, start the desktop from an elevated prompt and open **Attacks**.
 
-Repo: <https://github.com/peopleworks/WPShield>
+   ```powershell
+   dotnet run --project src/WPShield.Desktop -c Release
+   ```
 
-<p align="center">
-  <sub><b>WPShield</b> • Defensive inspection for WordPress on Windows Server and IIS</sub><br>
-  <sub><b>Research preview.</b> Not approved for production traffic — see the <a href="ROADMAP.md">roadmap</a> for what must be true first.</sub><br>
-  <sub>© 2026 PeopleWorks</sub>
-</p>
+   Or, from the extracted folder, collect from an elevated prompt while the WPShield service is stopped or absent. Run the query in a second elevated prompt after evidence is recorded. If the service is already collecting, use the query by itself.
+
+   ```powershell
+   .\wpshield.exe evidence collect
+   .\wpshield.exe attacks --range 24h
+   ```
+
+## Current limits
+
+- Host-level blocking is unavailable on `main`. ADR 0006 is accepted and the enforcer is under review in [PR #86](https://github.com/peopleworks/WPShield/pull/86).
+- Production traffic remains outside the approved scope. During M1 and M2, run the gateway on loopback only.
+
+## Status
+
+| Capability | Status |
+| --- | --- |
+| Host observation | Desktop Attacks, CLI history and a local evidence store |
+| Site request inspection | Loopback gateway with Monitor as the default |
+| Assistant queries | Read-only MCP over the local evidence store |
+| Validation | Tested in CI |
+
+See the [roadmap](ROADMAP.md) for milestones, validation and production activation criteria.
+
+## Documentation and project links
+
+- [Documentation index in English and Spanish](docs/README.md) · [Documentación en español](docs/es/)
+- [Project site](https://peopleworks.github.io/WPShield/) · [Changelog](CHANGELOG.md) · [Support](SUPPORT.md)
+- [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [Security policy](SECURITY.md) · [Threat model](THREAT_MODEL.md)
+- [MIT License](LICENSE) · [Third-party notices](NOTICE.md) · Created by [Pedro Hernández at PeopleWorks](https://github.com/peopleworks)

@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>WPShield — IIS inspection and Windows Server traffic evidence</title>
-<meta name="description" content="Research preview for Windows Server. Inspect WordPress traffic on IIS, observe inbound and outbound flows, and verify RDP and SQL Server logins against local Windows records.">
+<title>WPShield — Windows Server and IIS evidence</title>
+<meta name="description" content="Research preview for Windows Server. See failed host logons, inspect WordPress requests on IIS, and ask an assistant about the recorded evidence.">
 <meta name="color-scheme" content="dark light">
 <link rel="canonical" href="https://peopleworks.github.io/WPShield/">
 
@@ -15,18 +15,18 @@
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="WPShield">
 <meta property="og:url" content="https://peopleworks.github.io/WPShield/">
-<meta property="og:title" content="WPShield — IIS inspection and Windows Server traffic evidence">
-<meta property="og:description" content="Research preview for Windows Server. Inspect WordPress traffic on IIS, observe inbound and outbound flows, and verify RDP and SQL Server logins against local Windows records.">
-<meta property="og:image" content="https://peopleworks.github.io/WPShield/assets/social-preview.svg">
-<meta property="og:image:alt" content="WPShield — a defensive security gateway for WordPress on Windows Server and IIS.">
+<meta property="og:title" content="WPShield — Windows Server and IIS evidence">
+<meta property="og:description" content="Research preview for Windows Server. See failed host logons, inspect WordPress requests on IIS, and ask an assistant about the recorded evidence.">
+<meta property="og:image" content="https://peopleworks.github.io/WPShield/assets/attacks-en.png">
+<meta property="og:image:alt" content="The Attacks view shows a timeline of synthetic failed Windows logons and groups them by source.">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="es_ES">
 
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="WPShield — IIS inspection and Windows Server traffic evidence">
-<meta name="twitter:description" content="Research preview for Windows Server. Inspect WordPress traffic on IIS, observe inbound and outbound flows, and verify RDP and SQL Server logins against local Windows records.">
-<meta name="twitter:image" content="https://peopleworks.github.io/WPShield/assets/social-preview.svg">
-<meta name="twitter:image:alt" content="WPShield — a defensive security gateway for WordPress on Windows Server and IIS.">
+<meta name="twitter:title" content="WPShield — Windows Server and IIS evidence">
+<meta name="twitter:description" content="Research preview for Windows Server. See failed host logons, inspect WordPress requests on IIS, and ask an assistant about the recorded evidence.">
+<meta name="twitter:image" content="https://peopleworks.github.io/WPShield/assets/attacks-en.png">
+<meta name="twitter:image:alt" content="The Attacks view shows a timeline of synthetic failed Windows logons and groups them by source.">
 
 <style>
 /* ------------------------------------------------------------------ tokens */
@@ -212,11 +212,11 @@ body::before {
 .wrap { max-width: 68rem; margin: 0 auto; padding: 0 1.6rem; }
 
 section { padding-block: var(--gap-section); }
-section:first-of-type { padding-top: clamp(6.5rem, 16vh, 10rem); padding-bottom: 0; }
+section:first-of-type { padding-top: clamp(5rem, 13vh, 8rem); padding-bottom: 0; }
 
 /* The navigation floats over the page, so an anchor jump would otherwise land a heading
    underneath it. */
-section[id] { scroll-margin-top: 6rem; }
+section[id], article[id] { scroll-margin-top: 6rem; }
 
 .eyebrow {
   display: flex; align-items: center; gap: .6rem;
@@ -260,12 +260,6 @@ h3 { margin: 0 0 .5rem; font-size: 1.02rem; font-weight: 640; letter-spacing: -.
   max-width: 42rem;
 }
 
-.rule {
-  width: 5.5rem; height: 2px; margin: 1.9rem 0;
-  background: linear-gradient(90deg, var(--accent), var(--accent-2));
-  border-radius: 2px;
-}
-
 p { max-width: var(--measure); color: var(--ink-muted); }
 p.wide { max-width: 46rem; }
 strong { color: var(--ink); font-weight: 620; }
@@ -293,19 +287,11 @@ code {
 }
 .btn:hover { transform: translateY(-1px); color: var(--ink); border-color: var(--ink-faint); }
 @media (prefers-reduced-motion: reduce) { .btn:hover { transform: none; } }
-.btn--primary {
-  color: var(--accent);
-  border-color: color-mix(in srgb, var(--accent) 48%, transparent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.btn--primary:hover { color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, transparent); }
 
 /* ------------------------------------------------------- the preview notice */
-/* The one thing on this page that has to be read before anything is decided. It sits directly under
-   the headline, inside the first screen, and it is the only element allowed to use the warning
-   colour — so the colour itself carries the meaning wherever it turns up again. */
+/* Keep the research-preview notice ahead of the capability descriptions. */
 .preview {
-  margin-top: 2.3rem;
+  margin: 0 0 2rem;
   border: 1px solid color-mix(in srgb, var(--warn) 48%, transparent);
   border-left-width: 3px;
   border-radius: 4px 12px 12px 4px;
@@ -313,14 +299,18 @@ code {
   padding: 1.3rem 1.5rem;
   max-width: 47rem;
 }
-.preview h2 {
+.preview .preview__title {
+  margin: 0;
   font-size: clamp(1.02rem, 2.1vw, 1.22rem);
+  font-weight: 660;
   letter-spacing: -.01em;
   line-height: 1.35;
   color: var(--warn);
   display: flex; align-items: center; gap: .6rem;
 }
-.preview h2::before {
+:root:not([data-lang="es"]) .preview .preview__title[lang="es"],
+:root[data-lang="es"] .preview .preview__title[lang="en"] { display: none; }
+.preview__title::before {
   content: "!";
   font-family: var(--mono);
   font-weight: 700;
@@ -334,18 +324,22 @@ code {
 .preview p { margin: .8rem 0 0; max-width: none; font-size: .94rem; color: var(--ink-muted); }
 :root[data-theme="light"] .preview { background: #fff8ea; }
 
-.preview { margin: 0 0 2rem; }
 .task { display: flex; flex-direction: column; gap: .9rem; min-width: 0; }
 .task code { padding: .65rem; line-height: 1.55; }
 .task a { margin-top: auto; }
-.intro-grid { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 4rem); align-items: center; }
-.trace { min-width: 0; padding: 1.5rem; border: 1px solid var(--line-strong); border-top: 3px solid var(--accent); border-radius: .8rem; background: var(--bg-soft); }
-.trace h2 { font: 600 1.08rem/1.35 var(--sans); letter-spacing: 0; }
-.trace dl { display: grid; grid-template-columns: auto 1fr; gap: .75rem; margin: 1.4rem 0; }
-.trace dt { color: var(--ink-muted); }
-.trace dd { margin: 0; text-align: right; font-family: var(--mono); font-size: .9rem; overflow-wrap: anywhere; }
-.trace p { margin: 0; border-top: 1px solid var(--line); padding-top: .9rem; }
-@media(max-width: 800px) { .intro-grid { grid-template-columns: 1fr; } }
+.capability a, .task a, .guide-link a, #docs > p a { color: var(--accent); }
+#capabilities { padding-block: clamp(2.5rem, 6vw, 4.5rem) 0; }
+.capability {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.65fr);
+  align-items: center;
+  gap: clamp(1.5rem, 4vw, 3rem);
+  padding: clamp(1.4rem, 4vw, 2.5rem) 0;
+  border-top: 1px solid var(--line-strong);
+}
+.capability h2 { font-size: clamp(1.6rem, 3.5vw, 2.35rem); }
+.capability .figure { margin: 0; }
+@media (max-width: 720px) { .capability { grid-template-columns: 1fr; } }
 /* ------------------------------------------------------------------ pieces */
 .card {
   border: 1px solid var(--line);
@@ -462,61 +456,10 @@ tr.is-fp td { background: color-mix(in srgb, var(--warn) 9%, transparent); }
   overflow: hidden;
   background: var(--bg-soft);
 }
-/* A <picture> keyed on prefers-color-scheme cannot follow the page's own theme button, so both
-   figures are in the markup and CSS chooses between them. The dark one is the default because dark
-   is what a reader without JavaScript gets. Both selectors carry the .figure ancestor so they
-   outrank the img rule above; without it the shared rule wins and both figures draw. */
-.figure .fig-dark { display: block; }
-.figure .fig-light { display: none; }
-:root[data-theme="light"] .figure .fig-light { display: block; }
-:root[data-theme="light"] .figure .fig-dark { display: none; }
-
-/* ------------------------------------------------------------------- steps */
-/* The deployment guide. Numbered, and the numbers are load-bearing in a way nothing else on this
-   page is: two of these steps take a live site down if they run before the one above them. The rail
-   exists so the order is visible before any of the words are read. */
-.steps { counter-reset: step; list-style: none; margin: 2.6rem 0 0; padding: 0; }
-.steps > li {
-  counter-increment: step;
-  position: relative;
-  margin-left: 1rem;
-  padding: 0 0 2.4rem 3rem;
-  border-left: 1px solid var(--line);
-}
-.steps > li:last-child { border-left-color: transparent; padding-bottom: 0; }
-.steps > li::before {
-  content: counter(step);
-  position: absolute; left: -1rem; top: -.2rem;
-  width: 2rem; height: 2rem;
-  display: grid; place-items: center;
-  border-radius: 50%;
-  background: var(--bg-soft);
-  border: 1px solid var(--line-strong);
-  font-family: var(--mono); font-size: .82rem; color: var(--accent);
-}
-.steps > li > h3 { margin: .1rem 0 .6rem; font-size: 1.04rem; }
-.steps > li > p { margin: 0 0 .75rem; max-width: 44rem; }
-.steps .evidence { margin-top: 1rem; }
-.steps .grid { margin-top: 1.4rem; }
-
-/* A warning attached to one step rather than to the page. Uses --warn, which on this page always
-   means "this part is not finished yet" - here, "this part is where it breaks". */
-.step-warn {
-  margin-top: .9rem;
-  padding: .75rem 1rem;
-  border-left: 2px solid var(--warn);
-  background: color-mix(in srgb, var(--warn) 7%, transparent);
-  border-radius: 0 6px 6px 0;
-  font-size: .89rem;
-  color: var(--ink-muted);
-  max-width: 44rem;
-}
-.step-warn strong { color: var(--ink); }
-
-@media (max-width: 640px) {
-  .steps > li { padding-left: 2.2rem; margin-left: .8rem; }
-  .steps > li::before { width: 1.7rem; height: 1.7rem; left: -.86rem; font-size: .74rem; }
-}
+.figure picture { display: block; }
+.figure img { display: block; }
+:root:not([data-lang="es"]) .figure picture[lang="es"],
+:root[data-lang="es"] .figure picture[lang="en"] { display: none; }
 
 .note {
   margin-top: 1.7rem;
@@ -527,6 +470,8 @@ tr.is-fp td { background: color-mix(in srgb, var(--warn) 9%, transparent); }
   max-width: 45rem;
 }
 .note strong { color: var(--ink-muted); }
+
+.guide-link { padding-block: 2.5rem; }
 
 .links { display: grid; gap: 1.6rem 2.4rem; margin-top: 2.3rem; grid-template-columns: repeat(auto-fit, minmax(min(19rem, 100%), 1fr)); }
 .links h3 { color: var(--ink); }
@@ -613,15 +558,11 @@ footer p { max-width: 46rem; }
     </svg>
     WPShield
   </span>
-  <a href="#gap" class="nav__hideable"><span lang="en">The IIS gap</span><span lang="es">La brecha de IIS</span></a>
+  <a href="#capabilities" class="nav__hideable"><span lang="en">Capabilities</span><span lang="es">Capacidades</span></a>
   <a href="#tasks" class="nav__hideable"><span lang="en">Operator tasks</span><span lang="es">Tareas</span></a>
-  <a href="#findings" class="nav__hideable"><span lang="en">Findings</span><span lang="es">Hallazgos</span></a>
-  <a href="#routing" class="nav__hideable"><span lang="en">Routing</span><span lang="es">Enrutado</span></a>
-  <a href="#status" class="nav__hideable"><span lang="en">Status</span><span lang="es">Estado</span></a>
-  <a href="#deploy" class="nav__hideable"><span lang="en">Deploy</span><span lang="es">Despliegue</span></a>
-  <a href="#cli" class="nav__hideable"><span lang="en">CLI</span><span lang="es">Línea de comandos</span></a>
+  <a href="#gap" class="nav__hideable"><span lang="en">IIS rules</span><span lang="es">Reglas de IIS</span></a>
   <a href="#docs" class="nav__hideable"><span lang="en">Docs</span><span lang="es">Documentación</span></a>
-  <a href="https://github.com/peopleworks/WPShield" class="is-cta">GitHub&nbsp;&#8599;</a>
+  <a href="https://github.com/peopleworks/WPShield" class="is-cta">GitHub</a>
 </nav>
 
 <div class="controls">
@@ -644,67 +585,130 @@ footer p { max-width: 46rem; }
 
 <main class="wrap" id="main">
 
-  <!-- ------------------------------------------------------------- hero -->
   <section>
     <div class="preview" role="note">
-      <h2 lang="en">Research preview. Not for production traffic.</h2>
-      <h2 lang="es">Vista previa de investigación. No apta para tráfico de producción.</h2>
-      <p lang="en">Evaluate the gateway on loopback in Monitor mode. Keep public IIS bindings in place.</p>
-      <p lang="es">Evalúa el gateway en loopback y en modo Monitor. Conserva los enlaces públicos de IIS.</p>
+      <p class="preview__title" lang="en">Research preview. Not for production traffic.</p>
+      <p class="preview__title" lang="es">Vista previa de investigación. No apta para tráfico de producción.</p>
+      <p lang="en">Keep the gateway on loopback in Monitor mode during M1 and M2. Leave public IIS bindings in place.</p>
+      <p lang="es">Mantén el gateway en loopback y en modo Monitor durante M1 y M2. Conserva los bindings públicos de IIS.</p>
     </div>
-    <div class="intro-grid">
-    <div>
-    <h1 lang="en">What reached your Windows server?</h1>
-    <h1 lang="es">¿Qué llegó a tu servidor Windows?</h1>
-    <p class="lede" lang="en">Inspect WordPress requests on IIS, follow traffic in both directions and check login outcomes against Windows records.</p>
-    <p class="lede" lang="es">Inspecciona solicitudes WordPress en IIS, observa el tráfico en ambos sentidos y verifica los accesos en los registros de Windows.</p>
+    <h1>WPShield</h1>
+    <p class="lede" lang="en">WPShield (Windows Power Shield) watches IIS and WordPress sites on Windows Server so you can see the requests that reach your sites, follow failed logons to the host and ask an assistant about the recorded evidence.</p>
+    <p class="lede" lang="es">WPShield (Windows Power Shield) observa sitios IIS y WordPress en Windows Server para que puedas ver las solicitudes, seguir los intentos fallidos de acceso al servidor y preguntar a un asistente por la evidencia registrada.</p>
     <div class="buttons">
-      <a class="btn btn--primary" href="#tasks"><span lang="en">Choose an operator task</span><span lang="es">Elige una tarea</span></a>
-      <a class="btn" href="#status"><span lang="en">Check coverage</span><span lang="es">Consulta la cobertura</span></a>
+      <a class="btn" href="#attacks"><span lang="en">Attacks on the host</span><span lang="es">Ataques al servidor</span></a>
+      <a class="btn" href="#requests"><span lang="en">Requests to the sites</span><span lang="es">Solicitudes a los sitios</span></a>
+      <a class="btn" href="#ask"><span lang="en">Ask about it</span><span lang="es">Pregunta por la evidencia</span></a>
     </div>
-    </div>
-    <aside class="trace">
-      <h2 lang="en">Synthetic host observation</h2><h2 lang="es">Observación sintética del servidor</h2>
-      <dl>
-        <dt><span lang="en">Remote TCP</span><span lang="es">TCP remoto</span></dt><dd>198.51.100.8:51000</dd>
-        <dt><span lang="en">Local TCP</span><span lang="es">TCP local</span></dt><dd>192.0.2.10:1433</dd>
-        <dt><span lang="en">Received / sent</span><span lang="es">Recibidos / enviados</span></dt><dd>320 B / 640 B</dd>
-        <dt><span lang="en">SQL login</span><span lang="es">Acceso SQL</span></dt><dd>MSSQLSERVER · 18456</dd>
-      </dl>
-      <p lang="en">Application record <b>431</b> confirms a failed login. Its link to this TCP flow stays <code>unknown</code>.</p>
-      <p lang="es">El registro <b>431</b> de Aplicación confirma un acceso fallido. Su relación con este flujo queda como <code>unknown</code>.</p>
-    </aside>
-    </div>
+  </section>
+
+  <section id="capabilities" aria-label="WPShield">
+    <article class="capability" id="attacks">
+      <div>
+        <h2 lang="en">Attacks on the host</h2>
+        <h2 lang="es">Ataques al servidor</h2>
+        <p lang="en">The desktop’s <strong>Attacks</strong> view shows failed RDP, SMB and other network logons from the last 24 hours and updates live. The <strong>7 d</strong> and <strong>30 d</strong> views use the evidence store. Address labels help identify known sources in the desktop and in <code>wpshield attacks</code>.</p>
+        <p lang="es">La vista <strong>Ataques</strong> del escritorio muestra los intentos fallidos por RDP, SMB y otros accesos de red de las últimas 24 horas, con actualizaciones en vivo. Las vistas de <strong>7 d</strong> y <strong>30 d</strong> consultan el almacén de evidencia. Las etiquetas ayudan a identificar orígenes conocidos en el escritorio y en <code>wpshield attacks</code>.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/network-sensor-design.md#attacks">Attacks guide</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-sensor-red.md#ataques">Guía de Ataques</a>
+      </div>
+      <figure class="figure">
+        <div class="fig-frame">
+        <picture lang="en">
+          <img src="assets/attacks-en.png" loading="lazy" alt="The Attacks view charts synthetic failed logons over time and groups them by source address, with an operator label beside the matching addresses.">
+        </picture>
+        <picture lang="es">
+          <img src="assets/attacks-es.png" loading="lazy" alt="La vista Ataques muestra la evolución de intentos fallidos sintéticos y los agrupa por dirección de origen, con una etiqueta junto a las direcciones que coinciden.">
+        </picture>
+        </div>
+      <figcaption lang="en">Desktop Attacks view with synthetic logon records.</figcaption>
+      <figcaption lang="es">Vista Ataques con registros sintéticos de acceso.</figcaption>
+      </figure>
+    </article>
+    <article class="capability" id="requests">
+      <div>
+        <h2 lang="en">Requests to the sites</h2>
+        <h2 lang="es">Solicitudes a los sitios</h2>
+        <p lang="en">In the lab, the gateway sits in front of IIS and runs in <strong>Monitor</strong> by default. It records findings for executable uploads, <code>web.config</code> and suspicious request paths.</p>
+        <p lang="es">En el laboratorio, el gateway se sitúa delante de IIS y se ejecuta en <strong>Monitor</strong> de forma predeterminada. Registra hallazgos sobre cargas ejecutables, <code>web.config</code> y rutas sospechosas.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/gateway-reference.md">Gateway reference</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/referencia-gateway.md">Referencia del gateway</a>
+      </div>
+      <figure class="figure">
+        <div class="fig-frame">
+        <picture lang="en">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/site-requests-dark.svg">
+          <img src="assets/site-requests-light.svg" loading="lazy" alt="In Monitor mode, the gateway forwards the request to its assigned IIS site and records the upload rule that fired.">
+        </picture>
+        <picture lang="es">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/site-requests-dark.svg">
+          <img src="assets/site-requests-light.svg" loading="lazy" alt="En Monitor, el gateway reenvía la solicitud al sitio IIS asignado y registra la regla de carga que se activó.">
+        </picture>
+        </div>
+      </figure>
+    </article>
+    <article class="capability" id="ask">
+      <div>
+        <h2 lang="en">Ask about it</h2>
+        <h2 lang="es">Pregunta por la evidencia</h2>
+        <p lang="en">Use the read-only <code>wpshield mcp</code> server with Claude Desktop or Claude Code to ask about failed logons, source history and gaps in recorded evidence.</p>
+        <p lang="es">Usa el servidor de solo lectura <code>wpshield mcp</code> con Claude Desktop o Claude Code para preguntar por intentos fallidos, el historial de un origen y los huecos de la evidencia registrada.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/mcp-server.md">MCP setup and what leaves the host</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/servidor-mcp.md">Configuración de MCP y qué datos salen del servidor</a>
+      </div>
+      <figure class="figure">
+        <div class="fig-frame">
+        <picture lang="en">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/ask-evidence-dark.svg">
+          <img src="assets/ask-evidence-light.svg" loading="lazy" alt="An assistant asks about a synthetic address and receives its recorded history and coverage from the read-only evidence store.">
+        </picture>
+        <picture lang="es">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/ask-evidence-dark.svg">
+          <img src="assets/ask-evidence-light.svg" loading="lazy" alt="Un asistente consulta una dirección sintética y recibe su historial registrado y la cobertura del almacén de solo lectura.">
+        </picture>
+        </div>
+      </figure>
+    </article>
   </section>
 
   <section id="tasks">
-    <h2 lang="en">Start with a question</h2><h2 lang="es">Empieza con una pregunta</h2>
+    <h2 lang="en">Start with a question</h2>
+    <h2 lang="es">Empieza con una pregunta</h2>
     <div class="grid grid--3">
-      <article class="card task"><h3 lang="en">Which request triggered a rule?</h3><h3 lang="es">¿Qué solicitud activó una regla?</h3>
-        <code>wpshield watch --plain</code><p lang="en">Read a running lab gateway’s evidence log to see the site, rule and action.</p><p lang="es">Lee el registro de un gateway de laboratorio activo para ver el sitio, la regla y la acción.</p>
-        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/request-evidence.md">Read request evidence →</a><a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/evidencia-solicitudes.md">Leer la evidencia →</a>
+      <article class="card task">
+        <h3 lang="en">Who tried to log in?</h3>
+        <h3 lang="es">¿Quién intentó acceder?</h3>
+        <code>wpshield attacks --range 7d</code>
+        <p lang="en">Read a week from the local evidence store, or open <strong>Attacks</strong> in the desktop to follow failed logons live.</p>
+        <p lang="es">Consulta una semana en el almacén local o abre <strong>Ataques</strong> en el escritorio para seguir los accesos fallidos en vivo.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/network-sensor-design.md#attacks">Desktop and CLI guide</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-sensor-red.md#ataques">Guía del escritorio y la CLI</a>
       </article>
-      <article class="card task"><h3 lang="en">What came in and went out?</h3><h3 lang="es">¿Qué tráfico entró y salió?</h3>
-        <code>wpshield network-monitor --flows --interfaces Ethernet --all-ports</code><p lang="en">Select one adapter. Live capture requires Npcap and an elevated console.</p><p lang="es">Selecciona un adaptador. La captura requiere Npcap y una consola con privilegios de administrador.</p>
-        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/network-sensor-design.md#host-flow-view">Inspect a flow →</a><a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-sensor-red.md#vista-de-flujos-del-servidor">Inspeccionar un flujo →</a>
+      <article class="card task">
+        <h3 lang="en">Which request triggered a rule?</h3>
+        <h3 lang="es">¿Qué solicitud activó una regla?</h3>
+        <code>wpshield watch --plain</code>
+        <p lang="en">Read a running lab gateway’s evidence log to see the site, rule and action.</p>
+        <p lang="es">Lee el registro de un gateway de laboratorio activo para ver el sitio, la regla y la acción.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/request-evidence.md">Read request evidence</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/evidencia-solicitudes.md">Leer la evidencia</a>
       </article>
-      <article class="card task"><h3 lang="en">Did a login succeed?</h3><h3 lang="es">¿El acceso tuvo éxito?</h3>
-        <code>wpshield network-monitor --sql-instance MSSQLSERVER</code><p lang="en">SQL needs read access to the Application log. For RDP, add --rdp-port 3389 to a capture that includes the local RDP port.</p><p lang="es">SQL requiere lectura del registro Aplicación. Para RDP, añade --rdp-port 3389 a una captura que incluya el puerto RDP local.</p>
-        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/network-sensor-design.md#sql-server-login-evidence">Verify a record →</a><a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/diseno-sensor-red.md#evidencia-de-inicios-de-sesión-de-sql-server">Verificar un registro →</a>
+      <article class="card task">
+        <h3 lang="en">Has this address appeared before?</h3>
+        <h3 lang="es">¿Ya apareció esta dirección?</h3>
+        <code>wpshield mcp</code>
+        <p lang="en">Connect an assistant to query recorded history and check coverage.</p>
+        <p lang="es">Conecta un asistente para consultar el historial y comprobar la cobertura.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/mcp-server.md">Connect an assistant</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/servidor-mcp.md">Conectar un asistente</a>
       </article>
     </div>
   </section>
 
-
   <!-- -------------------------------------------------------------- gap -->
   <section id="gap" class="reveal">
-    <p class="eyebrow">
-      <span lang="en">What a Linux-shaped WAF misses</span>
-      <span lang="es">Lo que una WAF pensada para Linux no ve</span>
-    </p>
-
-    <h2 lang="en">IIS executes more than PHP.</h2>
-    <h2 lang="es">IIS ejecuta mucho más que PHP.</h2>
+    <h2 lang="en">Why IIS needs its own rules</h2>
+    <h2 lang="es">Por qué IIS necesita sus propias reglas</h2>
 
     <p class="wide" lang="en">
       The rules a WordPress firewall inherits from Linux hosting are about PHP, because on Linux the
@@ -721,10 +725,14 @@ footer p { max-width: 46rem; }
 
     <figure class="figure">
       <div class="fig-frame">
-        <img class="fig-dark" src="assets/iis-gap-dark.svg" loading="lazy"
-             alt="Two lists of file extensions side by side, separated by a labelled gap. On the left, in grey, the eleven PHP extensions a rule set written for Apache or nginx watches, from .php to .phar; on that platform the list is complete. On the right, in blue, the fourteen extensions IIS also maps to a handler and executes as the application pool identity, from .aspx to .master. Below both, a red call-out for web.config, which no extension list covers at all.">
-        <img class="fig-light" src="assets/iis-gap-light.svg" loading="lazy"
-             alt="Two lists of file extensions side by side, separated by a labelled gap. On the left, in grey, the eleven PHP extensions a rule set written for Apache or nginx watches, from .php to .phar; on that platform the list is complete. On the right, in blue, the fourteen extensions IIS also maps to a handler and executes as the application pool identity, from .aspx to .master. Below both, a red call-out for web.config, which no extension list covers at all.">
+        <picture lang="en">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/iis-gap-dark.svg">
+          <img src="assets/iis-gap-light.svg" loading="lazy" alt="IIS has handlers for executable formats beyond PHP and also reads web.config, so PHP extension rules alone leave part of the IIS surface uncovered.">
+        </picture>
+        <picture lang="es">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/iis-gap-dark.svg">
+          <img src="assets/iis-gap-light.svg" loading="lazy" alt="IIS tiene handlers para formatos ejecutables además de PHP y también lee web.config, por lo que las reglas de extensiones PHP dejan parte de la superficie de IIS sin cubrir.">
+        </picture>
       </div>
       <figcaption lang="en">
         The left-hand list is complete — on Linux. Every extension on the right is one that the same
@@ -1298,10 +1306,14 @@ footer p { max-width: 46rem; }
 
     <figure class="figure">
       <div class="fig-frame">
-        <img class="fig-dark" src="assets/host-resolution-dark.svg" loading="lazy"
-             alt="Three requests arriving at WPShield's site resolver, which holds an explicit table of host to destination. Host wordpress-one.example resolves to the loopback destination 127.0.0.1:8081 and reaches IIS site one; Host wordpress-two.example resolves to 127.0.0.1:8082 and reaches IIS site two; Host unknown.example matches no entry and receives HTTP 421 Misdirected Request with a JSON body carrying the error unknown_host and the request identifier. No default entry exists, and no arrow leads anywhere but to a configured destination or to the 421.">
-        <img class="fig-light" src="assets/host-resolution-light.svg" loading="lazy"
-             alt="Three requests arriving at WPShield's site resolver, which holds an explicit table of host to destination. Host wordpress-one.example resolves to the loopback destination 127.0.0.1:8081 and reaches IIS site one; Host wordpress-two.example resolves to 127.0.0.1:8082 and reaches IIS site two; Host unknown.example matches no entry and receives HTTP 421 Misdirected Request with a JSON body carrying the error unknown_host and the request identifier. No default entry exists, and no arrow leads anywhere but to a configured destination or to the 421.">
+        <picture lang="en">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/host-resolution-dark.svg">
+          <img src="assets/host-resolution-light.svg" loading="lazy" alt="WPShield forwards each known hostname to its assigned loopback IIS destination and rejects an unknown hostname with HTTP 421.">
+        </picture>
+        <picture lang="es">
+          <source media="(prefers-color-scheme: dark)" srcset="assets/host-resolution-dark.svg">
+          <img src="assets/host-resolution-light.svg" loading="lazy" alt="WPShield reenvía cada hostname conocido a su destino IIS de loopback y rechaza los hostnames desconocidos con HTTP 421.">
+        </picture>
       </div>
       <figcaption lang="en">
         Placeholder hostnames. The repository ships <code>wordpress-one.example</code> and
@@ -1399,828 +1411,25 @@ footer p { max-width: 46rem; }
     </div>
   </section>
 
-  <!-- ----------------------------------------------------------- status -->
-  <section id="status" class="reveal">
-    <p class="eyebrow">
-      <span lang="en">Honest status</span>
-      <span lang="es">Estado honesto</span>
-    </p>
-
-    <h2 lang="en">What works, what is a prototype,<br>and what does not exist yet.</h2>
-    <h2 lang="es">Qué funciona, qué es un prototipo<br>y qué todavía no existe.</h2>
-
-    <p class="wide" lang="en">Compare implemented capabilities and remaining milestones in the <a href="https://github.com/peopleworks/WPShield/blob/main/ROADMAP.md">project roadmap</a>.</p>
-    <p class="wide" lang="es">Consulta las capacidades implementadas y los hitos pendientes en el <a href="https://github.com/peopleworks/WPShield/blob/main/docs/es/plan-de-desarrollo.md">plan de desarrollo</a>.</p>
-
-    <div class="table-scroll">
-      <table lang="en">
-        <thead>
-          <tr>
-            <th scope="col">Capability</th>
-            <th scope="col">Status</th>
-            <th scope="col">Notes</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">.NET 10 foundation and CI</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>Nullable reference types, warnings as errors, central package management, CodeQL,
-                formatting gate, Linux verification of the portable core</td>
-          </tr>
-          <tr>
-            <th scope="row">Multi-site host resolution</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>Unknown hosts fail closed; no default backend</td>
-          </tr>
-          <tr>
-            <th scope="row">Explainable inspection engine</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>Stable rule IDs, scoring, Monitor/Block action calculation</td>
-          </tr>
-          <tr>
-            <th scope="row">WordPress and IIS upload rules</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>Windows-aware file name normalization, PHP and IIS executable extensions,
-                <code>web.config</code> detection, disguised extensions, structural anomalies</td>
-          </tr>
-          <tr>
-            <th scope="row">Loopback HTTP gateway</th>
-            <td><span class="pill pill--proto">Prototype</span></td>
-            <td>Kestrel and YARP on <code>127.0.0.1:10000</code></td>
-          </tr>
-          <tr>
-            <th scope="row">Gateway hardening</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>Strict startup validation, safe 502 failures, and real synthetic multi-site
-                integration coverage</td>
-          </tr>
-          <tr>
-            <th scope="row">Bounded request controls</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>6 MiB default, 64 MiB ceiling, early and streamed HTTP 413 enforcement</td>
-          </tr>
-          <tr>
-            <th scope="row">Bounded multipart inspection</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2; <code>multipart/form-data</code> bodies are buffered in memory within the request
-                limit — never to disk — inspected, then forwarded or refused</td>
-          </tr>
-          <tr>
-            <th scope="row">Network layer packet filtering</th>
-            <td><span class="pill pill--planned">Unavailable</span></td>
-            <td>The CLI refuses the legacy filter. Host-wide enforcement awaits validation.</td>
-          </tr>
-          <tr>
-            <th scope="row">Security event monitoring</th>
-            <td><span class="pill pill--ok">Available</span></td>
-            <td>M2.8; <code>WPShield.SecurityMonitor</code> reads the Windows Security event log and
-                detects RDP brute force and failed logons</td>
-          </tr>
-          <tr>
-            <th scope="row">Security → Network filter bridge</th>
-            <td><span class="pill pill--planned">Planned</span></td>
-            <td>The CLI reports authentication findings. The in-memory sink is a library prototype.</td>
-          </tr>
-          <tr>
-            <th scope="row">Inspection of non-multipart bodies</th>
-            <td><span class="pill pill--planned">Planned</span></td>
-            <td>Urlencoded forms, JSON, XML-RPC, <code>application/octet-stream</code> PUTs and
-                archive contents are not inspected. No milestone assigned</td>
-          </tr>
-          <tr><th scope="row">Concurrent multipart inspections</th><td><span class="pill pill--ok">Available</span></td><td>10 by default, configurable up to 50. Monitor streams excess requests with a warning.</td></tr>
-          <tr><th scope="row">Rate limiting and evidence</th><td><span class="pill pill--proto">Partial</span></td><td>Per-client and per-site budgets, decision evidence, coverage counters and offline policy preview.</td></tr>
-          <tr><th scope="row">Host flow and login monitoring</th><td><span class="pill pill--proto">Preview</span></td><td>Selected TCP/UDP flows, RDP logon evidence and SQL Server outcomes per instance.</td></tr>
-          <tr><th scope="row">Dashboard and Windows Service</th><td><span class="pill pill--proto">Partial</span></td><td>The local dashboard is planned. The research preview includes Windows Service tooling.</td></tr>
-          <tr>
-            <th scope="row">Production activation</th>
-            <td><span class="pill pill--no">Not approved</span></td>
-            <td>Requires M1-M6 validation and controlled M7 rollout</td>
-          </tr>
-        </tbody>
-      </table>
-
-      <table lang="es">
-        <thead>
-          <tr>
-            <th scope="col">Capacidad</th>
-            <th scope="col">Estado</th>
-            <th scope="col">Notas</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row">Base de .NET 10 e integración continua</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>Tipos de referencia anulables, advertencias como errores, gestión central de
-                paquetes, CodeQL, verificación de formato y validación del núcleo portable en Linux</td>
-          </tr>
-          <tr>
-            <th scope="row">Resolución multisitio por host</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>Los hosts desconocidos fallan cerrado; no hay backend por defecto</td>
-          </tr>
-          <tr>
-            <th scope="row">Motor de inspección explicable</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>IDs de regla estables, puntuación y cálculo de acción Monitor/Block</td>
-          </tr>
-          <tr>
-            <th scope="row">Reglas de carga para WordPress e IIS</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>Normalización de nombres consciente de Windows, extensiones ejecutables de PHP e
-                IIS, detección de <code>web.config</code>, extensiones disfrazadas y anomalías
-                estructurales</td>
-          </tr>
-          <tr>
-            <th scope="row">Gateway HTTP en loopback</th>
-            <td><span class="pill pill--proto">Prototipo</span></td>
-            <td>Kestrel y YARP en <code>127.0.0.1:10000</code></td>
-          </tr>
-          <tr>
-            <th scope="row">Endurecimiento del gateway</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>Validación estricta al arrancar, fallos 502 seguros y cobertura de integración
-                multisitio con backends sintéticos reales</td>
-          </tr>
-          <tr>
-            <th scope="row">Controles acotados de solicitud</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>6 MiB por defecto, techo de 64 MiB, aplicación de HTTP 413 temprana y en streaming</td>
-          </tr>
-          <tr>
-            <th scope="row">Inspección multipart acotada</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>M2; los cuerpos <code>multipart/form-data</code> se almacenan en memoria dentro del
-                límite de solicitud —nunca en disco—, se inspeccionan y luego se reenvían o se
-                rechazan</td>
-          </tr>
-          <tr>
-            <th scope="row">Filtrado de paquetes en capa de red</th>
-            <td><span class="pill pill--planned">No disponible</span></td>
-            <td>La CLI rechaza el filtro anterior. El bloqueo a escala del servidor está pendiente de validación.</td>
-          </tr>
-          <tr>
-            <th scope="row">Monitoreo de eventos de seguridad</th>
-            <td><span class="pill pill--ok">Disponible</span></td>
-            <td>M2.8; <code>WPShield.SecurityMonitor</code> lee el registro de Seguridad de Windows
-                y detecta fuerza bruta de RDP y fallos de inicio de sesión</td>
-          </tr>
-          <tr>
-            <th scope="row">Puente de seguridad a filtro de red</th>
-            <td><span class="pill pill--planned">Previsto</span></td>
-            <td>La CLI informa de los hallazgos de autenticación. La lista en memoria es un prototipo de biblioteca.</td>
-          </tr>
-          <tr>
-            <th scope="row">Inspección de cuerpos que no son multipart</th>
-            <td><span class="pill pill--planned">Previsto</span></td>
-            <td>Los formularios urlencoded, JSON, XML-RPC, los PUT
-                <code>application/octet-stream</code> y el contenido de los archivos comprimidos no
-                se inspeccionan. Sin milestone asignado</td>
-          </tr>
-          <tr><th scope="row">Inspecciones multipart simultáneas</th><td><span class="pill pill--ok">Disponible</span></td><td>10 por defecto, configurable hasta 50. Monitor reenvía el exceso con una advertencia.</td></tr>
-          <tr><th scope="row">Límites y evidencia</th><td><span class="pill pill--proto">Parcial</span></td><td>Presupuestos por cliente y sitio, evidencia de decisiones, contadores de cobertura y vista previa de políticas.</td></tr>
-          <tr><th scope="row">Tráfico y accesos del servidor</th><td><span class="pill pill--proto">Vista previa</span></td><td>Flujos TCP/UDP seleccionados, evidencia de RDP y accesos de SQL Server por instancia.</td></tr>
-          <tr><th scope="row">Panel y servicio de Windows</th><td><span class="pill pill--proto">Parcial</span></td><td>El panel local está previsto. La vista previa incluye herramientas para el servicio de Windows.</td></tr>
-          <tr>
-            <th scope="row">Activación en producción</th>
-            <td><span class="pill pill--no">Sin aprobación</span></td>
-            <td>Requiere validar de M1 a M6 y un despliegue controlado en M7</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="note" lang="en">
-      WPShield is <strong>not</strong> an antivirus, an EDR, a stored-file malware scanner, a
-      replacement for Microsoft Defender, a WordPress patching solution, or volumetric DDoS
-      mitigation. It complements Microsoft Defender and ordinary WordPress hardening; it does not
-      replace either.
-    </div>
-    <div class="note" lang="es">
-      WPShield <strong>no</strong> es un antivirus, un EDR, un escáner de malware sobre archivos
-      almacenados, un sustituto de Microsoft Defender, una solución de parcheo de WordPress ni una
-      mitigación de DDoS volumétrico. Complementa a Microsoft Defender y al endurecimiento habitual
-      de WordPress; no sustituye a ninguno de los dos.
-    </div>
+  <section id="status" class="reveal guide-link">
+    <h2 lang="en">Current limits</h2>
+    <h2 lang="es">Límites actuales</h2>
+    <p class="wide" lang="en">Host-level blocking is unavailable on <code>main</code>. ADR 0006 is accepted and the enforcer is under review in <a href="https://github.com/peopleworks/WPShield/pull/86">PR #86</a>. See the <a href="https://github.com/peopleworks/WPShield/blob/main/ROADMAP.md">roadmap</a> for validation milestones and production activation criteria.</p>
+    <p class="wide" lang="es">El bloqueo a nivel del servidor no está disponible en <code>main</code>. Se aceptó el ADR 0006 y la implementación está en revisión en el <a href="https://github.com/peopleworks/WPShield/pull/86">PR #86</a>. Consulta el <a href="https://github.com/peopleworks/WPShield/blob/main/ROADMAP.md">plan publicado</a> para los hitos de validación y los criterios de activación en producción.</p>
   </section>
 
-  <!-- ------------------------------------------------------------- docs -->
-  <section id="deploy" class="reveal">
-    <p class="eyebrow">
-      <span lang="en">Step by step</span>
-      <span lang="es">Paso a paso</span>
-    </p>
-
-    <h2 lang="en">Eight steps, and two of them<br>take a live site down if you rush.</h2>
-    <h2 lang="es">Ocho pasos, y dos de ellos tumban<br>un sitio en vivo si los apura.</h2>
-
-    <p class="wide" lang="en">
-      This is the order that works, written after running it against a Windows Server hosting
-      sixty-six sites. Steps 1 to 6 change nothing an external visitor can see; step 7 is the one
-      that touches live traffic, and step 8 is where you find out whether the rules fit your site.
-      Every command below reports what it is about to do before doing it.
-    </p>
-    <p class="wide" lang="es">
-      Este es el orden que funciona, escrito después de ejecutarlo contra un Windows Server con
-      sesenta y seis sitios. Los pasos 1 a 6 no cambian nada que un visitante externo pueda ver; el
-      paso 7 es el que toca el tráfico en vivo, y el 8 es donde usted descubre si las reglas encajan
-      con su sitio. Cada comando reporta lo que va a hacer antes de hacerlo.
-    </p>
-
-    <ol class="steps">
-
-      <li>
-        <h3 lang="en">Publish on a build machine, never on the server</h3>
-        <h3 lang="es">Publique en una máquina de compilación, nunca en el servidor</h3>
-        <p lang="en">
-          <code>Publish-WPShield.ps1</code> needs the .NET SDK. A web server does not have one and
-          should not get one. It produces a self-contained <code>win-x64</code> directory, a zip and
-          a SHA-256, so the transport can be verified rather than trusted.
-        </p>
-        <p lang="es">
-          <code>Publish-WPShield.ps1</code> necesita el SDK de .NET. Un servidor web no lo tiene y no
-          debería tenerlo. Produce un directorio autocontenido <code>win-x64</code>, un zip y un
-          SHA-256, para que el transporte se verifique en vez de confiarse.
-        </p>
-        <div class="evidence">
-          <div class="evidence__bar">
-            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
-            <span style="margin-left:.4rem">build machine</span>
-          </div>
-<pre><span class="e-dim">PS&gt;</span> .\scripts\Publish-WPShield.ps1</pre>
-        </div>
-      </li>
-
-      <li>
-        <h3 lang="en">Copy two things across, not one</h3>
-        <h3 lang="es">Copie dos cosas al servidor, no una</h3>
-        <p lang="en">
-          The archive holds the gateway and nothing else. <strong>The scripts are not inside it</strong>,
-          so <code>scripts\*.ps1</code> travels separately — and it travels <em>every</em> time, not
-          only the first.
-        </p>
-        <p lang="es">
-          El archivo lleva el gateway y nada más. <strong>Los scripts no van dentro</strong>, así que
-          <code>scripts\*.ps1</code> viaja aparte — y viaja <em>cada</em> vez, no solo la primera.
-        </p>
-        <div class="step-warn" lang="en">
-          <strong>Stale scripts are the quiet failure here.</strong> An older installer has none of
-          the checks the current one has: it will not refuse a path inside a web root, it will not
-          write the log directory into the configuration, and the preflight will not report an
-          installation IIS is already serving. If the preflight prints no <code>PRE-019</code>, you
-          copied the old ones.
-        </div>
-        <div class="step-warn" lang="es">
-          <strong>Los scripts viejos son el fallo silencioso de este paso.</strong> Un instalador
-          anterior no tiene ninguna de las comprobaciones del actual: no rechaza una ruta dentro de
-          una raíz web, no escribe el directorio de registros en la configuración, y el preflight no
-          reporta una instalación que IIS ya esté sirviendo. Si el preflight no imprime
-          <code>PRE-019</code>, copió los viejos.
-        </div>
-      </li>
-
-      <li>
-        <h3 lang="en">Run the preflight and clear every blocker</h3>
-        <h3 lang="es">Corra el preflight y despeje todo bloqueador</h3>
-        <p lang="en">
-          Nineteen checks, read-only, elevated. It changes no IIS setting, no binding, no rule, no
-          service, no ACL. It exists because this traffic path has several ways to fail
-          <em>on the live site</em>, at the moment the rewrite rule is enabled, with an error that
-          does not say what is wrong.
-        </p>
-        <p lang="es">
-          Diecinueve comprobaciones, de solo lectura, elevado. No cambia ningún ajuste de IIS, ni un
-          binding, ni una regla, ni un servicio, ni una ACL. Existe porque esta ruta de tráfico tiene
-          varias formas de fallar <em>en el sitio en vivo</em>, justo cuando se activa la regla de
-          reescritura, con un error que no dice qué está mal.
-        </p>
-        <div class="evidence">
-          <div class="evidence__bar">
-            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
-            <span style="margin-left:.4rem">server</span>
-          </div>
-<pre><span class="e-dim">PS&gt;</span> .\Invoke-WPShieldPreflight.ps1
-
-  <span class="e-key">Pass</span>    PRE-007  ARR server-level proxy is enabled
-  <span class="e-key">Pass</span>    PRE-008  ARR preserves the client Host header
-  <span class="e-score">Warn</span>    PRE-018  Catch-all rewrite rules the WPShield rule must be ordered before
-  <span class="e-key">Pass</span>    PRE-019  Nothing of WPShield sits inside a directory IIS serves</pre>
-        </div>
-      </li>
-
-      <li>
-        <h3 lang="en">Install, with a dry run first</h3>
-        <h3 lang="es">Instale, con una pasada en seco primero</h3>
-        <p lang="en">
-          The installer registers a service named <code>WPShield</code> and only ever that one, gives
-          it the virtual account <code>NT SERVICE\WPShield</code> — no password stored anywhere —
-          replaces the permissions on both directories, and writes the log path into the
-          configuration the gateway actually reads. <strong>It touches nothing in IIS.</strong>
-        </p>
-        <p lang="es">
-          El instalador registra un servicio llamado <code>WPShield</code> y jamás ningún otro, le da
-          la cuenta virtual <code>NT SERVICE\WPShield</code> — sin contraseña guardada en ningún
-          sitio —, reemplaza los permisos de ambos directorios y escribe la ruta de registros en la
-          configuración que el gateway realmente lee. <strong>No toca nada de IIS.</strong>
-        </p>
-        <div class="evidence">
-          <div class="evidence__bar">
-            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
-            <span style="margin-left:.4rem">server, elevated</span>
-          </div>
-<pre><span class="e-dim">PS&gt;</span> .\Install-WPShield.ps1 -Path C:\staging\wpshield -WhatIf
-<span class="e-dim">PS&gt;</span> .\Install-WPShield.ps1 -Path C:\staging\wpshield
-
-  identity: NT SERVICE\WPShield
-  no unprivileged account can read either directory</pre>
-        </div>
-        <div class="step-warn" lang="en">
-          <strong>Read those last two lines back.</strong> An install that stops early can leave the
-          service running as <code>LocalSystem</code> with both directories still inheriting their
-          parents — and the summary above them will still have printed. Confirm it from outside:
-          <code>Get-CimInstance Win32_Service</code> and look at <code>StartName</code>.
-        </div>
-        <div class="step-warn" lang="es">
-          <strong>Lea esas dos últimas líneas.</strong> Una instalación que se detiene a medias puede
-          dejar el servicio corriendo como <code>LocalSystem</code> y ambos directorios heredando de
-          sus padres — y el resumen de arriba se habrá impreso igual. Confírmelo por fuera:
-          <code>Get-CimInstance Win32_Service</code> y mire <code>StartName</code>.
-        </div>
-      </li>
-
-      <li>
-        <h3 lang="en">Write the configuration, and declare every host</h3>
-        <h3 lang="es">Escriba la configuración, y declare todos los hosts</h3>
-        <p lang="en">
-          <code>appsettings.Local.json</code> holds your real hostnames, so it stays on the server and
-          out of the repository. The preflight prints one filled in from what it found.
-        </p>
-        <p lang="es">
-          <code>appsettings.Local.json</code> lleva sus nombres de host reales, así que se queda en el
-          servidor y fuera del repositorio. El preflight imprime uno relleno con lo que encontró.
-        </p>
-        <div class="evidence">
-          <div class="evidence__bar">
-            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
-            <span style="margin-left:.4rem">appsettings.Local.json</span>
-          </div>
-<pre>{
-  <span class="e-key">"Gateway"</span>: { <span class="e-key">"TrustedProxies"</span>: [ <span class="e-dim">"127.0.0.1"</span>, <span class="e-dim">"::1"</span> ] },
-  <span class="e-key">"Sites"</span>: [
-    {
-      <span class="e-key">"Id"</span>: <span class="e-dim">"site-one"</span>,
-      <span class="e-key">"Hosts"</span>: [ <span class="e-dim">"wordpress-one.example"</span>, <span class="e-dim">"www.wordpress-one.example"</span> ],
-      <span class="e-key">"Destination"</span>: <span class="e-dim">"http://127.0.0.1:8081"</span>,
-      <span class="e-key">"Mode"</span>: <span class="e-dim">"Monitor"</span>
-    }
-  ]
-}</pre>
-        </div>
-        <div class="step-warn" lang="en">
-          <strong>Two traps live in this file.</strong> <code>Destination</code> is the
-          <em>private</em> loopback binding you added for this — never 80 or 443, which the gateway
-          now refuses outright. And JSON arrays merge element by element, so an overlay declaring
-          fewer sites or fewer hosts leaves the shipped <code>.example</code> entries active and
-          routable; the gateway refuses to start when it sees real hostnames mixed with placeholders.
-        </div>
-        <div class="step-warn" lang="es">
-          <strong>Dos trampas viven en este archivo.</strong> <code>Destination</code> es el enlace de
-          loopback <em>privado</em> que usted añadió para esto — nunca el 80 ni el 443, que el gateway
-          ahora rechaza de plano. Y los arreglos JSON se fusionan elemento por elemento, así que una
-          superposición con menos sitios o menos hosts deja activas y enrutables las entradas
-          <code>.example</code> publicadas; el gateway se niega a arrancar si ve hosts reales
-          mezclados con marcadores.
-        </div>
-      </li>
-
-      <li>
-        <h3 lang="en">Prove it forwards — before touching IIS</h3>
-        <h3 lang="es">Demuestre que reenvía — antes de tocar IIS</h3>
-        <p lang="en">
-          This is the step that separates <em>the gateway is broken</em> from <em>IIS is not sending
-          it anything</em>, and skipping it means debugging both at once on a live site.
-        </p>
-        <p lang="es">
-          Este es el paso que separa <em>el gateway está roto</em> de <em>IIS no le está mandando
-          nada</em>, y saltárselo significa depurar los dos a la vez sobre un sitio en vivo.
-        </p>
-        <div class="evidence">
-          <div class="evidence__bar">
-            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
-            <span style="margin-left:.4rem">server</span>
-          </div>
-<pre><span class="e-dim">PS&gt;</span> Start-Service WPShield
-<span class="e-dim">PS&gt;</span> curl.exe -i -H <span class="e-dim">"Host: wordpress-one.example"</span> http://127.0.0.1:10000/
-
-  HTTP/1.1 <span class="e-key">200</span> OK
-  <span class="e-id">X-WPShield-Request-ID</span>: 0980620a0c18458498620581088af67c</pre>
-        </div>
-        <p lang="en">
-          That header is the proof. It means WPShield resolved the host, forwarded to the private
-          binding, and stamped the loop guard. Check the log too: it must say
-          <strong>one</strong> <code>Now listening on</code> line and no error.
-        </p>
-        <p lang="es">
-          Esa cabecera es la prueba. Significa que WPShield resolvió el host, reenvió al enlace
-          privado y estampó el guardia de bucle. Mire también el log: debe decir
-          <strong>una sola</strong> línea <code>Now listening on</code> y ningún error.
-        </p>
-      </li>
-
-      <li>
-        <h3 lang="en">IIS. Three changes, in this order.</h3>
-        <h3 lang="es">IIS. Tres cambios, en este orden.</h3>
-        <p lang="en">
-          This is the step that goes wrong, and doing the second before the first returns
-          <strong>500 for the whole site</strong>. Start with a site you can afford to break.
-        </p>
-        <p lang="es">
-          Este es el paso que sale mal, y hacer el segundo antes que el primero devuelve
-          <strong>500 en todo el sitio</strong>. Empiece por un sitio que pueda permitirse romper.
-        </p>
-        <div class="grid grid--3">
-          <div class="card">
-            <div class="card__tag">a</div>
-            <h3 lang="en">Allow the server variable</h3>
-            <h3 lang="es">Permita la variable de servidor</h3>
-            <p lang="en">
-              IIS Manager, the site, <em>URL Rewrite</em>, <em>View Server Variables</em>, add
-              <code>HTTP_X_FORWARDED_PROTO</code>. URL Rewrite refuses to set an
-              <code>HTTP_</code> variable that is not on this list, and the symptom is a 500.
-            </p>
-            <p lang="es">
-              IIS Manager, el sitio, <em>URL Rewrite</em>, <em>View Server Variables</em>, añada
-              <code>HTTP_X_FORWARDED_PROTO</code>. URL Rewrite se niega a establecer una variable
-              <code>HTTP_</code> que no esté en esa lista, y el síntoma es un 500.
-            </p>
-          </div>
-          <div class="card">
-            <div class="card__tag">b</div>
-            <h3 lang="en">The rule, ordered first</h3>
-            <h3 lang="es">La regla, en primer lugar</h3>
-            <p lang="en">
-              The WPShield rule must sit <strong>above</strong> the WordPress permalink rule. Below
-              it, either the rule never runs or it runs against the already-rewritten URL — and both
-              look like a site working perfectly.
-            </p>
-            <p lang="es">
-              La regla de WPShield debe ir <strong>encima</strong> de la de enlaces permanentes de
-              WordPress. Debajo, o no se ejecuta nunca o se ejecuta contra la URL ya reescrita — y las
-              dos cosas se ven como un sitio funcionando perfecto.
-            </p>
-          </div>
-          <div class="card">
-            <div class="card__tag">c</div>
-            <h3 lang="en">Let WordPress read it</h3>
-            <h3 lang="es">Que WordPress lo lea</h3>
-            <p lang="en">
-              WordPress on IIS reads <code>$_SERVER['HTTPS']</code>, which IIS derives from the
-              <em>real</em> connection — plain HTTP on the private binding. Without translating the
-              header in <code>wp-config.php</code>, every page redirects to HTTPS forever.
-            </p>
-            <p lang="es">
-              WordPress sobre IIS lee <code>$_SERVER['HTTPS']</code>, que IIS deriva de la conexión
-              <em>real</em> — HTTP plano en el enlace privado. Sin traducir la cabecera en
-              <code>wp-config.php</code>, cada página redirige a HTTPS para siempre.
-            </p>
-          </div>
-        </div>
-        <div class="evidence">
-          <div class="evidence__bar">
-            <span class="evidence__dot"></span><span class="evidence__dot"></span><span class="evidence__dot"></span>
-            <span style="margin-left:.4rem">web.config — first rule in the list</span>
-          </div>
-<pre>&lt;<span class="e-key">rule</span> name=<span class="e-dim">"WPShield"</span> patternSyntax=<span class="e-dim">"ECMAScript"</span> stopProcessing=<span class="e-dim">"true"</span>&gt;
-  &lt;<span class="e-key">match</span> url=<span class="e-dim">".*"</span> /&gt;
-  &lt;<span class="e-key">conditions</span>&gt;
-    &lt;add input=<span class="e-dim">"{HTTP_X_WPSHIELD_REQUEST_ID}"</span> pattern=<span class="e-dim">"^$"</span> /&gt;
-  &lt;/<span class="e-key">conditions</span>&gt;
-  &lt;<span class="e-key">serverVariables</span>&gt;
-    &lt;set name=<span class="e-dim">"HTTP_X_FORWARDED_PROTO"</span> value=<span class="e-dim">"https"</span> /&gt;
-  &lt;/<span class="e-key">serverVariables</span>&gt;
-  &lt;<span class="e-key">action</span> type=<span class="e-dim">"Rewrite"</span> url=<span class="e-dim">"http://127.0.0.1:10000/{R:0}"</span> /&gt;
-&lt;/<span class="e-key">rule</span>&gt;</pre>
-        </div>
-        <div class="step-warn" lang="en">
-          <strong>Know the rollback before you save.</strong> Once the rule is live, stopping the
-          service does <em>not</em> bypass WPShield — it takes the site down, because IIS keeps
-          forwarding to a port with nothing behind it. The control that puts the site back is
-          <strong>disabling the rewrite rule</strong>. The condition above is the loop guard: WPShield
-          stamps that header on everything it forwards and strips any inbound copy, so the request
-          coming back does not match the rule and a visitor cannot forge it to skip inspection. Both
-          halves are load-bearing.
-        </div>
-        <div class="step-warn" lang="es">
-          <strong>Conozca la vuelta atrás antes de guardar.</strong> Con la regla activa, detener el
-          servicio <em>no</em> esquiva WPShield — tumba el sitio, porque IIS sigue reenviando a un
-          puerto sin nada detrás. El control que devuelve el sitio es <strong>deshabilitar la regla de
-          reescritura</strong>. La condición de arriba es el guardia de bucle: WPShield estampa esa
-          cabecera en todo lo que reenvía y borra cualquier copia entrante, así que la petición de
-          vuelta no coincide con la regla y un visitante no puede falsificarla para saltarse la
-          inspección. Las dos mitades cargan peso.
-        </div>
-      </li>
-
-      <li>
-        <h3 lang="en">Watch Monitor before you touch Block</h3>
-        <h3 lang="es">Observe en Monitor antes de tocar Block</h3>
-        <p lang="en">
-          In Monitor the gateway forwards everything and refuses nothing, so the log is the only
-          artefact it produces. Read it for days, not minutes: what you are looking for is the false
-          positive that would have refused a real visitor.
-        </p>
-        <p lang="es">
-          En Monitor el gateway reenvía todo y no rechaza nada, así que el log es lo único que
-          produce. Léalo durante días, no minutos: lo que busca es el falso positivo que habría
-          rechazado a un visitante real.
-        </p>
-        <div class="step-warn" lang="en">
-          <strong>An empty log with real traffic is a finding, not a quiet night.</strong> It means
-          the rule is not live, or it is ordered below the permalink rule — and in that second case
-          the site works perfectly while nothing is inspected at all.
-        </div>
-        <div class="step-warn" lang="es">
-          <strong>Un log vacío con tráfico real es un hallazgo, no una noche tranquila.</strong>
-          Significa que la regla no está activa, o que quedó debajo de la de enlaces permanentes — y
-          en ese segundo caso el sitio funciona perfecto mientras no se inspecciona nada.
-        </div>
-      </li>
-
-    </ol>
-
-    <h3 lang="en" style="margin-top:3.4rem">When it goes wrong, it goes wrong in four ways</h3>
-    <h3 lang="es" style="margin-top:3.4rem">Cuando sale mal, sale mal de cuatro formas</h3>
-
-    <div class="table-scroll">
-      <table lang="en">
-        <caption>Four failure modes, and the first move for each.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Symptom</th>
-            <th scope="col">Cause</th>
-            <th scope="col">First move</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="num">421</span></td>
-            <td>The <code>Host</code> is not in your site table, or ARR is not preserving it.</td>
-            <td>Disable the rule. Compare <code>Hosts</code> against the site's bindings.</td>
-          </tr>
-          <tr>
-            <td><span class="num">ERR_TOO_MANY_REDIRECTS</span></td>
-            <td>WordPress sees plain HTTP behind an HTTPS site. One of the three pieces in step 7 is missing.</td>
-            <td>Disable the rule. Check <code>wp-config.php</code> first — it is the one most often skipped.</td>
-          </tr>
-          <tr>
-            <td><span class="num">500.19</span></td>
-            <td>Malformed <code>web.config</code>, or a server variable set without being allowed.</td>
-            <td>Restore the backup you took, then do step 7a before 7b.</td>
-          </tr>
-          <tr>
-            <td><span class="num">Nothing in the log</span></td>
-            <td>The site works and nothing is inspected. The rule is inactive, or ordered below the catch-all.</td>
-            <td>This is the silent one. Check the rule order before concluding anything.</td>
-          </tr>
-        </tbody>
-      </table>
-      <table lang="es">
-        <caption>Cuatro modos de fallo, y el primer movimiento para cada uno.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Síntoma</th>
-            <th scope="col">Causa</th>
-            <th scope="col">Primer movimiento</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td><span class="num">421</span></td>
-            <td>El <code>Host</code> no está en su tabla de sitios, o ARR no lo está preservando.</td>
-            <td>Deshabilite la regla. Compare <code>Hosts</code> con los bindings del sitio.</td>
-          </tr>
-          <tr>
-            <td><span class="num">ERR_TOO_MANY_REDIRECTS</span></td>
-            <td>WordPress ve HTTP plano detrás de un sitio HTTPS. Falta una de las tres piezas del paso 7.</td>
-            <td>Deshabilite la regla. Revise <code>wp-config.php</code> primero — es la que más se olvida.</td>
-          </tr>
-          <tr>
-            <td><span class="num">500.19</span></td>
-            <td><code>web.config</code> mal formado, o una variable de servidor puesta sin permitirla.</td>
-            <td>Restaure el respaldo, y haga el paso 7a antes que el 7b.</td>
-          </tr>
-          <tr>
-            <td><span class="num">Nada en el log</span></td>
-            <td>El sitio funciona y no se inspecciona nada. La regla está inactiva, o quedó debajo del atrapa-todo.</td>
-            <td>Este es el silencioso. Revise el orden de las reglas antes de concluir nada.</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div class="note" lang="en">
-      <strong>Every step above exists because it failed first.</strong> The order, the dry runs and
-      the four symptoms in that table were written after a deployment onto a live sixty-six-site
-      Windows Server, and each one of them cost an evening.
-    </div>
-    <div class="note" lang="es">
-      <strong>Cada paso de arriba existe porque falló primero.</strong> El orden, las pasadas en seco
-      y los cuatro síntomas de esa tabla se escribieron después de un despliegue sobre un Windows
-      Server en vivo con sesenta y seis sitios, y cada uno costó una tarde.
-    </div>
+  <section id="deploy" class="reveal guide-link">
+    <h2 lang="en">Evaluate in a lab</h2>
+    <h2 lang="es">Evalúa en un laboratorio</h2>
+    <p class="wide" lang="en">Follow the <a href="https://github.com/peopleworks/WPShield/blob/main/README.md#quick-start">quick start</a> to obtain and verify the preview and run preflight. The <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/m1-lab-gateway.md">M1 lab guide</a> covers the loopback gateway.</p>
+    <p class="wide" lang="es">Consulta la <a href="https://github.com/peopleworks/WPShield/blob/main/docs/es/referencia-operador.md#primeros-pasos">guía de inicio</a> para compilar y verificar la vista previa y ejecutar la comprobación previa. La <a href="https://github.com/peopleworks/WPShield/blob/main/docs/es/m1-gateway-laboratorio.md">guía de laboratorio M1</a> describe el gateway en loopback.</p>
   </section>
 
-  <!-- ------------------------------------------------------------- cli -->
-  <section id="cli" class="reveal">
-    <p class="eyebrow">
-      <span lang="en">Command line</span>
-      <span lang="es">Línea de comandos</span>
-    </p>
-
-    <h2 lang="en">Operator commands</h2><h2 lang="es">Comandos del operador</h2>
-    <p lang="en">Use <code>wpshield --help</code> for the full list and each command’s help for prerequisites and exit codes.</p>
-    <p lang="es">Consulta la lista con <code>wpshield --help</code>. La ayuda de cada comando incluye requisitos y códigos de salida.</p>
-    <div class="table-scroll">
-      <table lang="en">
-        <caption>CLI verbs and what they do.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Command</th>
-            <th scope="col">Purpose</th>
-            <th scope="col">Key options</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row"><code>setup</code></th>
-            <td>Take one IIS site from nothing to protected and verified, in five ordered steps.</td>
-            <td><code>--site</code>, <code>--hosts</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>preflight</code></th>
-            <td>Read-only readiness check. Nineteen checks, changes nothing.</td>
-            <td><code>--gateway-port</code>, <code>--private-port</code>, <code>--site</code>, <code>--output</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>install</code></th>
-            <td>Install the gateway as a Windows service under <code>NT SERVICE\WPShield</code>.</td>
-            <td><code>--path</code>, <code>--install-path</code>, <code>--log-path</code>, <code>--config</code>, <code>--start</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>uninstall</code></th>
-            <td>Remove the service. Refuses while an IIS rewrite rule still forwards to it.</td>
-            <td><code>--remove-files</code>, <code>--remove-logs</code>, <code>--force</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>enable</code></th>
-            <td>Put WPShield in the traffic path for one site, verify it works, revert if it does not.</td>
-            <td><code>--site</code>, <code>--gateway-port</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>disable</code></th>
-            <td>The rollback: take WPShield out of the traffic path.</td>
-            <td><code>--site</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>site</code></th>
-            <td>Tell the gateway which sites to protect; writes configuration, restarts the service.</td>
-            <td><code>list</code>, <code>add</code>, <code>remove</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>status</code></th>
-            <td>Report what is installed, which account runs it, whether it is writing a log.</td>
-            <td>(none)</td>
-          </tr>
-          <tr>
-            <th scope="row"><code>watch</code></th>
-            <td>Live console over the evidence log: findings and verdicts as they land.</td>
-            <td><code>--log-dir</code>, <code>--host</code>, <code>--from-start</code>, <code>--plain</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>report</code></th>
-            <td>PDF over a window of the evidence log: summary, findings by rule and by site.</td>
-            <td><code>--log-dir</code>, <code>--log-file</code>, <code>--host</code>, <code>--since</code>, <code>--out</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>network-monitor</code></th>
-            <td>Observe live TCP/UDP flows, HTTP metadata or login evidence on Windows.</td>
-            <td><code>--flows</code>, <code>--interfaces</code>, <code>--ports</code>, <code>--rdp-port</code>, <code>--sql-instance</code>, <code>--json</code></td>
-          </tr>
-          <tr><th scope="row"><code>preview</code></th><td>Compare recorded decisions with candidate thresholds offline.</td><td><code>--log-file</code>, <code>--site</code>, <code>--format</code></td></tr>
-          <tr>
-            <th scope="row"><code>network-filter</code></th>
-            <td>Unavailable in this preview. Running the command exits with code 1.</td>
-            <td><code>--help</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>security-monitor</code></th>
-            <td>Read-only Windows Security event log monitor. Detects RDP brute force and failed logons. Prints JSON Lines.</td>
-            <td><code>--log-name</code>, <code>--event-ids</code>, <code>--max-failed-logons</code>, <code>--window-minutes</code>, <code>--allow-list</code>, <code>--watch</code>, <code>--interval-seconds</code>, <code>--output</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>publish</code></th>
-            <td>Build a self-contained win-x64 deployment with checksum. Runs on a build machine, never on the server.</td>
-            <td><code>--repository</code>, <code>--output</code>, <code>--skip-archive</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>version</code></th>
-            <td>Print the version.</td>
-            <td><code>--version</code>, <code>-v</code></td>
-          </tr>
-        </tbody>
-      </table>
-
-      <table lang="es">
-        <caption>Verbos de CLI y su propósito.</caption>
-        <thead>
-          <tr>
-            <th scope="col">Comando</th>
-            <th scope="col">Propósito</th>
-            <th scope="col">Opciones principales</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <th scope="row"><code>setup</code></th>
-            <td>Llevar un sitio de IIS de la nada a protegido y verificado, en cinco pasos ordenados.</td>
-            <td><code>--site</code>, <code>--hosts</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>preflight</code></th>
-            <td>Comprobación de disponibilidad de solo lectura. Diecinueve comprobaciones, no cambia nada.</td>
-            <td><code>--gateway-port</code>, <code>--private-port</code>, <code>--site</code>, <code>--output</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>install</code></th>
-            <td>Instalar el gateway como servicio de Windows bajo <code>NT SERVICE\WPShield</code>.</td>
-            <td><code>--path</code>, <code>--install-path</code>, <code>--log-path</code>, <code>--config</code>, <code>--start</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>uninstall</code></th>
-            <td>Remover el servicio. Se niega mientras una regla de reescritura de IIS aún reenvíe a él.</td>
-            <td><code>--remove-files</code>, <code>--remove-logs</code>, <code>--force</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>enable</code></th>
-            <td>Poner WPShield en la ruta de tráfico para un sitio, verificar que funcione, revertir si no.</td>
-            <td><code>--site</code>, <code>--gateway-port</code>, <code>--destination-port</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>disable</code></th>
-            <td>La vuelta atrás: sacar a WPShield de la ruta de tráfico.</td>
-            <td><code>--site</code>, <code>--dry-run</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>site</code></th>
-            <td>Decirle al gateway qué sitios proteger; escribe la configuración, reinicia el servicio.</td>
-            <td><code>list</code>, <code>add</code>, <code>remove</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>status</code></th>
-            <td>Reportar qué está instalado, bajo qué cuenta corre, si escribe un log.</td>
-            <td>(ninguna)</td>
-          </tr>
-          <tr>
-            <th scope="row"><code>watch</code></th>
-            <td>Consola en vivo sobre el log de evidencia: hallazgos y veredictos a medida que llegan.</td>
-            <td><code>--log-dir</code>, <code>--host</code>, <code>--from-start</code>, <code>--plain</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>report</code></th>
-            <td>PDF sobre una ventana del log de evidencia: resumen, hallazgos por regla y por sitio.</td>
-            <td><code>--log-dir</code>, <code>--log-file</code>, <code>--host</code>, <code>--since</code>, <code>--out</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>network-monitor</code></th>
-            <td>Observa flujos TCP/UDP en vivo, metadatos HTTP o evidencia de accesos en Windows.</td>
-            <td><code>--flows</code>, <code>--interfaces</code>, <code>--ports</code>, <code>--rdp-port</code>, <code>--sql-instance</code>, <code>--json</code></td>
-          </tr>
-          <tr><th scope="row"><code>preview</code></th><td>Compara las decisiones registradas con umbrales candidatos sin conexión.</td><td><code>--log-file</code>, <code>--site</code>, <code>--format</code></td></tr>
-          <tr>
-            <th scope="row"><code>network-filter</code></th>
-            <td>Bloqueo no disponible en esta versión. El comando termina con código 1.</td>
-            <td><code>--help</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>security-monitor</code></th>
-            <td>Monitor de solo lectura del registro de Seguridad de Windows. Detecta fuerza bruta de RDP y fallos de inicio de sesión. Imprime JSON Lines.</td>
-            <td><code>--log-name</code>, <code>--event-ids</code>, <code>--max-failed-logons</code>, <code>--window-minutes</code>, <code>--allow-list</code>, <code>--watch</code>, <code>--interval-seconds</code>, <code>--output</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>publish</code></th>
-            <td>Construir un despliegue autocontenido win-x64 con checksum. Corre en una máquina de compilación, nunca en el servidor.</td>
-            <td><code>--repository</code>, <code>--output</code>, <code>--skip-archive</code></td>
-          </tr>
-          <tr>
-            <th scope="row"><code>version</code></th>
-            <td>Imprimir la versión.</td>
-            <td><code>--version</code>, <code>-v</code></td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-
+  <section id="cli" class="reveal guide-link">
+    <h2 lang="en">Operator commands</h2>
+    <h2 lang="es">Comandos del operador</h2>
+    <p class="wide" lang="en">Use the <a href="https://github.com/peopleworks/WPShield/blob/main/docs/en/operator-reference.md#choose-an-operator-task">operator reference</a> to look up commands for listeners, traffic, logons and request evidence.</p>
+    <p class="wide" lang="es">Consulta la <a href="https://github.com/peopleworks/WPShield/blob/main/docs/es/referencia-operador.md#elegir-una-tarea-del-operador">referencia del operador</a> para buscar comandos de puertos, tráfico, accesos y evidencia de solicitudes.</p>
   </section>
 
   <section id="docs" class="reveal">
@@ -2229,8 +1438,10 @@ footer p { max-width: 46rem; }
       <span lang="es">Léelo antes de evaluar</span>
     </p>
 
-    <h2 lang="en">Everything here is checkable<br>against the code.</h2>
-    <h2 lang="es">Todo lo de aquí es verificable<br>contra el código.</h2>
+    <h2 lang="en">Documentation and project links</h2>
+    <h2 lang="es">Documentación y enlaces del proyecto</h2>
+    <p lang="en"><a href="https://github.com/peopleworks/WPShield/blob/main/docs/README.md">Documentation index in English and Spanish</a></p>
+    <p lang="es"><a href="https://github.com/peopleworks/WPShield/blob/main/docs/README.md">Índice de documentación en inglés y español</a></p>
 
     <p class="wide" lang="en">
       Every user-facing document exists in English and Spanish, and a change to user-visible
@@ -2338,22 +1549,8 @@ footer p { max-width: 46rem; }
     <a href="https://github.com/peopleworks/WPShield/blob/main/LICENSE">licencia MIT</a>.
   </p>
 
-  <p class="footer__note" lang="en">
-    WPShield is an early research preview and is <strong>not approved for production traffic</strong>.
-    M1 and M2 are loopback-only. Nothing on this page describes a product you should place in front
-    of a live site today. An independent community project: not affiliated with, endorsed by, or
-    supported by Microsoft Corporation, Automattic, or the WordPress Foundation.
-    <em>Windows Server</em> and <em>IIS</em> are trademarks of Microsoft Corporation;
-    <em>WordPress</em> is a trademark of the WordPress Foundation.
-  </p>
-  <p class="footer__note" lang="es">
-    WPShield es una vista previa de investigación temprana y <strong>no está aprobado para tráfico de
-    producción</strong>. M1 y M2 son exclusivamente de loopback. Nada en esta página describe un
-    producto que debas poner hoy delante de un sitio en vivo. Es un proyecto comunitario
-    independiente: no está afiliado, respaldado ni soportado por Microsoft Corporation, Automattic ni
-    la WordPress Foundation. <em>Windows Server</em> e <em>IIS</em> son marcas de Microsoft
-    Corporation; <em>WordPress</em> es una marca de la WordPress Foundation.
-  </p>
+  <p class="footer__note" lang="en"><a href="https://github.com/peopleworks/WPShield/blob/main/NOTICE.md">Third-party notices</a></p>
+  <p class="footer__note" lang="es"><a href="https://github.com/peopleworks/WPShield/blob/main/NOTICE.md">Avisos de terceros</a></p>
 </footer>
 
 <script>
@@ -2369,8 +1566,12 @@ footer p { max-width: 46rem; }
   // Only the label is written here. Which icon shows is a CSS decision keyed on data-theme, so the
   // two never disagree and the drawn glyphs are not rebuilt on every click.
   var themeButton = document.getElementById('theme');
+  var darkSources = document.querySelectorAll('picture source[media="(prefers-color-scheme: dark)"]');
   function paintTheme() {
     var dark = root.getAttribute('data-theme') === 'dark';
+    darkSources.forEach(function (source) {
+      source.media = dark ? 'all' : 'not all';
+    });
     themeButton.setAttribute(
       'aria-label',
       root.getAttribute('data-lang') === 'es'
