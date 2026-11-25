@@ -222,6 +222,22 @@ public sealed class EvidenceQueries
         return ReadDecisions(command);
     }
 
+    /// <summary>
+    /// How many decision records of each action a range holds. Exact where a list is not: a list read is
+    /// bounded, so a count taken from one stops at the bound and says less than the store holds.
+    /// </summary>
+    public IReadOnlyDictionary<string, long> DecisionCounts(DateTimeOffset from, DateTimeOffset to)
+    {
+        var (f, t) = Range(from, to);
+        using var command = store.Command("""
+            SELECT action, COUNT(*) FROM decisions WHERE ts >= $f AND ts < $t GROUP BY action ORDER BY action LIMIT 64;
+            """, null, ("$f", f), ("$t", t));
+        using var reader = command.ExecuteReader();
+        var counts = new Dictionary<string, long>(StringComparer.Ordinal);
+        while (reader.Read()) counts[reader.GetString(0)] = reader.GetInt64(1);
+        return counts;
+    }
+
     private static List<DecisionRecord> ReadDecisions(Microsoft.Data.Sqlite.SqliteCommand command)
     {
         using var reader = command.ExecuteReader();

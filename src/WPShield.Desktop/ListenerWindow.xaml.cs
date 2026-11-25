@@ -19,6 +19,7 @@ public partial class ListenerWindow : Window
     private AuditReferenceWindow? auditWindow;
     private AttacksWindow? attacksWindow;
     private SettingsWindow? settingsWindow;
+    private ProtectionWindow? protectionWindow;
     private IReadOnlyList<LocalListenerInventory.Table> latest = [];
 
     public ListenerWindow()
@@ -34,6 +35,7 @@ public partial class ListenerWindow : Window
         AuditButton.Content = L("Audit references", "Referencias de auditoría");
         AttacksButton.Content = L("Attacks", "Ataques");
         SettingsButton.Content = L("Settings", "Ajustes");
+        ProtectionButton.Content = L("Protection", "Protección");
         AllProtocols.Content = L("All protocols", "Todos los protocolos");
         PreviewLabel.Text = L("Research preview", "Vista previa de investigación");
         RefreshButton.Content = L("Refresh", "Actualizar");
@@ -87,12 +89,31 @@ public partial class ListenerWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // "Reopen as administrator" in the attacks and settings views relaunches with --attacks or
-        // --settings to land there again.
+        // "Reopen as administrator" in the attacks, settings and protection views relaunches with
+        // --attacks, --settings or --protection to land there again.
         var args = Environment.GetCommandLineArgs();
+        if (args.Contains("--protection")) OpenProtection(this, e);
         if (args.Contains("--attacks")) OpenAttacks(this, e);
         if (args.Contains("--settings")) OpenSettings(this, e);
         await RefreshAsync();
+    }
+
+    private void OpenProtection(object sender, RoutedEventArgs e)
+    {
+        if (protectionWindow is null)
+        {
+            // Its links open this window's own Attacks and Settings, never a second copy of either.
+            protectionWindow = new ProtectionWindow(spanish, () => OpenAttacks(this, new RoutedEventArgs()),
+                () => OpenSettings(WPShield.Evidence.Decisions.DefenseSettings.Allow));
+            protectionWindow.Owner = this;
+            protectionWindow.Closed += (_, _) => protectionWindow = null;
+            protectionWindow.Show();
+        }
+        else
+        {
+            if (protectionWindow.WindowState == WindowState.Minimized) protectionWindow.WindowState = WindowState.Normal;
+            protectionWindow.Activate();
+        }
     }
 
     private void OpenAttacks(object sender, RoutedEventArgs e)
@@ -110,11 +131,14 @@ public partial class ListenerWindow : Window
         }
     }
 
-    private void OpenSettings(object sender, RoutedEventArgs e)
+    private void OpenSettings(object sender, RoutedEventArgs e) => OpenSettings(null);
+
+    /// <summary>Opens Settings, or brings it forward, with <paramref name="key"/> selected when one is named.</summary>
+    private void OpenSettings(string? key)
     {
         if (settingsWindow is null)
         {
-            settingsWindow = new SettingsWindow(spanish) { Owner = this };
+            settingsWindow = new SettingsWindow(spanish, key) { Owner = this };
             settingsWindow.Closed += (_, _) => settingsWindow = null;
             settingsWindow.Show();
         }
@@ -122,6 +146,7 @@ public partial class ListenerWindow : Window
         {
             if (settingsWindow.WindowState == WindowState.Minimized) settingsWindow.WindowState = WindowState.Normal;
             settingsWindow.Activate();
+            if (key is not null) _ = settingsWindow.Select(key);
         }
     }
 

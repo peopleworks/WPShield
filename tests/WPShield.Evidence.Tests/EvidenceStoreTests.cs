@@ -209,6 +209,26 @@ public sealed class EvidenceStoreTests : IDisposable
     }
 
     [Fact]
+    public void DecisionCountsAreExactPerActionWhereAListStopsAtItsBound()
+    {
+        using var store = EvidenceStore.OpenForWriting(DbPath);
+        var writer = new EvidenceWriter(store);
+        for (var i = 0; i < EvidenceQueries.MaxSources + 5; i++)
+            writer.RecordDecision(new(Now.AddMinutes(-30).AddMilliseconds(i), "protected", "198.51.100.7", "HOST-AUTH-001", "monitor",
+                "10 failed logons", "security-4625", Now.AddHours(1)));
+        writer.RecordDecision(new(Now.AddMinutes(-10), "refused", "203.0.113.9", "HOST-AUTH-002", "monitor", "unreadable", null, null));
+        writer.RecordDecision(new(Now.AddHours(-30), "report", "203.0.113.10", "HOST-AUTH-004", "monitor", "older", null, null));
+
+        var queries = new EvidenceQueries(store);
+        var counts = queries.DecisionCounts(Now.AddHours(-24), Now);
+
+        Assert.Equal(EvidenceQueries.MaxSources + 5, counts["protected"]);
+        Assert.Equal(1, counts["refused"]);
+        Assert.False(counts.ContainsKey("report"));
+        Assert.Equal(EvidenceQueries.MaxSources, queries.Decisions(Now.AddHours(-24), Now, int.MaxValue).Count);
+    }
+
+    [Fact]
     public void SettingsAreValidatedVersionedAndAudited()
     {
         using var store = EvidenceStore.OpenForWriting(DbPath);

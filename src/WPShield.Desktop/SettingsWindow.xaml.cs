@@ -56,6 +56,7 @@ public partial class SettingsWindow : Window
     private readonly bool spanish;
     private readonly ISettingsStore store;
     private readonly Func<OwnConnection> remote;
+    private readonly string? initialKey;
     private SettingsSnapshot? snapshot;
     private SettingRow? shown;
     private SettingEdit? edit;
@@ -66,16 +67,23 @@ public partial class SettingsWindow : Window
     private bool busy;
     private bool closed;
 
-    public SettingsWindow(bool spanish) : this(spanish,
-        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser), OwnConnectionReader.Read)
+    public SettingsWindow(bool spanish) : this(spanish, null)
     {
     }
 
-    internal SettingsWindow(bool spanish, ISettingsStore store, Func<OwnConnection> remote)
+    /// <param name="initialKey">The setting selected when the window first loads, such as <c>defense.allow</c>.</param>
+    public SettingsWindow(bool spanish, string? initialKey) : this(spanish,
+        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser), OwnConnectionReader.Read,
+        initialKey)
+    {
+    }
+
+    internal SettingsWindow(bool spanish, ISettingsStore store, Func<OwnConnection> remote, string? initialKey = null)
     {
         this.spanish = spanish;
         this.store = store;
         this.remote = remote;
+        this.initialKey = initialKey;
         InitializeComponent();
         Title = "WPShield | " + L("Settings", "Ajustes");
         SourceLabel.Text = L("Evidence store  /  settings", "Almacén de evidencia  /  ajustes");
@@ -143,7 +151,7 @@ public partial class SettingsWindow : Window
             var values = read.Values.ToDictionary(v => v.Key, StringComparer.Ordinal);
             var rows = store.Catalog.Values.OrderBy(d => d.Key, StringComparer.Ordinal)
                 .Select(d => Row(d, values.GetValueOrDefault(d.Key))).ToArray();
-            var keep = shown?.Key;
+            var keep = shown?.Key ?? initialKey;
             Keys.ItemsSource = rows;
             Keys.SelectedItem = rows.FirstOrDefault(r => r.Key == keep) ?? rows.FirstOrDefault();
             Footer.Text = read.Read

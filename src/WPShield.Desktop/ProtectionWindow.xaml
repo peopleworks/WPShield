@@ -1,0 +1,224 @@
+<Window x:Class="WPShield.Desktop.ProtectionWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml" Title="WPShield"
+        Width="1180" Height="820" MinWidth="900" MinHeight="600" WindowStartupLocation="CenterOwner"
+        Background="#EFF3F6" Foreground="#152C3D" FontFamily="Segoe UI" FontSize="14"
+        Loaded="OnLoaded" Closed="OnClosed">
+  <Window.Resources>
+    <Style x:Key="Card" TargetType="Border">
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="BorderBrush" Value="#CFDCE2"/>
+      <Setter Property="BorderThickness" Value="1"/>
+      <Setter Property="CornerRadius" Value="9"/>
+      <Setter Property="Padding" Value="16,11"/>
+    </Style>
+    <Style x:Key="Small" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="12"/>
+      <Setter Property="Foreground" Value="#476170"/>
+      <Setter Property="TextWrapping" Value="Wrap"/>
+    </Style>
+    <Style x:Key="Kpi" TargetType="TextBlock">
+      <Setter Property="FontSize" Value="28"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="Text" Value="—"/>
+    </Style>
+    <Style x:Key="Dot" TargetType="Ellipse">
+      <Setter Property="Width" Value="11"/>
+      <Setter Property="Height" Value="11"/>
+      <Setter Property="Fill" Value="#A9B8C0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="Margin" Value="0,0,8,0"/>
+    </Style>
+    <Style x:Key="Tab" TargetType="RadioButton">
+      <Setter Property="Margin" Value="0,0,4,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="RadioButton">
+          <Border x:Name="Chip" Padding="12,6" CornerRadius="6" Background="#E2EAEE">
+            <ContentPresenter HorizontalAlignment="Center"/>
+          </Border>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsChecked" Value="True"><Setter TargetName="Chip" Property="Background" Value="#145856"/>
+              <Setter Property="Foreground" Value="White"/></Trigger>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Chip" Property="Opacity" Value="0.85"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style x:Key="Link" TargetType="Button">
+      <Setter Property="Margin" Value="12,0,0,0"/>
+      <Setter Property="Cursor" Value="Hand"/>
+      <Setter Property="Foreground" Value="#145856"/>
+      <Setter Property="Template">
+        <Setter.Value><ControlTemplate TargetType="Button">
+          <TextBlock x:Name="Text" Text="{TemplateBinding Content}" TextDecorations="Underline" VerticalAlignment="Center"/>
+          <ControlTemplate.Triggers>
+            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="Text" Property="Foreground" Value="#0E3E3D"/></Trigger>
+          </ControlTemplate.Triggers>
+        </ControlTemplate></Setter.Value>
+      </Setter>
+    </Style>
+    <Style TargetType="DataGridColumnHeader">
+      <Setter Property="Background" Value="#E8EEF1"/>
+      <Setter Property="Foreground" Value="#324F5F"/>
+      <Setter Property="Padding" Value="10,9"/>
+      <Setter Property="FontWeight" Value="SemiBold"/>
+      <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+    <Style x:Key="CellText" TargetType="TextBlock">
+      <Setter Property="Margin" Value="10,0"/>
+      <Setter Property="VerticalAlignment" Value="Center"/>
+      <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+      <Setter Property="ToolTip" Value="{Binding Text, RelativeSource={RelativeSource Self}}"/>
+    </Style>
+  </Window.Resources>
+  <Grid Margin="22,16">
+    <Grid.RowDefinitions>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+      <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/>
+    </Grid.RowDefinitions>
+
+    <DockPanel>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
+        <Button x:Name="AttacksLink" Style="{StaticResource Link}" Click="OnOpenAttacks"/>
+        <Button x:Name="SettingsLink" Style="{StaticResource Link}" Click="OnOpenSettings"/>
+        <Button x:Name="RefreshButton" Margin="16,0,0,0" Click="OnRefresh" Background="#145856" Foreground="White"
+                BorderThickness="0" Padding="15,8" FontWeight="SemiBold"/>
+      </StackPanel>
+      <StackPanel>
+        <TextBlock x:Name="SourceLabel" Foreground="#486475" FontSize="12"/>
+        <TextBlock x:Name="Heading" FontSize="30" FontWeight="SemiBold"/>
+        <TextBlock x:Name="Subtitle" Style="{StaticResource Small}"/>
+      </StackPanel>
+    </DockPanel>
+
+    <!-- The store could not be read: the remedy, and the elevated relaunch when elevation is what is missing. -->
+    <Border x:Name="Banner" Grid.Row="1" Margin="0,12,0,0" Background="#FFF4DF" BorderBrush="#E9C27A" BorderThickness="1"
+            CornerRadius="8" Padding="14,10" Visibility="Collapsed">
+      <DockPanel>
+        <Button x:Name="ElevateButton" DockPanel.Dock="Right" Click="OnElevate" Padding="12,6" Margin="12,0,0,0"
+                Background="#8A5A12" Foreground="White" BorderThickness="0" Visibility="Collapsed" VerticalAlignment="Center"/>
+        <TextBlock x:Name="BannerText" TextWrapping="Wrap" VerticalAlignment="Center" Foreground="#5E3F0B"/>
+      </DockPanel>
+    </Border>
+
+    <UniformGrid Grid.Row="2" Columns="3" Margin="0,14,0,0">
+      <Border Style="{StaticResource Card}" Margin="0,0,6,0">
+        <StackPanel>
+          <TextBlock x:Name="CollectorCaption" FontSize="12" Foreground="#486475"/>
+          <DockPanel Margin="0,4,0,4">
+            <Ellipse x:Name="CollectorDot" DockPanel.Dock="Left" Style="{StaticResource Dot}" VerticalAlignment="Top" Margin="0,7,8,0"/>
+            <TextBlock x:Name="CollectorText" FontSize="17" FontWeight="SemiBold" Text="—" TextWrapping="Wrap"/>
+          </DockPanel>
+          <TextBlock x:Name="CollectorDetail" Style="{StaticResource Small}"/>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}" Margin="3,0">
+        <StackPanel>
+          <TextBlock x:Name="ServiceCaption" FontSize="12" Foreground="#486475"/>
+          <DockPanel Margin="0,4,0,4">
+            <Ellipse x:Name="ServiceDot" DockPanel.Dock="Left" Style="{StaticResource Dot}" VerticalAlignment="Top" Margin="0,7,8,0"/>
+            <TextBlock x:Name="ServiceText" FontSize="17" FontWeight="SemiBold" Text="—" TextWrapping="Wrap"/>
+          </DockPanel>
+          <TextBlock x:Name="ServiceDetail" Style="{StaticResource Small}"/>
+        </StackPanel>
+      </Border>
+      <Border Style="{StaticResource Card}" Margin="6,0,0,0">
+        <StackPanel>
+          <TextBlock x:Name="ModeCaption" FontSize="12" Foreground="#486475"/>
+          <TextBlock x:Name="ModeText" FontSize="17" FontWeight="SemiBold" Margin="0,4,0,4" Text="—" TextWrapping="Wrap"/>
+          <TextBlock x:Name="ModeDetail" Style="{StaticResource Small}"/>
+          <!-- Block does not exist in this version: drawn dotted and disabled, never as a choice. -->
+          <Grid x:Name="BlockChip" HorizontalAlignment="Left" Margin="0,8,0,0" IsEnabled="False" ToolTipService.ShowOnDisabled="True">
+            <Rectangle Stroke="#A9B8C0" StrokeDashArray="3 2" RadiusX="6" RadiusY="6"/>
+            <TextBlock x:Name="BlockText" Margin="10,4" FontSize="12" Foreground="#6B7F8A"/>
+          </Grid>
+        </StackPanel>
+      </Border>
+    </UniformGrid>
+
+    <Border Grid.Row="3" Style="{StaticResource Card}" Margin="0,12,0,0">
+      <DockPanel>
+        <TextBlock x:Name="SensorsCaption" DockPanel.Dock="Left" FontWeight="SemiBold" VerticalAlignment="Center" Margin="0,0,14,0"/>
+        <WrapPanel>
+          <Border x:Name="LogonChip" CornerRadius="6" BorderBrush="#CFDCE2" BorderThickness="1" Background="#F6F9FA" Padding="10,5"
+                  Margin="0,3,8,3" ToolTipService.ShowDuration="60000">
+            <StackPanel Orientation="Horizontal">
+              <Ellipse x:Name="LogonDot" Style="{StaticResource Dot}"/>
+              <TextBlock x:Name="LogonText" VerticalAlignment="Center"/>
+              <TextBlock x:Name="LogonStatus" VerticalAlignment="Center" FontSize="12" Foreground="#476170" Margin="8,0,0,0"/>
+            </StackPanel>
+          </Border>
+          <Grid x:Name="SqlChip" Margin="0,3,8,3" IsEnabled="False" ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000">
+            <Rectangle Stroke="#A9B8C0" StrokeDashArray="3 2" RadiusX="6" RadiusY="6"/>
+            <StackPanel Orientation="Horizontal" Margin="10,5">
+              <Ellipse Style="{StaticResource Dot}" Fill="Transparent" Stroke="#A9B8C0" StrokeDashArray="2 2"/>
+              <TextBlock x:Name="SqlText" VerticalAlignment="Center" Foreground="#6B7F8A"/>
+              <TextBlock x:Name="SqlStatus" VerticalAlignment="Center" FontSize="12" Foreground="#6B7F8A" Margin="8,0,0,0" FontStyle="Italic"/>
+            </StackPanel>
+          </Grid>
+          <Grid x:Name="GatewayChip" Margin="0,3,8,3" IsEnabled="False" ToolTipService.ShowOnDisabled="True" ToolTipService.ShowDuration="60000">
+            <Rectangle Stroke="#A9B8C0" StrokeDashArray="3 2" RadiusX="6" RadiusY="6"/>
+            <StackPanel Orientation="Horizontal" Margin="10,5">
+              <Ellipse Style="{StaticResource Dot}" Fill="Transparent" Stroke="#A9B8C0" StrokeDashArray="2 2"/>
+              <TextBlock x:Name="GatewayText" VerticalAlignment="Center" Foreground="#6B7F8A"/>
+              <TextBlock x:Name="GatewayStatus" VerticalAlignment="Center" FontSize="12" Foreground="#6B7F8A" Margin="8,0,0,0" FontStyle="Italic"/>
+            </StackPanel>
+          </Grid>
+        </WrapPanel>
+      </DockPanel>
+    </Border>
+
+    <UniformGrid Grid.Row="4" Columns="4" Margin="0,12,0,0">
+      <Border Style="{StaticResource Card}" Margin="0,0,6,0"><StackPanel>
+        <TextBlock x:Name="WouldBlockLabel" FontWeight="SemiBold" Foreground="#9A2F2F"/>
+        <TextBlock x:Name="WouldBlockValue" Style="{StaticResource Kpi}"/>
+        <TextBlock x:Name="WouldBlockNote" Style="{StaticResource Small}"/></StackPanel></Border>
+      <Border Style="{StaticResource Card}" Margin="3,0"><StackPanel>
+        <TextBlock x:Name="ProtectedLabel" FontWeight="SemiBold" Foreground="#146662"/>
+        <TextBlock x:Name="ProtectedValue" Style="{StaticResource Kpi}"/>
+        <TextBlock x:Name="ProtectedNote" Style="{StaticResource Small}"/></StackPanel></Border>
+      <Border Style="{StaticResource Card}" Margin="3,0"><StackPanel>
+        <TextBlock x:Name="RefusedLabel" FontWeight="SemiBold" Foreground="#8A5A12"/>
+        <TextBlock x:Name="RefusedValue" Style="{StaticResource Kpi}"/>
+        <TextBlock x:Name="RefusedNote" Style="{StaticResource Small}"/></StackPanel></Border>
+      <Border Style="{StaticResource Card}" Margin="6,0,0,0"><StackPanel>
+        <TextBlock x:Name="ReportLabel" FontWeight="SemiBold" Foreground="#3E5696"/>
+        <TextBlock x:Name="ReportValue" Style="{StaticResource Kpi}"/>
+        <TextBlock x:Name="ReportNote" Style="{StaticResource Small}"/></StackPanel></Border>
+    </UniformGrid>
+
+    <DockPanel Grid.Row="5" Margin="0,12,0,8">
+      <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" VerticalAlignment="Center">
+        <RadioButton x:Name="TabInForce" Style="{StaticResource Tab}" GroupName="DecisionTab" Checked="OnTab"/>
+        <RadioButton x:Name="TabDay" Style="{StaticResource Tab}" GroupName="DecisionTab" Checked="OnTab"/>
+        <RadioButton x:Name="TabMonth" Style="{StaticResource Tab}" GroupName="DecisionTab" Checked="OnTab"/>
+      </StackPanel>
+      <Label x:Name="SearchLabel" Target="{Binding ElementName=Search}" Padding="16,5,8,5"/>
+      <TextBox x:Name="Search" VerticalContentAlignment="Center" Padding="8,4" MaxLength="96" TextChanged="OnSearch"/>
+    </DockPanel>
+
+    <Border Grid.Row="6" BorderBrush="#CFDCE2" BorderThickness="1" Background="White" CornerRadius="6" ClipToBounds="True">
+      <Grid>
+        <DataGrid x:Name="Rows" AutoGenerateColumns="False" IsReadOnly="True" CanUserReorderColumns="False"
+                  SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
+                  HorizontalGridLinesBrush="#E6ECEF" BorderThickness="0" Background="White"
+                  AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True">
+          <DataGrid.Columns>
+            <DataGridTextColumn Binding="{Binding Target}" Width="150" ElementStyle="{StaticResource CellText}"/>
+            <DataGridTextColumn Binding="{Binding Label}" Width="140" ElementStyle="{StaticResource CellText}"/>
+            <DataGridTextColumn Binding="{Binding Rule}" Width="125" ElementStyle="{StaticResource CellText}"/>
+            <DataGridTextColumn Binding="{Binding Action}" Width="105" ElementStyle="{StaticResource CellText}"/>
+            <!-- The one star column, so the reason takes what is left and never collapses to nothing. -->
+            <DataGridTextColumn Binding="{Binding Reason}" Width="*" MinWidth="220" ElementStyle="{StaticResource CellText}"/>
+            <DataGridTextColumn Binding="{Binding Since}" Width="130" ElementStyle="{StaticResource CellText}"/>
+            <DataGridTextColumn Binding="{Binding Until}" Width="130" ElementStyle="{StaticResource CellText}"/>
+          </DataGrid.Columns>
+        </DataGrid>
+        <TextBlock x:Name="Empty" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                   IsHitTestVisible="False" TextWrapping="Wrap" TextAlignment="Center" Margin="40"/>
+      </Grid>
+    </Border>
+    <TextBlock x:Name="Footer" Grid.Row="7" Margin="0,8,0,0" Style="{StaticResource Small}"/>
+  </Grid>
+</Window>
