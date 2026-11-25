@@ -84,7 +84,7 @@ ejecuta: `ANTHROPIC_API_KEY` o `RELAY_API_KEY`. Nunca es un ajuste (`list_settin
 los ajustes al modelo, y `settings_history` la guardaría para siempre), nunca un argumento de la línea
 de comandos (el historial de la consola y la auditoría de creación de procesos los registran), nunca se
 lee de `appsettings*.json` ni de ningún archivo, nunca se registra en un log y nunca se escribe en un
-informe. Los mensajes de error del proveedor se limpian de ella antes de mostrarse o guardarse.
+informe. Los mensajes del proveedor, y el propio texto del modelo y los argumentos de sus llamadas, se limpian de ella antes de mostrarse o guardarse.
 
 Use el ámbito de **usuario**, como arriba, y no el de máquina: cualquier proceso del servidor puede leer
 una variable de máquina, y `status` avisa cuando la clave también está ahí. Una variable de usuario se

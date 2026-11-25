@@ -59,16 +59,17 @@ public sealed class AnalystReportStoreTests : IDisposable
     {
         using var store = AnalystReportStore.Open(directory.ReportStore);
         long first = 0;
+        long last = 0;
         for (var i = 0; i < AnalystReportStore.MaxReports + 5; i++)
         {
-            var id = store.Begin(Start(Fixtures.Now.AddMinutes(-2000 + i)));
-            if (i == 0) first = id;
+            last = store.Begin(Start(Fixtures.Now.AddMinutes(-2000 + i)));
+            if (i == 0) first = last;
         }
 
-        store.Prune(Fixtures.Now);
-
+        // Straight after the last run started: never 1,001 at rest.
         Assert.Equal(AnalystReportStore.MaxReports, store.Count());
         Assert.Null(store.Get(first));
+        Assert.NotNull(store.Get(last));
     }
 
     [Fact]

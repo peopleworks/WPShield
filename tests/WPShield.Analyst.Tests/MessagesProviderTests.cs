@@ -122,7 +122,7 @@ public sealed class MessagesProviderTests
         var handler = new FakeHandler()
             .ThenJson(FakeHandler.Message("tool_use",
                 FakeHandler.Thinking("declined") + "," + fallback + "," + FakeHandler.ToolUse("toolu_2", "coverage", "{}"), model: "claude-opus-5",
-                iterations: """[{"type":"message","input_tokens":10,"output_tokens":0},{"type":"fallback_message","model":"claude-opus-5","input_tokens":1000,"output_tokens":200}]"""))
+                iterations: """[{"type":"message","model":"claude-opus-5-5","input_tokens":10,"output_tokens":0,"cache_creation_input_tokens":0,"cache_read_input_tokens":0},{"type":"fallback_message","model":"claude-opus-5","input_tokens":1000,"output_tokens":200,"cache_creation_input_tokens":0,"cache_read_input_tokens":0}]"""))
             .ThenJson(FakeHandler.Message("end_turn", FakeHandler.Text("done"), model: "claude-opus-5"));
         using var provider = MessagesProvider.Anthropic(Key, "claude-opus-5-5", "medium", handler);
         var conversation = provider.Begin(Spec(new FakeTool("coverage")));
@@ -130,10 +130,25 @@ public sealed class MessagesProviderTests
         var turn = await conversation.NextAsync([], CancellationToken.None);
         Assert.True(turn.FellBack);
         Assert.Equal("claude-opus-5", turn.Model);
+        // Both attempts, not only the one that answered.
+        Assert.Equal(1010, turn.InputTokens);
+        Assert.Equal(200, turn.OutputTokens);
         await conversation.NextAsync([new AnalystToolOutcome("toolu_2", "{}", false)], CancellationToken.None);
 
         var assistant = handler.Requests[1].Json["messages"]![1]!["content"]!.AsArray();
         Assert.Equal(["fallback", "tool_use"], assistant.Select(b => (string)b!["type"]!));
+    }
+
+    [Fact]
+    public async Task AMalformedUsageBreakdownFallsBackToTheTopLevelCount()
+    {
+        var handler = new FakeHandler().ThenJson(FakeHandler.Message("end_turn", FakeHandler.Text("ok"), input: 1000,
+            iterations: """[{"type":"message","input_tokens":10,"output_tokens":0}]"""));
+        using var provider = MessagesProvider.Anthropic(Key, "claude-opus-5-5", "medium", handler);
+
+        var turn = await provider.Begin(Spec()).NextAsync([], CancellationToken.None);
+
+        Assert.Equal(1000, turn.InputTokens);
     }
 
     [Fact]

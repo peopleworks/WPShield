@@ -86,6 +86,10 @@ internal sealed class MessagesProvider : IAnalystProvider, IDisposable
         {
             return IsRelay ? await WhoAmIAsync(cancellationToken) : await ModelCheckAsync(cancellationToken);
         }
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        {
+            return new ProviderCheck(false, IsRelay ? "The Relay did not answer within 30 seconds." : "The Anthropic API did not answer in time.", []);
+        }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
             return new ProviderCheck(false, Describe(exception), []);
@@ -208,16 +212,60 @@ internal sealed class MessagesProvider : IAnalystProvider, IDisposable
             var refusal = response.StopDetails;
             var stopReason = response.StopReason?.Raw() ?? "unknown";
             fellBack |= response.Usage.Iterations?.Any(i => i.TryPickBetaFallbackMessageIterationUsage(out _)) == true;
+            var (input, output) = Tokens(response.Usage);
+            // What the model wrote is the operator's to read and the store's to keep, so the key is
+            // removed from it here too: a model can be led to repeat anything that reached its context.
             return new ProviderTurn(
                 Model: provider.Clean(response.Model.Raw(), 100),
                 StopReason: provider.Clean(stopReason, 40),
                 RefusalCategory: refusal?.Category is { } category ? provider.Clean(category.Raw(), 60) : null,
                 RefusalExplanation: refusal?.Explanation is { } explanation ? provider.Clean(explanation, 500) : null,
-                Text: text,
-                ToolCalls: calls,
-                InputTokens: response.Usage.InputTokens + (response.Usage.CacheCreationInputTokens ?? 0) + (response.Usage.CacheReadInputTokens ?? 0),
-                OutputTokens: response.Usage.OutputTokens,
+                Text: SecretScrubber.Redact(text, provider.key),
+                ToolCalls: [.. calls.Select(c => c with
+                {
+                    Name = SecretScrubber.Redact(c.Name, provider.key),
+                    Arguments = (JsonNode.Parse(SecretScrubber.Redact(c.Arguments.ToJsonString(), provider.key)) as JsonObject) ?? []
+                })],
+                InputTokens: input,
+                OutputTokens: output,
                 FellBack: fellBack);
+        }
+
+        /// <summary>
+        /// Every attempt this response cost. After a fallback the top-level usage covers only the attempt
+        /// that answered; the per-attempt entries cover the declined one too, so they are summed when present.
+        /// </summary>
+        private static (long Input, long Output) Tokens(BetaUsage usage)
+        {
+            var total = (usage.InputTokens + (usage.CacheCreationInputTokens ?? 0) + (usage.CacheReadInputTokens ?? 0), usage.OutputTokens);
+            long input = 0, output = 0;
+            var counted = false;
+            try
+            {
+                foreach (var iteration in usage.Iterations ?? [])
+                {
+                    if (iteration.TryPickBetaMessageIterationUsage(out var message))
+                    {
+                        input += message.InputTokens + message.CacheCreationInputTokens + message.CacheReadInputTokens;
+                        output += message.OutputTokens;
+                        counted = true;
+                    }
+                    else if (iteration.TryPickBetaFallbackMessageIterationUsage(out var fallback))
+                    {
+                        input += fallback.InputTokens + fallback.CacheCreationInputTokens + fallback.CacheReadInputTokens;
+                        output += fallback.OutputTokens;
+                        counted = true;
+                    }
+                }
+            }
+            catch (AnthropicInvalidDataException)
+            {
+                // An entry without the fields the API always sends (a proxy's rewrite, say): the
+                // top-level usage is what remains, and it is never less than the attempt that answered.
+                return total;
+            }
+            // Never count less than the top level: a malformed breakdown must not shrink the budget's view.
+            return counted ? (Math.Max(input, total.Item1), Math.Max(output, total.Item2)) : total;
         }
 
         private MessageCreateParams Request() => new()

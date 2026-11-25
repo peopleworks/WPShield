@@ -54,7 +54,7 @@ internal sealed class AnalystRunner(IAnalystProvider provider, IReadOnlyList<IAn
         var configuration = request.Configuration;
         var now = clock.GetUtcNow();
         var usage = store.UsageOn(now);
-        CheckBudget(configuration, usage);
+        CheckBudget(configuration, usage, provider.OperatorPays);
 
         var spec = new AnalystConversationSpec(
             AnalystPrompts.System(request.Role, configuration.Spanish),
@@ -148,13 +148,17 @@ internal sealed class AnalystRunner(IAnalystProvider provider, IReadOnlyList<IAn
         return id;
     }
 
-    private static void CheckBudget(AnalystConfiguration configuration, AnalystUsage usage)
+    /// <summary>
+    /// Every run counts against the run budget. The input-token budget bounds what the operator pays, so
+    /// it refuses only a run on a provider the operator pays; the Relay's tokens are counted as zero.
+    /// </summary>
+    private static void CheckBudget(AnalystConfiguration configuration, AnalystUsage usage, bool operatorPays)
     {
         if (usage.Runs >= configuration.DailyRuns)
             throw new AnalystBudgetException("analyst.daily_runs",
                 $"Refused: analyst.daily_runs allows {configuration.DailyRuns} runs per UTC day, and {usage.Runs} have started today " +
                 $"(since {usage.DayStart:yyyy-MM-dd} 00:00 UTC). Nothing was sent. Raise the setting or wait for the next UTC day.");
-        if (usage.InputTokens >= configuration.DailyInputTokens)
+        if (operatorPays && usage.InputTokens >= configuration.DailyInputTokens)
             throw new AnalystBudgetException("analyst.daily_input_tokens",
                 $"Refused: analyst.daily_input_tokens allows {configuration.DailyInputTokens:N0} input tokens per UTC day on a provider you pay, " +
                 $"and {usage.InputTokens:N0} were spent today (since {usage.DayStart:yyyy-MM-dd} 00:00 UTC). Nothing was sent. " +

@@ -38,6 +38,11 @@ public sealed class ReportRendererTests
     [InlineData("Put the monitoring service on the allow-list.")]
     [InlineData("Disable the evidence collector for a day.")]
     [InlineData("Añada la red a la lista de permitidos.")]
+    [InlineData("Whitelist 203.0.113.7: it is the backup service.")]
+    [InlineData("Unblock 198.51.100.0/24 for the partner.")]
+    [InlineData("Exempt the monitoring network from the rules.")]
+    [InlineData("Ponga 203.0.113.7 en la lista blanca.")]
+    [InlineData("Desbloquee la red del proveedor.")]
     public void AnUnmarkedLineThatCouldLoosenProtectionIsFlaggedAnyway(string line)
     {
         var (lines, count) = ReportRenderer.Mark("Summary first.\n" + line, spanish: false);

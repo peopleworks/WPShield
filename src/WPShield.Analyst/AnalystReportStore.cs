@@ -200,11 +200,10 @@ internal sealed class AnalystReportStore : IDisposable
     //  Writing a run
     // ---------------------------------------------------------------------------------------------
 
-    /// <summary>Records a run as started, before anything is sent, and prunes old reports.</summary>
+    /// <summary>Records a run as started, before anything is sent, then prunes so at most 1,000 reports remain.</summary>
     public long Begin(ReportStart start)
     {
         ThrowIfReadOnly();
-        Prune(start.Started);
         Execute("""
             INSERT INTO reports(started_ts, provider, operator_pays, model, role, subject, question, language, status)
             VALUES ($ts, $provider, $pays, $model, $role, $subject, $question, $language, $status);
@@ -214,7 +213,9 @@ internal sealed class AnalystReportStore : IDisposable
             ("$subject", start.Subject is null ? null : ReportText.Line(start.Subject, 100)),
             ("$question", start.Question is null ? null : ReportText.Line(start.Question, AnalystLimits.MaxQuestionChars)),
             ("$language", ReportText.Line(start.Language, 8)), ("$status", ReportStatus.Running));
-        return Scalar<long>("SELECT last_insert_rowid();");
+        var id = Scalar<long>("SELECT last_insert_rowid();");
+        Prune(start.Started);
+        return id;
     }
 
     /// <summary>Adds one turn's tokens and the model that answered it, as soon as the turn returns.</summary>

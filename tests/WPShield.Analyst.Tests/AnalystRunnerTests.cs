@@ -196,6 +196,18 @@ public sealed class AnalystRunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task ARelayRunIsNotRefusedBecauseTheAnthropicSpendReachedTheTokenBudget()
+    {
+        var paid = new SimulatedProvider((_, _, _) => Task.FromResult(Answer("spent", input: 60_000))) { OperatorPays = true };
+        await Runner(paid).RunAsync(Digest(Fixtures.Configuration(dailyInputTokens: 50_000)), CancellationToken.None);
+        var relay = new SimulatedProvider((_, _, _) => Task.FromResult(Answer("free"))) { OperatorPays = false };
+
+        var report = store.Get(await Runner(relay).RunAsync(Digest(Fixtures.Configuration(dailyInputTokens: 50_000)), CancellationToken.None))!;
+
+        Assert.Equal(ReportStatus.Completed, report.Status);
+    }
+
+    [Fact]
     public async Task TheInputBudgetStopsARunThatReachesItHalfway()
     {
         var paid = new SimulatedProvider((turn, _, _) => Task.FromResult(turn == 0 ? Tools(("t1", "coverage")) with { InputTokens = 30_000 } : Answer("late")))

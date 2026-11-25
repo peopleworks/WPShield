@@ -148,7 +148,7 @@ internal static partial class ReportRenderer
     [GeneratedRegex(@"^\s*(?:[-*•]|\d{1,2}[.)])?\s*")]
     private static partial Regex ListPrefix();
 
-    [GeneratedRegex(@"\bdefense\.[a-z0-9_.]+|\ballow[- ]?list|\blista de permitid|\b(?:disable|turn off|switch off|stop|desactiv\w*|deshabilit\w*|apag\w*|deten\w*)\b[^\n]{0,60}\b(?:sensor|collector|recolector|service|servicio|evidence|evidencia|monitor)",
+    [GeneratedRegex(@"\bdefense\.[a-z0-9_.]+|\ballow[- ]?list|\bwhite[- ]?list|\bunblock|\bexempt|\blista (?:de permitid|blanca)|\bdesbloque|\beximi|\bexent|\b(?:disable|turn off|switch off|stop|desactiv\w*|deshabilit\w*|apag\w*|deten\w*)\b[^\n]{0,60}\b(?:sensor|collector|recolector|service|servicio|evidence|evidencia|monitor)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex MayLoosen();
 }

@@ -302,6 +302,31 @@ public sealed class AnalystCommandTests : IDisposable
     }
 
     [Fact]
+    public void AModelThatRepeatsTheKeyInItsTextOrItsToolArgumentsNeverGetsItStored()
+    {
+        Enable();
+        environment["ANTHROPIC_API_KEY"] = Sentinel;
+        providers = (configuration, key) => MessagesProvider.Anthropic(key, configuration.Model, configuration.Effort, Echoing(
+            key => (HttpStatusCode.OK, Message("tool_use",
+                "{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"coverage\",\"input\":{\"range\":\"" + key + "\"},\"caller\":{\"type\":\"direct\"}}")),
+            key => (HttpStatusCode.OK, Message("end_turn",
+                "{\"type\":\"text\",\"text\":\"Your key is " + key + ".\\nSecond line.\",\"citations\":null}"))));
+
+        var (exit, output, error) = Run("digest");
+
+        Assert.Equal(0, exit);
+        Assert.Contains("Your key is [redacted].", output, StringComparison.Ordinal);
+        Assert.Contains("Second line.", output, StringComparison.Ordinal);
+        using (var reports = AnalystReportStore.OpenReadOnly(ReportStore)!)
+        {
+            var report = Assert.Single(reports.Recent(1));
+            Assert.Equal("Your key is [redacted].\nSecond line.", report.Text);
+            Assert.Contains("[redacted]", Assert.Single(report.ToolCalls).Arguments, StringComparison.Ordinal);
+        }
+        AssertNoKeyAnywhere(output, error);
+    }
+
+    [Fact]
     public void AnExceptionCarryingTheKeyIsScrubbedAtTheChokePoint()
     {
         Enable();

@@ -210,7 +210,16 @@ internal static class AnalystCommand
         {
             using var cancel = new CtrlC(token);
             cancel.CancelAfter(TimeSpan.FromSeconds(60));
-            var check = provider.TestAsync(cancel.Token).GetAwaiter().GetResult();
+            ProviderCheck check;
+            try
+            {
+                check = provider.TestAsync(cancel.Token).GetAwaiter().GetResult();
+            }
+            catch (OperationCanceledException)
+            {
+                error.WriteLine($"ERROR: {provider.Name} did not answer within 60 seconds, or the check was cancelled.");
+                return 1;
+            }
             output.WriteLine($"{provider.Name}: {SecretScrubber.Scrub(check.Summary, key, 400)}");
             foreach (var (label, value) in check.Details)
                 output.WriteLine($"  {label,-20} {SecretScrubber.Scrub(value, key, 200)}");

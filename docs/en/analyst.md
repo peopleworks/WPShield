@@ -82,8 +82,8 @@ From an elevated PowerShell, on the server:
 environment of the account that runs it: `ANTHROPIC_API_KEY` or `RELAY_API_KEY`. It is never a setting
 (`list_settings` returns every setting to the model, and `settings_history` would keep it forever),
 never a command-line argument (shell history and process-creation auditing record those), never read
-from `appsettings*.json` or any file, never logged and never written into a report. Provider error
-messages are scrubbed of it before they are shown or stored.
+from `appsettings*.json` or any file, never logged and never written into a report. Provider messages,
+and the model's own text and tool arguments, are scrubbed of it before they are shown or stored.
 
 Use the **user** scope, as above, not the machine scope: a machine variable is readable by every
 process on the host, and `status` warns when the key is also set there. A user variable is stored in

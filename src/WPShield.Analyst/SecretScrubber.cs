@@ -26,6 +26,17 @@ internal static partial class SecretScrubber
         return EvidenceText.Clean(scrubbed, max);
     }
 
+    /// <summary>
+    /// Removes the key and anything shaped like one, and nothing else: line breaks and JSON stay intact,
+    /// for model text and tool arguments that are cleaned later by their own rule.
+    /// </summary>
+    public static string Redact(string text, string? key)
+    {
+        if (string.IsNullOrEmpty(text)) return text;
+        var redacted = !string.IsNullOrEmpty(key) && key.Length >= 8 ? text.Replace(key, Redacted, StringComparison.Ordinal) : text;
+        return KeyShape().Replace(redacted, Redacted);
+    }
+
     [GeneratedRegex(@"(sk-ant-[A-Za-z0-9_\-]{8,}|pwr_[A-Za-z0-9_\-]{8,}|Bearer\s+[A-Za-z0-9._\-]{16,})")]
     private static partial Regex KeyShape();
 }
