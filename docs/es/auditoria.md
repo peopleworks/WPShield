@@ -30,7 +30,7 @@ ninguna de ellas:
    demás**: el `Default Web Site` de serie en `*:80` sobre `C:\inetpub\wwwroot`, que se quedó ahí cuando
    se añadieron los sitios reales debajo. Detener un sitio comprometido no saca sus archivos de
    internet: siguen accesibles por la dirección del servidor a través del sitio atrapa-todo.
-5. **Una raíz web dentro de una carpeta FTP.** Una cuenta FTP podría escribir archivos que IIS sirva
+5. **Una raíz web que se solapa con una carpeta FTP.** Una cuenta FTP podría escribir archivos que IIS sirva
    o ejecute con la identidad del pool de aplicaciones del sitio web.
 
 Ninguna de estas es un problema de WordPress, y ninguna se ve desde fuera. Juntas son la diferencia
@@ -46,7 +46,7 @@ entre un sitio comprometido y un servidor comprometido.
 | `AUDIT-004` | Advertencia | Comprueba los controladores efectivos en la raíz de cada sitio HTTP/HTTPS, exista o no una asignación de PHP en el servidor. Enumera los sitios WordPress que deben conservar PHP, los demás sitios que lo ejecutan y aquellos cuya configuración de controladores no pudo leerse. Enumera los sitios sin enlaces HTTP/HTTPS en una línea aparte y los excluye del recuento de PHP. Advierte cuando un sitio sin WordPress ejecuta PHP o si no se pudo leer la configuración. En los demás casos, una asignación a nivel de servidor es informativa y una asignación solo a nivel de sitio pasa la comprobación. |
 | `AUDIT-005` | Crítico | Carpetas de sitio en las que `Everyone`, `Users`, `Authenticated Users` o `IIS_IUSRS` pueden escribir, comprobado por SID. Cuentan las entradas que solo se heredan, porque dan escritura sobre todo lo que hay debajo de la carpeta, que es donde cae un archivo dejado por un atacante. Una carpeta cuyos permisos no se pueden leer es una advertencia, nunca un aprobado. |
 | `AUDIT-006.<sitio>` | Crítico si está iniciado | Un sitio con un binding HTTP o HTTPS sin nombre de host, cuya carpeta contiene las carpetas de otros sitios. Detenido es una advertencia: hoy no se llega a nada a través de él, y en cuanto arranque se llega a todo. |
-| `AUDIT-007` | Advertencia | La raíz configurada de un sitio HTTP/HTTPS está dentro de la raíz o de un directorio virtual de un sitio FTP. Mueve la carpeta web fuera de esa carpeta FTP o comprueba a mano que el aislamiento de usuarios FTP impide a todas las cuentas FTP acceder a ella. También advierte si faltan rutas necesarias para la comprobación. Pasa si no hay carpetas web anidadas y es informativo si IIS no tiene enlaces FTP. |
+| `AUDIT-007` | Advertencia | La raíz configurada de un sitio HTTP/HTTPS y una raíz o un directorio virtual FTP comparten ruta o una carpeta contiene a la otra. Esto incluye un solo sitio con bindings FTP y HTTP/HTTPS. Separa las carpetas o comprueba a mano que el aislamiento de usuarios FTP impide a todas las cuentas FTP acceder a la carpeta que sirve IIS. También advierte si faltan rutas necesarias para la comprobación. Pasa si las carpetas no se solapan y es informativo si IIS no tiene enlaces FTP. |
 
 ## Nunca repara
 

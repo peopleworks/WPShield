@@ -312,7 +312,7 @@ internal sealed class AuditRunner(AuditFacts facts)
     }
 
     // =============================================================================================
-    //  AUDIT-007 - web roots under an FTP root or virtual directory
+    //  AUDIT-007 - web roots overlapping FTP folders
     // =============================================================================================
 
     private void CheckFtpRoots(AuditReport report)
@@ -329,13 +329,26 @@ internal sealed class AuditRunner(AuditFacts facts)
             .Prepend(site.PhysicalPath)
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .Select(path => (site.Name, Path: path))).ToArray();
-        var overlaps =
-            from web in webSites
-            from ftp in ftpPaths
-            where AuditPrimitives.IsInside(ftp.Path, web.PhysicalPath)
-            select $"{web.Name}  ({web.PhysicalPath})  is under FTP site {ftp.Name}  ({ftp.Path})";
+        var items = new List<string>();
+        foreach (var web in webSites)
+        {
+            foreach (var (ftpSite, ftpPath) in ftpPaths)
+            {
+                if (AuditPrimitives.IsInside(ftpPath, web.PhysicalPath))
+                {
+                    items.Add($"Web root for {web.Name}  ({web.PhysicalPath})  is inside an FTP folder for {ftpSite}  ({ftpPath})");
+                }
+                else if (AuditPrimitives.IsInside(web.PhysicalPath, ftpPath))
+                {
+                    items.Add($"FTP folder for {ftpSite}  ({ftpPath})  is inside the web root for {web.Name}  ({web.PhysicalPath})");
+                }
+                else if (AuditPrimitives.IsSameFolder(web.PhysicalPath, ftpPath))
+                {
+                    items.Add($"Web root for {web.Name}  ({web.PhysicalPath})  shares a folder with FTP site {ftpSite}  ({ftpPath})");
+                }
+            }
+        }
 
-        var items = overlaps.ToList();
         var hasOverlap = items.Count > 0;
         var unreadable = ftpSites.Where(site => site.FtpVirtualDirectoryPaths is null ||
                                               site.FtpVirtualDirectoryPaths.Any(string.IsNullOrWhiteSpace) ||
@@ -349,16 +362,16 @@ internal sealed class AuditRunner(AuditFacts facts)
 
         if (items.Count == 0)
         {
-            report.Add(new AuditFinding("AUDIT-007", AuditSeverity.Pass, "No HTTP/HTTPS site root is inside an FTP folder"));
+            report.Add(new AuditFinding("AUDIT-007", AuditSeverity.Pass, "No HTTP/HTTPS site root overlaps an FTP folder"));
             return;
         }
 
         report.Add(new AuditFinding(
             "AUDIT-007",
             AuditSeverity.Warn,
-            hasOverlap ? "HTTP/HTTPS site roots are inside FTP folders" : "FTP and web folders could not all be checked for nesting",
+            hasOverlap ? "HTTP/HTTPS site roots overlap FTP folders" : "FTP and web folders could not all be checked for overlap",
             "An FTP account may be able to write files that IIS serves or executes. IIS can execute them as the site's application pool identity, which may have administrator rights.",
-            "Move each nested web folder out of the FTP root or virtual directory, or confirm by hand that FTP user isolation keeps every FTP account out of the web folder. Check any unknown paths by hand.",
+            "Separate the web and FTP folders so they do not overlap, or confirm by hand that FTP user isolation keeps every FTP account out of the served folder. Check any unknown paths by hand.",
             items));
     }
 

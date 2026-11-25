@@ -135,6 +135,12 @@ internal static class AuditPrimitives
         return inner.Length > outer.Length && inner.StartsWith(outer, StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>Whether two configured paths refer to the same folder after path normalization.</summary>
+    public static bool IsSameFolder(string first, string second) =>
+        !string.IsNullOrWhiteSpace(first) &&
+        !string.IsNullOrWhiteSpace(second) &&
+        string.Equals(WithTrailingSeparator(first), WithTrailingSeparator(second), StringComparison.OrdinalIgnoreCase);
+
     /// <summary>
     /// The form of a pool's account name that <see cref="NTAccount"/> can resolve. IIS accepts
     /// <c>.\name</c> for a local account; the translation API does not.

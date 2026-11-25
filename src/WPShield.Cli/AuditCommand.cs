@@ -38,7 +38,7 @@ internal static class AuditCommand
                       into - checked by SID, so it works on a Spanish Windows too.
           AUDIT-006   A site that answers any host name while its folder contains other sites'
                       folders: stopping one of those sites does not take its files offline.
-          AUDIT-007   Web roots inside an FTP site's root or one of its virtual directories.
+          AUDIT-007   Web roots that share a folder with FTP, contain an FTP folder, or sit inside one.
 
         It never repairs. Every remedy it prints is a change you make by hand, one pool or one site
         at a time, looking at the site while it happens. It reads the account a pool runs as, never

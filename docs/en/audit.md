@@ -29,7 +29,7 @@ compromised server, and no scan of the sites themselves reports any of them:
    `Default Web Site` on `*:80` over `C:\inetpub\wwwroot`, left in place when the real sites were added
    below it. Stopping a compromised site does not take its files off the internet: they stay reachable
    at the server's address through the catch-all site.
-5. **A web root inside an FTP folder.** An FTP account may be able to write files in a folder where
+5. **A web root that overlaps an FTP folder.** An FTP account may be able to write files in a folder where
    IIS serves them or executes them as the web site's application pool identity.
 
 None of these is a WordPress problem, and none of them is visible from outside. Together they are the
@@ -45,7 +45,7 @@ difference between one compromised site and a compromised server.
 | `AUDIT-004` | Warning | Checks the effective handlers at each HTTP/HTTPS site root whether or not the server has a PHP mapping. Names the WordPress sites that should keep PHP, the other sites that run it and sites with unreadable handler configuration. Sites without HTTP/HTTPS bindings appear on a separate line and are excluded from the PHP count. Warns about non-WordPress sites running PHP and unreadable mappings. With neither issue, a server-level PHP mapping is informational and site-level-only PHP passes. |
 | `AUDIT-005` | Critical | Site folders that `Everyone`, `Users`, `Authenticated Users` or `IIS_IUSRS` can write into, by SID. Inherit-only entries count, because they grant write on everything below the folder, which is where a dropped file lands. A folder whose permissions cannot be read is a warning, never a pass. |
 | `AUDIT-006.<site>` | Critical when started | A site with an HTTP or HTTPS binding that has no host name, whose folder contains other sites' folders. Stopped, it is a warning: nothing is reachable through it today, and everything is the moment it starts. |
-| `AUDIT-007` | Warning | An HTTP/HTTPS site's configured root is below an FTP site's root or virtual directory. Move the web folder outside that FTP folder or verify by hand that FTP user isolation keeps every FTP account out. The check also warns when it cannot determine the paths it needs. It passes when there is no nesting and is informational when IIS has no FTP binding. |
+| `AUDIT-007` | Warning | The configured root of an HTTP/HTTPS site and an FTP root or virtual directory share a path or one contains the other. This includes a single site bound to both FTP and HTTP/HTTPS. Separate the folders or verify by hand that FTP user isolation keeps every FTP account out of the served folder. The check also warns when it cannot determine the paths it needs. It passes when the folders do not overlap and is informational when IIS has no FTP binding. |
 
 ## It never repairs
 

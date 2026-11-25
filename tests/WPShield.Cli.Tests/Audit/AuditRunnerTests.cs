@@ -355,7 +355,7 @@ public sealed class AuditRunnerTests
     }
 
     // =============================================================================================
-    //  AUDIT-007 - web folders inside an FTP root or virtual directory
+    //  AUDIT-007 - web roots overlapping FTP folders
     // =============================================================================================
 
     [Theory]
@@ -375,20 +375,78 @@ public sealed class AuditRunnerTests
 
         var finding = Find(report, "AUDIT-007");
         Assert.Equal(AuditSeverity.Warn, finding.Severity);
-        Assert.Equal($"portal.example  ({webPath})  is under FTP site files.example  ({parent})", Assert.Single(finding.Items!));
+        Assert.Equal($"Web root for portal.example  ({webPath})  is inside an FTP folder for files.example  ({parent})", Assert.Single(finding.Items!));
         Assert.Contains("application pool identity", finding.Detail, StringComparison.Ordinal);
         Assert.Contains("FTP user isolation", finding.Remedy, StringComparison.Ordinal);
         Assert.DoesNotContain("accessPolicy", finding.Remedy, StringComparison.OrdinalIgnoreCase);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WebRootMatchingAnFtpFolder_WarnsAndNamesTheSharedFolder(bool useVirtualDirectory)
+    {
+        const string webPath = @"C:\example\web";
+        const string ftpPath = @"C:\EXAMPLE\web\";
+        var report = Run(Facts(sites:
+        [
+            Site("files.example", useVirtualDirectory ? @"D:\example\ftp" : ftpPath) with
+            {
+                Bindings = [Ftp()],
+                FtpVirtualDirectoryPaths = useVirtualDirectory ? [ftpPath] : []
+            },
+            Site("portal.example", webPath)
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"Web root for portal.example  ({webPath})  shares a folder with FTP site files.example  ({ftpPath})", Assert.Single(finding.Items!));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FtpFolderInsideAWebRoot_WarnsAndNamesTheDirection(bool useVirtualDirectory)
+    {
+        const string webPath = @"C:\example\web";
+        const string ftpPath = @"C:\example\web\incoming";
+        var report = Run(Facts(sites:
+        [
+            Site("files.example", useVirtualDirectory ? @"D:\example\ftp" : ftpPath) with
+            {
+                Bindings = [Ftp()],
+                FtpVirtualDirectoryPaths = useVirtualDirectory ? [ftpPath] : []
+            },
+            Site("portal.example", webPath)
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"FTP folder for files.example  ({ftpPath})  is inside the web root for portal.example  ({webPath})", Assert.Single(finding.Items!));
+    }
+
     [Fact]
-    public void NoWebRootsInsideAnFtpFolder_Passes()
+    public void AWebSiteWithAnFtpBinding_WarnsAboutItsSharedRoot()
+    {
+        const string path = @"C:\example\web";
+        var report = Run(Facts(sites:
+        [
+            Site("portal.example", path) with { Bindings = [Ftp(), Http("*:80:portal.example")] }
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"Web root for portal.example  ({path})  shares a folder with FTP site portal.example  ({path})", Assert.Single(finding.Items!));
+    }
+
+    [Fact]
+    public void WebAndFtpFoldersWithASharedPrefix_Pass()
     {
         const string ftpPath = @"C:\example\ftp";
         var report = Run(Facts(sites:
         [
             Site("files", ftpPath) with { Bindings = [Ftp()] },
-            Site("web", $@"{ftpPath}-other\web"),
+            Site("web", $"{ftpPath}-other"),
             Site("other-files", $@"{ftpPath}\incoming") with { Bindings = [Ftp()] }
         ]));
 
