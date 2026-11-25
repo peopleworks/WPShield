@@ -142,6 +142,27 @@ public sealed class EvidenceCollectorTests : IDisposable
         Assert.Contains(@"Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'", warning.Message, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Found running the real gateway unelevated: Windows refuses the Security subscription as a
+    /// generic query failure and the read as access denied. Keeping the first would hide the remedy
+    /// in exactly the case it exists for.
+    /// </summary>
+    [Fact]
+    public void TheMostSpecificReasonWinsWhenTheSubscriptionAndTheReadDisagree()
+    {
+        feed.SetupErrors.Add((AuthFailureFeed.SecurityChannel, "query-failed"));
+        feed.Snapshot = (end, window) => new AuthFailureSnapshot(end - window, end, [],
+        [
+            new ChannelCoverage(AuthFailureFeed.SecurityChannel, "unavailable", "access-denied", null, null, 0),
+            new ChannelCoverage(AuthFailureFeed.RdpCoreChannel, "read", null, null, null, 0)
+        ]);
+
+        Session().Stop(Now);
+
+        Assert.Equal("security-4625: access-denied", Assert.Single(Coverage()).Reason);
+        Assert.Contains("Add-LocalGroupMember", Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning).Message, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TheSameUnavailableReasonIsWarnedOnceAcrossRetries()
     {

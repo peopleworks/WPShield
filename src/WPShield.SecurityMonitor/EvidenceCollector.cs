@@ -411,11 +411,20 @@ internal sealed class CollectorSession
 
     private void RecordCatchUpCoverage(AuthFailureSnapshot snapshot, DateTimeOffset now)
     {
+        // The subscription and the read can fail the same channel for different-sounding reasons:
+        // unelevated, Windows refuses the Security subscription as a generic query failure and the
+        // read as access denied. The specific one is the one an operator can act on.
         var unavailable = new Dictionary<string, string>(StringComparer.Ordinal);
+        void Consider(string channel, string reason)
+        {
+            if (!unavailable.TryGetValue(channel, out var known) || Specificity(reason) > Specificity(known))
+                unavailable[channel] = reason;
+        }
+
         lock (gate)
-            foreach (var (channel, reason) in setupErrors) unavailable[channel] = reason;
+            foreach (var (channel, reason) in setupErrors) Consider(channel, reason);
         foreach (var channel in snapshot.Coverage.Where(c => c.Status == "unavailable"))
-            unavailable.TryAdd(ChannelId(channel.Channel), channel.Reason ?? "unavailable");
+            Consider(ChannelId(channel.Channel), channel.Reason ?? "unavailable");
 
         if (unavailable.TryGetValue(AttemptPairing.SecurityChannel, out var securityReason))
         {
@@ -507,6 +516,14 @@ internal sealed class CollectorSession
             result.RawRowsDeleted, result.AggregateRowsDeleted, result.DecisionRowsDeleted, result.EventRowsDeleted,
             result.RawNowStartsAt);
     }
+
+    private static int Specificity(string reason) => reason switch
+    {
+        "access-denied" => 3,
+        "channel-missing" => 2,
+        "query-failed" => 1,
+        _ => 0
+    };
 
     private static string Status(AuthFailureSnapshot snapshot, string channel) =>
         snapshot.Coverage.FirstOrDefault(c => c.Channel == channel) is { } coverage
