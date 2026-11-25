@@ -84,14 +84,16 @@ public sealed class AuditRunnerTests
     public void APoolRunningAsALocalAdministrator_IsCriticalAndNamesTheSitesItServes()
     {
         var report = Run(Facts(
-            pools: [Pool("blog", identity: "SpecificUser", user: "Administrator", administrator: true)],
+            pools: [Pool("blog", identity: "SpecificUser", user: "synthetic-admin", administrator: true)],
             sites: [Site("blog.example", $@"{WebRoot}\blog", pool: "blog", wordPress: true)]));
 
         var finding = Find(report, "AUDIT-002");
         Assert.Equal(AuditSeverity.Critical, finding.Severity);
         Assert.Contains(finding.Items!, item =>
-            item.Contains("Administrator", StringComparison.Ordinal) &&
+            item.Contains("synthetic-admin", StringComparison.Ordinal) &&
             item.Contains("blog.example", StringComparison.Ordinal));
+        Assert.StartsWith("Change the password last. Changing it while any pool still uses the account stops those pools at their next start, and their sites return HTTP 503.", finding.Remedy, StringComparison.Ordinal);
+        Assert.Contains("Each pool moved to ApplicationPoolIdentity removes one stored copy of that account's password.", finding.Remedy, StringComparison.Ordinal);
         Assert.Equal(AuditCommand.ExitCritical, AuditCommand.ExitCode(report));
     }
 
@@ -132,7 +134,7 @@ public sealed class AuditRunnerTests
     }
 
     // =============================================================================================
-    //  AUDIT-004 - PHP mapped for the whole server
+    //  AUDIT-004 - effective PHP mappings on web sites
     // =============================================================================================
 
     [Fact]
@@ -143,6 +145,7 @@ public sealed class AuditRunnerTests
             sites:
             [
                 Site("blog", $@"{WebRoot}\blog", wordPress: true, php: true),
+                Site("store", $@"{WebRoot}\store", wordPress: true, php: true),
                 Site("help", $@"{WebRoot}\help", php: true),
                 Site("api", $@"{WebRoot}\api", php: true)
             ]));
@@ -151,7 +154,10 @@ public sealed class AuditRunnerTests
         Assert.Equal(AuditSeverity.Warn, finding.Severity);
         Assert.Contains(finding.Items!, item => item.Contains("help", StringComparison.Ordinal));
         Assert.Contains(finding.Items!, item => item.Contains("api", StringComparison.Ordinal));
-        Assert.DoesNotContain(finding.Items!, item => item.Contains("blog", StringComparison.Ordinal) && item.Contains("no WordPress", StringComparison.Ordinal));
+        Assert.Contains(finding.Items!, item => item.StartsWith("Keep PHP for WordPress: blog ", StringComparison.Ordinal));
+        Assert.Contains(finding.Items!, item => item.StartsWith("Keep PHP for WordPress: store ", StringComparison.Ordinal));
+        Assert.Equal(["blog", "store"], Assert.IsType<string[]>(finding.Data!["sitesRunningPhpWithWordPress"]));
+        Assert.Equal(["help", "api"], Assert.IsType<string[]>(finding.Data!["sitesRunningPhpWithoutWordPress"]));
     }
 
     [Fact]
@@ -166,11 +172,13 @@ public sealed class AuditRunnerTests
     /// A site whose configuration could not be read may run PHP. It is listed as unknown and keeps the
     /// finding a warning, rather than silently dropping out of the count.
     /// </summary>
-    [Fact]
-    public void ServerWidePhp_WithAnUnreadableSiteConfiguration_ListsItAsUnknown()
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void Php_WithAnUnreadableSiteConfiguration_ListsItAsUnknown(bool serverLevelPhp)
     {
         var report = Run(Facts(
-            handlers: [Php()],
+            handlers: serverLevelPhp ? [Php()] : [],
             sites:
             [
                 Site("blog", $@"{WebRoot}\blog", wordPress: true, php: true),
@@ -183,13 +191,67 @@ public sealed class AuditRunnerTests
     }
 
     [Fact]
-    public void PhpMappedOnlyPerSite_Passes()
+    public void PhpMappedOnlyOnWordPressSites_PassesAndStillNamesThem()
     {
         var report = Run(Facts(
             handlers: [new AuditHandler("StaticFile", "*", string.Empty)],
             sites: [Site("blog", $@"{WebRoot}\blog", wordPress: true, php: true)]));
 
-        Assert.Equal(AuditSeverity.Pass, Find(report, "AUDIT-004").Severity);
+        var finding = Find(report, "AUDIT-004");
+        Assert.Equal(AuditSeverity.Pass, finding.Severity);
+        Assert.Contains(finding.Items!, item => item.StartsWith("Keep PHP for WordPress: blog ", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void PhpMappedOnlyPerSite_WithoutWordPress_StillWarns()
+    {
+        var report = Run(Facts(sites: [Site("help.example", $@"{WebRoot}\help", php: true)]));
+
+        var finding = Find(report, "AUDIT-004");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Contains(finding.Items!, item => item.Contains("help.example", StringComparison.Ordinal));
+        Assert.Contains("by hand", finding.Remedy, StringComparison.OrdinalIgnoreCase);
+        Assert.False(Assert.IsType<bool>(finding.Data!["serverLevelPhp"]));
+    }
+
+    [Fact]
+    public void UnreadableServerHandlers_AreUnknownRatherThanAbsent()
+    {
+        var facts = Facts(sites: [Site("blog", $@"{WebRoot}\blog", wordPress: true, php: true)]) with
+        {
+            ServerHandlers = null
+        };
+        var report = Run(facts);
+
+        var finding = Find(report, "AUDIT-004");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Null(finding.Data!["serverLevelPhp"]);
+        Assert.Contains(finding.Items!, item => item.StartsWith("Keep PHP for WordPress: blog ", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SitesWithoutAnHttpBinding_AreListedTogetherAndExcludedFromPhpCounts(bool serverLevelPhp)
+    {
+        var report = Run(Facts(
+            handlers: serverLevelPhp ? [Php()] : [],
+            sites:
+            [
+                Site("files", @"C:\example\ftp", php: true) with { Bindings = [Ftp()] },
+                Site("unbound", @"C:\example\unbound", php: null) with { Bindings = [] },
+                Site("blog", $@"{WebRoot}\blog", wordPress: true, php: true) with
+                {
+                    Bindings = [Ftp(), new IisBinding("HTTPS", "*:443:blog.example")]
+                }
+            ]));
+
+        var finding = Find(report, "AUDIT-004");
+        Assert.Equal(serverLevelPhp ? AuditSeverity.Info : AuditSeverity.Pass, finding.Severity);
+        Assert.Contains("Sites with no HTTP or HTTPS binding: files, unbound", finding.Items!);
+        Assert.Equal(1, Assert.IsType<int>(finding.Data!["sitesRunningPhp"]));
+        Assert.Empty(Assert.IsType<string[]>(finding.Data!["sitesRunningPhpWithoutWordPress"]));
+        Assert.Empty(Assert.IsType<string[]>(finding.Data!["sitesWithUnreadableConfiguration"]));
     }
 
     // =============================================================================================
@@ -212,7 +274,7 @@ public sealed class AuditRunnerTests
         var report = Run(Facts(sites:
         [
             new AuditSite("help", "Started", $@"{WebRoot}\help", "help", [Http("*:80:help.example")],
-                false, false, new FolderAccess(true, [], "Access is denied."))
+                false, false, new FolderAccess(true, [], "Access is denied."), [])
         ]));
 
         Assert.Equal(AuditSeverity.Warn, Find(report, "AUDIT-005").Severity);
@@ -224,7 +286,7 @@ public sealed class AuditRunnerTests
         var report = Run(Facts(sites:
         [
             new AuditSite("gone", "Stopped", @"C:\nowhere", "gone", [Http("*:80:gone.example")],
-                false, false, new FolderAccess(false, []))
+                false, false, new FolderAccess(false, []), [])
         ]));
 
         Assert.Equal(AuditSeverity.Pass, Find(report, "AUDIT-005").Severity);
@@ -293,6 +355,129 @@ public sealed class AuditRunnerTests
     }
 
     // =============================================================================================
+    //  AUDIT-007 - web roots overlapping FTP folders
+    // =============================================================================================
+
+    [Theory]
+    [InlineData("http", false)]
+    [InlineData("HTTPS", true)]
+    public void WebRootInsideAnFtpFolder_WarnsAndNamesBothSites(string protocol, bool useVirtualDirectory)
+    {
+        const string ftpPath = @"C:\example\ftp";
+        const string virtualDirectory = @"D:\example\shared";
+        var parent = useVirtualDirectory ? virtualDirectory : ftpPath;
+        var webPath = $@"{parent}\web";
+        var report = Run(Facts(sites:
+        [
+            Site("files.example", ftpPath) with { Bindings = [Ftp()], FtpVirtualDirectoryPaths = [virtualDirectory] },
+            Site("portal.example", webPath) with { Bindings = [new IisBinding(protocol, "*:443:portal.example")] }
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"Web root for portal.example  ({webPath})  is inside an FTP folder for files.example  ({parent})", Assert.Single(finding.Items!));
+        Assert.Contains("application pool identity", finding.Detail, StringComparison.Ordinal);
+        Assert.Contains("FTP user isolation", finding.Remedy, StringComparison.Ordinal);
+        Assert.DoesNotContain("accessPolicy", finding.Remedy, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void WebRootMatchingAnFtpFolder_WarnsAndNamesTheSharedFolder(bool useVirtualDirectory)
+    {
+        const string webPath = @"C:\example\web";
+        const string ftpPath = @"C:\EXAMPLE\web\";
+        var report = Run(Facts(sites:
+        [
+            Site("files.example", useVirtualDirectory ? @"D:\example\ftp" : ftpPath) with
+            {
+                Bindings = [Ftp()],
+                FtpVirtualDirectoryPaths = useVirtualDirectory ? [ftpPath] : []
+            },
+            Site("portal.example", webPath)
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"Web root for portal.example  ({webPath})  shares a folder with FTP site files.example  ({ftpPath})", Assert.Single(finding.Items!));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void FtpFolderInsideAWebRoot_WarnsAndNamesTheDirection(bool useVirtualDirectory)
+    {
+        const string webPath = @"C:\example\web";
+        const string ftpPath = @"C:\example\web\incoming";
+        var report = Run(Facts(sites:
+        [
+            Site("files.example", useVirtualDirectory ? @"D:\example\ftp" : ftpPath) with
+            {
+                Bindings = [Ftp()],
+                FtpVirtualDirectoryPaths = useVirtualDirectory ? [ftpPath] : []
+            },
+            Site("portal.example", webPath)
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"FTP folder for files.example  ({ftpPath})  is inside the web root for portal.example  ({webPath})", Assert.Single(finding.Items!));
+    }
+
+    [Fact]
+    public void AWebSiteWithAnFtpBinding_WarnsAboutItsSharedRoot()
+    {
+        const string path = @"C:\example\web";
+        var report = Run(Facts(sites:
+        [
+            Site("portal.example", path) with { Bindings = [Ftp(), Http("*:80:portal.example")] }
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal($"Web root for portal.example  ({path})  shares a folder with FTP site portal.example  ({path})", Assert.Single(finding.Items!));
+    }
+
+    [Fact]
+    public void WebAndFtpFoldersWithASharedPrefix_Pass()
+    {
+        const string ftpPath = @"C:\example\ftp";
+        var report = Run(Facts(sites:
+        [
+            Site("files", ftpPath) with { Bindings = [Ftp()] },
+            Site("web", $"{ftpPath}-other"),
+            Site("other-files", $@"{ftpPath}\incoming") with { Bindings = [Ftp()] }
+        ]));
+
+        Assert.Equal(AuditSeverity.Pass, Find(report, "AUDIT-007").Severity);
+    }
+
+    [Fact]
+    public void NoFtpBinding_IsInformational()
+    {
+        var report = Run(Facts(sites: [Site("blog", $@"{WebRoot}\blog")]));
+
+        Assert.Equal(AuditSeverity.Info, Find(report, "AUDIT-007").Severity);
+    }
+
+    [Theory]
+    [InlineData("", false, "could not determine every FTP folder for files")]
+    [InlineData(@"C:\example\ftp", true, "could not determine every FTP folder for files")]
+    public void UnreadableFtpPaths_WarnRatherThanPass(string path, bool virtualDirectoriesUnknown, string expected)
+    {
+        var report = Run(Facts(sites:
+        [
+            Site("files", path) with { Bindings = [Ftp()], FtpVirtualDirectoryPaths = virtualDirectoriesUnknown ? null : [] },
+            Site("blog", $@"{WebRoot}\blog")
+        ]));
+
+        var finding = Find(report, "AUDIT-007");
+        Assert.Equal(AuditSeverity.Warn, finding.Severity);
+        Assert.Equal(expected, Assert.Single(finding.Items!));
+    }
+
+    // =============================================================================================
     //  Contracts
     // =============================================================================================
 
@@ -343,7 +528,8 @@ public sealed class AuditRunnerTests
         [
             Site("Default Web Site", WebRoot, binding: "*:80:", writers: ["Everyone (S-1-1-0)"]),
             Site("blog", $@"{WebRoot}\blog", pool: "blog", wordPress: true, php: true, writers: ["BUILTIN\\IIS_IUSRS (S-1-5-32-568)"]),
-            Site("help", $@"{WebRoot}\help", pool: "legacy", php: true)
+            Site("help", $@"{WebRoot}\help", pool: "legacy", php: true),
+            Site("files", @"C:\example\ftp") with { Bindings = [Ftp()], FtpVirtualDirectoryPaths = [WebRoot] }
         ]);
 
     private static AuditReport Run(AuditFacts facts) => new AuditRunner(facts).Run();
@@ -376,9 +562,11 @@ public sealed class AuditRunnerTests
         bool? php = false,
         IReadOnlyList<string>? writers = null) =>
         new(name, state, path, pool, [Http(binding ?? $"*:80:{name.Replace(' ', '-')}.example")],
-            wordPress, php, new FolderAccess(true, writers ?? []));
+            wordPress, php, new FolderAccess(true, writers ?? []), []);
 
     private static IisBinding Http(string bindingInformation) => new("http", bindingInformation);
+
+    private static IisBinding Ftp() => new("ftp", "*:21:");
 
     private static AuditHandler Php() =>
         new("PHP_via_FastCGI", "*.php", @"C:\Program Files\PHP\php-cgi.exe");

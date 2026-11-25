@@ -16,19 +16,21 @@ clean report.
 
 ## Why this exists
 
-A web shell in one site is an incident. Four common configurations of a shared IIS host turn it into a
+A web shell in one site is an incident. Several configurations of a shared IIS host can turn it into a
 compromised server, and no scan of the sites themselves reports any of them:
 
 1. **Application pools that run as an administrator.** A command sent to the shell runs as an
    administrator of the server, not as a restricted web identity.
 2. **Site folders writable by every account.** Every pool identity is a member of `Users` and
    `IIS_IUSRS` while it runs, so a shell in one site can write into all the others.
-3. **PHP mapped for the whole server.** A `.php` file written into the folder of a .NET site executes
-   there, so the shell spreads to sites that never ran PHP.
+3. **PHP mapped on sites that do not need it.** A PHP mapping inherited from the server or configured
+   at the site level can let IIS execute PHP files in a site that does not use PHP.
 4. **A site that answers any host name, serving the folder that holds all the others** — the default
    `Default Web Site` on `*:80` over `C:\inetpub\wwwroot`, left in place when the real sites were added
    below it. Stopping a compromised site does not take its files off the internet: they stay reachable
    at the server's address through the catch-all site.
+5. **A web root that overlaps an FTP folder.** An FTP account may be able to write files in a folder where
+   IIS serves them or executes them as the web site's application pool identity.
 
 None of these is a WordPress problem, and none of them is visible from outside. Together they are the
 difference between one compromised site and a compromised server.
@@ -38,11 +40,12 @@ difference between one compromised site and a compromised server.
 | ID | Severity | What it means |
 | --- | --- | --- |
 | `AUDIT-001` | Critical when it could not look | Running elevated, and the IIS configuration readable. When either fails, the run is marked incomplete and exits `1`: "nobody could look" must never read as "there is nothing there". |
-| `AUDIT-002` | Critical | Pools that run as `LocalSystem`, or as an account that is a direct member of the local Administrators group — found by the group's SID, so it works on a Spanish Windows. Each is listed with the sites it serves. An account that cannot be resolved is a warning to check by hand, never a pass. |
+| `AUDIT-002` | Critical | Pools that run as `LocalSystem` or as a direct member of the local Administrators group, identified by SID. The report lists the sites each pool serves. Unresolved accounts warrant a manual check. **Change the password last.** Pools still using the account fail at their next start and their sites return HTTP 503. Each move to `ApplicationPoolIdentity` removes one stored copy of the account's password. |
 | `AUDIT-003` | Warning | Pools that share `NetworkService` or `LocalService`. They run as one identity, so no folder permission can keep one of those sites out of another's files. |
-| `AUDIT-004` | Warning | PHP mapped at the server level, with the sites that run PHP and contain no WordPress. Reported as information when only WordPress sites run it. |
+| `AUDIT-004` | Warning | Checks the effective handlers at each HTTP/HTTPS site root whether or not the server has a PHP mapping. Names the WordPress sites that should keep PHP, the other sites that run it and sites with unreadable handler configuration. Sites without HTTP/HTTPS bindings appear on a separate line and are excluded from the PHP count. Warns about non-WordPress sites running PHP and unreadable mappings. With neither issue, a server-level PHP mapping is informational and site-level-only PHP passes. |
 | `AUDIT-005` | Critical | Site folders that `Everyone`, `Users`, `Authenticated Users` or `IIS_IUSRS` can write into, by SID. Inherit-only entries count, because they grant write on everything below the folder, which is where a dropped file lands. A folder whose permissions cannot be read is a warning, never a pass. |
 | `AUDIT-006.<site>` | Critical when started | A site with an HTTP or HTTPS binding that has no host name, whose folder contains other sites' folders. Stopped, it is a warning: nothing is reachable through it today, and everything is the moment it starts. |
+| `AUDIT-007` | Warning | The configured root of an HTTP/HTTPS site and an FTP root or virtual directory share a path or one contains the other. This includes a single site bound to both FTP and HTTP/HTTPS. Separate the folders or verify by hand that FTP user isolation keeps every FTP account out of the served folder. The check also warns when it cannot determine the paths it needs. It passes when the folders do not overlap and is informational when IIS has no FTP binding. |
 
 ## It never repairs
 
@@ -81,11 +84,9 @@ The report carries real site names, folder paths and account names. It is covere
 
 ## How far it has been tested
 
-The checks are tested against snapshots of an IIS configuration that the test suite builds by hand.
-The reader that builds that snapshot from a live server, through `Microsoft.Web.Administration`,
-**has not yet run against a real IIS host.** Until it has, read its first report on a real server as
-exactly that, a first run: a list that comes back empty may mean the reader missed something, not
-that nothing is there.
+The checks are tested on synthetic IIS snapshots. An elevated run on a live IIS host informed the
+password, PHP and FTP reporting changes. The FTP check compares configured paths and leaves
+verification of actual FTP access and user isolation to the operator.
 
 ## What it does not check yet
 
