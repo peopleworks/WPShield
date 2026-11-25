@@ -64,6 +64,15 @@ public sealed class WebRequestEvaluatorTests
     [InlineData("/xmlrpc.php", "POST", 200, false)]
     [InlineData("/wp-content/plugins/synthetic-addon/admin/modules.php", "POST", 404, false)] // it did not answer
     [InlineData("/wp-content/plugins/synthetic-addon/style.css", "GET", 200, false)]
+    // WordPress core's "Silence is golden" placeholders: a GET or HEAD is fingerprinting, a POST is not.
+    [InlineData("/wp-content/index.php", "GET", 200, false)]
+    [InlineData("/wp-content/plugins/index.php", "HEAD", 200, false)]
+    [InlineData("/blog/wp-content/themes/index.php", "GET", 200, false)]
+    [InlineData("/wp-content/index.php", "POST", 200, true)]
+    [InlineData("/wp-content/index.php/x.jpg", "GET", 200, true)] // path-info: not the placeholder as requested by name
+    [InlineData("/wp-content/plugins/synthetic-addon/index.php", "GET", 200, true)] // inside a plugin is where shells hide
+    [InlineData("/wp-content/uploads/index.php", "GET", 200, true)] // not a core placeholder
+    [InlineData("/wp-content/themes/synthetic/index.php", "GET", 200, true)]
     public void PhpThatAnsweredOutsideTheEntryPointsIsObserved(string stem, string method, int status, bool observed)
     {
         Assert.Equal(observed, evaluator.Evaluate(4, Request(stem, status, method)).PhpOutsideEntryPoints);

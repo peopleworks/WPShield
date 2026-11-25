@@ -244,3 +244,23 @@ nada. La primera semana medirá cuánto tráfico legítimo atrapa.
   remedios de los sitios, cada uno envuelto como no confiable. El analista recibe las cuatro, con menos
   parámetros opcionales de los que ve un cliente MCP, para no pasarse del presupuesto de los esquemas
   estrictos (ver `docs/es/analista.md`).
+
+## Enmienda 2 - los archivos marcadores de WordPress (2026-11-25)
+
+El primer `WEB-OBS-001` en el servidor real fue un `GET /wp-content/index.php` de un escáner, al que un
+sitio WordPress respondió 200. Ese archivo es el marcador vacío "Silence is golden" del núcleo de
+WordPress, y toda instalación sana lo responde igual; los escáneres lo piden para saber que un sitio usa
+WordPress. No es un web shell respondiendo.
+
+Por eso `WEB-OBS-001` excusa un **GET o HEAD** de exactamente tres marcadores del núcleo, pedidos por su
+nombre como último segmento: `wp-content/index.php`, `wp-content/plugins/index.php` y
+`wp-content/themes/index.php`, a cualquier profundidad de instalación. Nada más cambia:
+
+- un **POST** a uno de ellos se sigue observando: nada legítimo hace POST a un marcador, y un marcador
+  sustituido por un shell se maneja con POST;
+- un `index.php` **dentro** de un plugin o un tema se sigue observando, porque ahí escondía sus shells el
+  incidente;
+- `wp-content/uploads/index.php` no es un marcador del núcleo y se sigue observando;
+- un path-info después del marcador (`wp-content/index.php/x.jpg`) se sigue observando.
+
+La semana de datos decide si los marcadores de los plugins merecen el mismo trato; no se excusan a ciegas.

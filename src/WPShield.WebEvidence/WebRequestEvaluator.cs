@@ -51,6 +51,20 @@ public sealed class WebRequestEvaluator
     }.ToFrozenSet(StringComparer.Ordinal);
 
     private static readonly FrozenSet<string> AdminSubfolders = new[] { "network", "user" }.ToFrozenSet(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The folders under <c>wp-content</c> whose <c>index.php</c> WordPress core ships as an empty
+    /// "Silence is golden" placeholder: <c>wp-content</c> itself, <c>plugins</c> and <c>themes</c>.
+    /// </summary>
+    /// <remarks>
+    /// Scanners fetch <c>/wp-content/index.php</c> to learn that a site runs WordPress, and it answers 200
+    /// with an empty body on every healthy install - the first <c>WEB-OBS-001</c> on the real host was
+    /// exactly that (ADR 0011, amendment 2). Only a GET or HEAD of these three files, as the last segment,
+    /// is excused. A POST to one is still observed: nothing legitimate posts to a placeholder, and a
+    /// placeholder replaced by a shell is driven with POST. An <c>index.php</c> inside a plugin or theme is
+    /// not excused, because that is where the incident's shells were hidden.
+    /// </remarks>
+    private static readonly FrozenSet<string> PlaceholderFolders = new[] { "plugins", "themes" }.ToFrozenSet(StringComparer.Ordinal);
     private readonly IReadOnlyList<IRequestPathRule> rules;
 
     public WebRequestEvaluator()
@@ -77,9 +91,11 @@ public sealed class WebRequestEvaluator
         }
 
         var post = string.Equals(request.Method, "POST", StringComparison.Ordinal);
+        var read = request.Method is "GET" or "HEAD";
         var script = path.FirstAcrossViews(Script);
         return new WebEvaluation(path.Literal.Value, hits,
-            PhpOutsideEntryPoints: request.Status is >= 200 and < 300 && path.FirstAcrossViews(view => Script(view) is { } s && !s.EntryPoint ? s : null) is not null,
+            PhpOutsideEntryPoints: request.Status is >= 200 and < 300 &&
+                path.FirstAcrossViews(view => Script(view) is { } s && !s.EntryPoint && !(read && s.Placeholder) ? s : null) is not null,
             LoginPost: post && script is { EntryPoint: true, Name: "wp-login.php" },
             XmlrpcPost: post && script is { EntryPoint: true, Name: "xmlrpc.php" });
     }
@@ -98,10 +114,14 @@ public sealed class WebRequestEvaluator
             var entry = !underContent && (EntryPoints.Contains(segment)
                 || (index >= 1 && segments[index - 1] == "wp-admin")
                 || (index >= 2 && segments[index - 2] == "wp-admin" && AdminSubfolders.Contains(segments[index - 1])));
-            return new ScriptSegment(segment, entry);
+            var placeholder = segment == "index.php" && index == segments.Count - 1
+                && ((index >= 1 && segments[index - 1] == "wp-content")
+                    || (index >= 2 && segments[index - 2] == "wp-content" && PlaceholderFolders.Contains(segments[index - 1])));
+            return new ScriptSegment(segment, entry, placeholder);
         }
         return null;
     }
 
-    internal sealed record ScriptSegment(string Name, bool EntryPoint);
+    /// <param name="Placeholder">One of WordPress core's "Silence is golden" <c>index.php</c> files, requested by name.</param>
+    internal sealed record ScriptSegment(string Name, bool EntryPoint, bool Placeholder = false);
 }
