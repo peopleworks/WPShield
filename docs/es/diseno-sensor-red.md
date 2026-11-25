@@ -492,6 +492,90 @@ con `wpshield settings set`, y el cambio se aplica en la siguiente evaluación. 
 botnet que envía un intento por dirección no activa ninguna regla por dirección, y `HOST-AUTH-003`
 solo la detecta si sus direcciones comparten una /24 o /64.
 
+## Evidencia web desde los logs de IIS
+
+[ADR 0011](adr/0011-evidencia-http-desde-los-logs-de-iis.md). Además del log de seguridad,
+`wpshield evidence collect` lee el log W3C de IIS de cada sitio a medida que se escribe, y aplica dos
+cosas a cada petición registrada:
+
+- **Las reglas de ruta,** el mismo catálogo que ejecuta el gateway (`WP-PATH-001`, `IIS-PATH-001`, la
+  familia de exposición...).
+- **Tres observaciones,** que ven el código de estado que ninguna regla de ruta ve:
+
+| ID | Qué | Qué se guarda |
+| --- | --- | --- |
+| `WEB-OBS-001` | Una respuesta 2xx a un archivo `.php` que no es un punto de entrada de WordPress (`index.php`, `wp-login.php`, `xmlrpc.php`, `wp-cron.php`, `wp-comments-post.php`, `wp-trackback.php`, `wp-signup.php`, `wp-activate.php`, `wp-mail.php`, `wp-links-opml.php`, `wp-admin/*.php`). Nunca nada bajo `wp-content` o `wp-includes`. | Una fila de hallazgo por petición, con su método |
+| `WEB-OBS-002` | Un POST a `wp-login.php` | Recuento por dirección y hora |
+| `WEB-OBS-003` | Un POST a `xmlrpc.php` | Recuento por dirección y hora |
+
+**Solo evidencia.** Una observación no tiene puntuación y nunca es una regla. Nada de los logs web
+llega al motor de decisiones; las reglas web del motor saldrán de una semana de esta evidencia, en una
+enmienda del ADR 0009.
+
+**Lo que nunca se lee:** la consulta de la URI, el referer y el nombre de usuario. Sus columnas se
+saltan por posición antes de que exista una cadena para ellas. La ruta se guarda normalizada, nunca
+como se registró; el agente de usuario, limpio y acotado a 256 caracteres.
+
+**Lo que se guarda:**
+
+- cada petición se cuenta por sitio y hora: peticiones, 4xx, 5xx y bytes recibidos;
+- una dirección se guarda por hora solo si una regla o una observación la marcó, o si envió más de 50
+  errores de cliente;
+- los hallazgos se conservan como los intentos de inicio de sesión detallados (`retention.raw_days`), y
+  los recuentos por hora como los demás agregados.
+
+**Al arrancar** lee los últimos 15 minutos de cada log, como historial. Después sigue cada archivo, lee
+cada 10 segundos más o menos y detecta un sitio nuevo en 15 minutos como mucho. HTTP.sys vacía su
+búfer aproximadamente una vez por minuto, así que la evidencia llega con hasta un minuto de retraso.
+
+**Cobertura, por sitio.** `evidence collect` escribe una línea por cada sitio que no puede leer, con el
+motivo y el remedio, y el almacén guarda el estado de cada sitio. Por ejemplo:
+
+```text
+The IIS log of site 7 is not read (access-denied). From an elevated prompt: icacls "C:\inetpub\logs\LogFiles" /grant "NT SERVICE\WPShield:(OI)(CI)RX" - then restart the service. A server setting, so WPShield does not make it.
+```
+
+| Motivo | Qué significa |
+| --- | --- |
+| `access-denied` | La carpeta de logs rechaza a esta cuenta. El remedio es el permiso manual de arriba. |
+| `no-log-folder`, `no-log-file` | IIS todavía no ha registrado ninguna petición del sitio. |
+| `missing-field: <campo>` | A los campos W3C del sitio les falta uno que el sensor necesita (`date`, `time`, `c-ip`, `cs-method`, `cs-uri-stem`, `sc-status`). |
+| `logging-disabled`, `log-format-not-w3c` | Se cambia a mano en el Administrador de IIS, Registro. |
+| `no-http-binding` | Un sitio solo FTP: se ignora, y nunca cuenta como no leído. |
+| `central-logging-mode` | IIS escribe un único archivo para todos los sitios, que esta versión no lee. |
+| `iis-configuration-unreadable` | Ejecute con elevación; la configuración de IIS se lee y nunca se escribe. |
+
+Cada pocos minutos `evidence collect` registra los recuentos, nunca una ruta, una dirección ni un
+agente:
+
+```text
+Web evidence recorded (evidence only - nothing is decided from it). Requests=18234 Findings=12 Observations=40 LoginPosts=310 XmlrpcPosts=95 Malformed=0 LongLinesSkipped=0
+```
+
+**Protección.** Un hallazgo de este servidor, de la lista de permitidas, de loopback, link-local o de
+un rango privado se registra con ese motivo y nunca se lista en contra de la dirección. Lo mismo vale
+para un sitio nombrado en `http.proxied_sites`, cuya dirección de cliente es la de un proxy:
+
+```powershell
+Set-Content proxied.json '["shop.example"]'   # Windows PowerShell 5.1 quita las comillas de un argumento
+wpshield settings set http.proxied_sites --value-file proxied.json --reason "detras de ARR"
+```
+
+### `wpshield web`
+
+```powershell
+wpshield web                         # últimas 24 horas, todos los sitios
+wpshield web --range 7d --site 4     # un sitio, por ID o por nombre
+wpshield web --source 203.0.113.7    # una dirección
+wpshield web --json                  # rutas y agentes envueltos como no confiables
+```
+
+La respuesta empieza por qué sitios se leyeron, cuáles no, y por qué. Después vienen los totales de las
+horas completas que se solapan con el rango, las reglas y observaciones con sus recuentos, las
+direcciones guardadas y los hallazgos más recientes. Las rutas se marcan como texto no confiable y se
+limpian para la consola. La salida 2 significa que el sensor no registró nada en el rango: sin datos,
+nunca cero.
+
 ## Inventario de puertos locales
 
 Este comando permite ver qué direcciones y puertos tienen un socket TCP en escucha o un socket UDP

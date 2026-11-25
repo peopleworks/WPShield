@@ -17,6 +17,22 @@ must complete first.
 - `wpshield audit` reports web roots that share a path with an FTP root or virtual directory, or
   where either folder contains the other (`AUDIT-007`). The remedy is to separate the folders or
   verify FTP user isolation by hand.
+- Web evidence from the IIS logs (ADR 0011, **accepted**, with amendment 1). **It is evidence only: nothing is decided from it and nothing is blocked.**
+  - `wpshield evidence collect` reads each site's W3C log as IIS writes it. Sites and log folders come from the IIS configuration, read-only, at start and every 15 minutes. At start it reads the last 15 minutes of each log as history, then it follows the files.
+  - Every logged request runs the gateway's own request-path rules, from one catalog the gateway now registers too (`RequestPathRuleCatalog`).
+  - It also runs three observations, which have no score and are never rules:
+    - `WEB-OBS-001`: a 2xx answer to a `.php` file that is not a WordPress entry point, stored per request;
+    - `WEB-OBS-002`: a POST to `wp-login.php`, counted per address and hour;
+    - `WEB-OBS-003`: a POST to `xmlrpc.php`, counted per address and hour.
+  - The URI query, the referer and the user name are never read: their columns are skipped by position before any string exists. A test searches the database files, the log output and every reader answer for markers placed there.
+  - Only the normalized path and a cleaned user agent are stored.
+  - Requests are counted per site and hour. An address is kept per hour only when flagged or after more than 50 client errors.
+  - Each site's coverage is recorded with a reason and a remedy: `access-denied` prints the manual `icacls` grant for `NT SERVICE\WPShield`, and there are reasons for a missing W3C field, central logging, an FTP-only site and a folder no site owns.
+  - Addresses of this host, the allow-list, loopback, link-local, private ranges and sites in the new audited setting `http.proxied_sites` are recorded but never counted against.
+- `wpshield web [--range 1h|6h|24h|7d|30d] [--site <id|name>] [--source <ip>] [--store PATH] [--json]`, read-only. It shows coverage per site first, then the totals over whole hours, the rules and observations, the addresses kept and the newest findings, with paths labelled as untrusted text.
+- The read API `WebEvidenceQueries`, for the desktop's Web tab and the MCP tools that come next.
+- The evidence store's schema 2 adds the `web_*` tables. The migration is additive: a schema-1 store keeps every row it holds, which a test checks against the schema-1 tables written out literally. A reader of this build opens a store once a writer of this build has migrated it.
+- The new project `WPShield.WebEvidence` is portable and tested on the Linux leg.
 
 - The desktop monitor's **Protection** window, first in its navigation (`--protection` opens it and its elevated relaunch lands there), shows what WPShield is recording and deciding on the host, read-only, refreshed off the interface thread every 15 seconds. The collector's state comes from the store: **Recording** by the same definition that decides what is in force, **Running, not recording** when a collector is alive but cannot read the Security log, **Stopped - last recorded** with the time, or **Could not read the store** with the remedy. Beside it, the Windows service `WPShield` as the service controller reports it, worded so it never contradicts the store (a recording store with the service stopped or absent is `wpshield evidence collect` in the foreground); the mode from `defense.mode`, **Monitor - nothing is blocked**, with Block drawn dotted and disabled; and sensor chips whose dot is earned: Windows logons green when recorded within two minutes, amber when blind or its coverage reports a problem, with the remedy in the tooltip, grey otherwise; SQL Server logins and requests to the sites marked **planned**. The decisions block counts would-block in force and protected, refused and report records of the last 24 hours exactly, lists them in **In force**, **Last 24 h** and **30 days** tabs with search over target, label and rule, and links to Attacks and to Settings on `defense.allow`. Nobody could look, or a period nobody recorded, is `—`, never 0. `EvidenceQueries.DecisionCounts` counts a range's records per action, because a list read stops at its bound.
 - A source's detail in the desktop's **Attacks** view can **Label…** the address (its own entry in `labels.addresses`) or **Allow…** it (the exact address, never its network, appended to `defense.allow`), through the Settings window's door: elevated only, one change per open, checked against the value read when the editor opened, validated by the catalog and recorded with the Windows user and a reason. Allow's confirmation says the decision engine will never decide against the address, and that no decision is made about its /24 or /64 either; a warning gives the counts when the address tried nonexistent accounts in the range shown or has a would-block decision in force. A value changed elsewhere meanwhile is not overwritten: the panel says who changed it, reads it again and keeps the text. Without elevation or a readable store both are disabled and say why.
@@ -102,7 +118,7 @@ must complete first.
   moving every pool that uses it. `AUDIT-004` lists the WordPress sites that should keep PHP and
   checks effective site mappings even after the server-level handler is removed. Sites without
   HTTP or HTTPS bindings appear on a separate line and do not count as running PHP.
-
+- The gateway registers its request-path rules from `RequestPathRuleCatalog`, the list the IIS log sensor evaluates, instead of one registration per rule. The rules, their order and their scores are unchanged; a test proves the gateway's set equals the catalog.
 - `WPShield.SecurityMonitor` targets `net10.0` with an assembly-level `SupportedOSPlatform("windows")` instead of `net10.0-windows`, so the gateway can host the evidence collector; the platform analyzer still refuses any unguarded caller.
 - The README and bilingual GitHub Pages landing page now organize the gateway, host flow monitor
   and login evidence by operator task. A synthetic example shows the limits of SQL flow attribution.
@@ -1182,6 +1198,9 @@ must complete first.
 
 ### Known limitations
 
+- **Web evidence is read by `wpshield evidence collect` only.** The collector the gateway hosts as the service does not read IIS logs yet: the IIS configuration reader lives in the CLI, and the service account would first need the manual read grant on the log folders.
+- **On a site without WordPress, every PHP file that answers is a `WEB-OBS-001` observation, legitimate PHP included.** That is why an observation decides nothing; the first week measures how much it catches.
+- **A request whose attack is in its query string is invisible to the web evidence,** because the query is never read. Inspecting it without storing it is the gateway's job.
 - **The triage tool does not know about the exposure family yet.** Its model of the gateway covers
   `WP-PATH-001`, `WP-PATH-002` and `IIS-PATH-001`, so a request the gateway now refuses - a `.env` on
   disk, `vendor/phpunit/.../eval-stdin.php` - reads as `not-applicable` or `not-covered` in a triage

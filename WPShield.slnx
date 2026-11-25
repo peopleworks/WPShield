@@ -15,6 +15,7 @@
     <Project Path="src/WPShield.Integration/WPShield.Integration.csproj" />
     <Project Path="src/WPShield.Evidence/WPShield.Evidence.csproj" />
     <Project Path="src/WPShield.Analyst/WPShield.Analyst.csproj" />
+    <Project Path="src/WPShield.WebEvidence/WPShield.WebEvidence.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/WPShield.Abstractions.Tests/WPShield.Abstractions.Tests.csproj" />
@@ -30,5 +31,6 @@
     <Project Path="tests/WPShield.Integration.Tests/WPShield.Integration.Tests.csproj" />
     <Project Path="tests/WPShield.Evidence.Tests/WPShield.Evidence.Tests.csproj" />
     <Project Path="tests/WPShield.Analyst.Tests/WPShield.Analyst.Tests.csproj" />
+    <Project Path="tests/WPShield.WebEvidence.Tests/WPShield.WebEvidence.Tests.csproj" />
   </Folder>
 </Solution>

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using WPShield.Evidence;
 using WPShield.Evidence.Decisions;
+using WPShield.WebEvidence;
 
 namespace WPShield.SecurityMonitor;
 
@@ -47,6 +48,12 @@ public enum EvidenceCollectorExit
 /// Log lines carry counts, channel identifiers and reason codes only. Account names and addresses are
 /// attacker-chosen text and stay in the store, where they are cleaned and bounded.
 /// </para>
+/// <para>
+/// <b>It can also read the IIS logs</b> (ADR 0011), when it is given a reader of the IIS configuration:
+/// the sensor runs on this loop and this store, writes evidence only, and nothing it reads reaches the
+/// engine. A failure in it is logged and retried, and never stops the failed-logon collection. The
+/// gateway's hosted collector is not given one yet; <c>wpshield evidence collect</c> is.
+/// </para>
 /// </remarks>
 public sealed class EvidenceCollector
 {
@@ -75,15 +82,25 @@ public sealed class EvidenceCollector
     private string? lastUnavailableReason;
 
     public EvidenceCollector(string storePath, ILogger logger)
+        : this(storePath, logger, webSites: null)
+    {
+    }
+
+    /// <summary>
+    /// A collector that also reads the IIS logs (ADR 0011). <paramref name="webSites"/> reads the sites and
+    /// their log folders from the IIS configuration, read-only; the caller supplies it because reading IIS
+    /// is the CLI's, not this library's. <see langword="null"/> reads failed logons only.
+    /// </summary>
+    public EvidenceCollector(string storePath, ILogger logger, Func<IisLogConfiguration>? webSites)
         : this(storePath, logger, TimeProvider.System, (end, window) => AuthFailureFeed.ReadRecent(end, window), AuthFailureFeed.Watch,
-            HostProbes.Protection())
+            HostProbes.Protection(), web: webSites is null ? null : new WebLogSensor(webSites, HostProbes.OwnAddresses, logger))
     {
     }
 
     internal EvidenceCollector(string storePath, ILogger logger, TimeProvider time,
         Func<DateTimeOffset, TimeSpan, AuthFailureSnapshot> readRecent,
         Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, AddressProtection protection,
-        DecisionEngineLimits? limits = null)
+        DecisionEngineLimits? limits = null, WebLogSensor? web = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
         StorePath = storePath;
@@ -94,7 +111,14 @@ public sealed class EvidenceCollector
         // One engine for the life of the process, not of a session: a session restarted after a failed
         // subscription must not forget the decisions in force or the repeat offenders.
         Engine = new DecisionEngine(protection ?? throw new ArgumentNullException(nameof(protection)), limits);
+        Web = web;
     }
+
+    /// <summary>
+    /// The IIS log sensor, or <see langword="null"/>. It writes evidence only: nothing it reads reaches
+    /// <see cref="Engine"/>, whose only input is a failed logon.
+    /// </summary>
+    internal WebLogSensor? Web { get; }
 
     public string StorePath { get; }
 
@@ -275,6 +299,11 @@ internal sealed class CollectorSession
     private DateTimeOffset lastExpire;
     private DateTimeOffset lastTick;
     private long reportedDropped;
+    private WebLogSession? web;
+    private DateTimeOffset webRetryAt;
+
+    /// <summary>How long a failed web sensor waits before it starts again. Failed-logon collection never waits for it.</summary>
+    internal static readonly TimeSpan WebRetryInterval = TimeSpan.FromMinutes(1);
 
     private CollectorSession(EvidenceCollector owner, EvidenceStore store, DateTimeOffset started)
     {
@@ -342,6 +371,7 @@ internal sealed class CollectorSession
         RecordCatchUpCoverage(snapshot, now);
         Prune(now);
         AnnounceEngine(now);
+        StartWeb(now);
 
         owner.Logger.LogInformation(
             "Evidence collection started. Store={Store} CatchUpFrom={CatchUpFrom:O} CatchUpRead={CatchUpRead} Inserted={Inserted} " +
@@ -395,6 +425,8 @@ internal sealed class CollectorSession
             Decide("expire", () => owner.Engine.Expire(now));
         }
 
+        RunWeb(now);
+
         // An unreadable Security log rarely fixes itself (group membership reaches a service's token
         // at the next start), but a failed query can. Trying again is one failed read.
         return SecurityReadable || now - started < EvidenceCollector.UnavailableRetryInterval;
@@ -412,6 +444,16 @@ internal sealed class CollectorSession
         ReportDropped(now);
         if (final) Decide("end", () => owner.Engine.EndAll(now));
         Extend(now);
+        if (web is not null)
+        {
+            try { web.Stop(now); }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                owner.Logger.LogWarning("Web evidence did not stop cleanly ({ErrorType}). It resumes from its stored positions.",
+                    exception.GetType().Name);
+            }
+            web = null;
+        }
         store.Dispose();
         owner.Logger.LogInformation("Evidence collection stopped. Inserted={Inserted}", Inserted);
     }
@@ -560,6 +602,50 @@ internal sealed class CollectorSession
     }
 
     /// <summary>
+    /// Starts the IIS log sensor on this session's store (ADR 0011). It writes evidence only and never
+    /// hands anything to the engine. A failure is logged and retried; failed-logon collection never waits.
+    /// </summary>
+    private void StartWeb(DateTimeOffset now)
+    {
+        if (owner.Web is null) return;
+        try
+        {
+            web = owner.Web.Start(store, now);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            web = null;
+            webRetryAt = now + WebRetryInterval;
+            owner.Logger.LogError(
+                "Web evidence could not start ({ErrorType}). Failed logons are still recorded; it starts again in {RetrySeconds} s.",
+                exception.GetType().Name, (int)WebRetryInterval.TotalSeconds);
+        }
+    }
+
+    private void RunWeb(DateTimeOffset now)
+    {
+        if (owner.Web is null) return;
+        if (web is null)
+        {
+            if (now >= webRetryAt) StartWeb(now);
+            return;
+        }
+        try
+        {
+            web.Tick(now);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // What it had not written is read again from the stored positions when it starts again.
+            web = null;
+            webRetryAt = now + WebRetryInterval;
+            owner.Logger.LogError(
+                "Web evidence failed ({ErrorType}). Failed logons are still recorded; it starts again in {RetrySeconds} s from its stored positions.",
+                exception.GetType().Name, (int)WebRetryInterval.TotalSeconds);
+        }
+    }
+
+    /// <summary>
     /// Runs one engine step and records what it decided. Nothing in it may stop collection: a failure is
     /// logged with its type and collection continues; the attempts are already stored.
     /// </summary>
@@ -615,7 +701,8 @@ internal sealed class CollectorSession
     {
         var result = writer.Prune(now, settings.Limits());
         lastPrune = now;
-        if (result.RawRowsDeleted + result.AggregateRowsDeleted + result.DecisionRowsDeleted + result.EventRowsDeleted == 0)
+        if (result.RawRowsDeleted + result.AggregateRowsDeleted + result.DecisionRowsDeleted + result.EventRowsDeleted +
+            result.WebRowsDeleted == 0)
         {
             owner.Logger.LogDebug("Evidence pruning found nothing past its bounds.");
             return;
@@ -623,9 +710,9 @@ internal sealed class CollectorSession
 
         owner.Logger.LogInformation(
             "Evidence pruned. RawRows={RawRows} AggregateRows={AggregateRows} DecisionRows={DecisionRows} EventRows={EventRows} " +
-            "DetailedFrom={DetailedFrom:O}",
+            "WebRows={WebRows} DetailedFrom={DetailedFrom:O}",
             result.RawRowsDeleted, result.AggregateRowsDeleted, result.DecisionRowsDeleted, result.EventRowsDeleted,
-            result.RawNowStartsAt);
+            result.WebRowsDeleted, result.RawNowStartsAt);
     }
 
     private static int Specificity(string reason) => reason switch

@@ -1,6 +1,6 @@
 # ADR 0011 — HTTP evidence from the IIS logs
 
-- **Status:** Proposed
+- **Status:** Accepted on 2026-11-25, with amendment 1 below
 - **Deciders:** Pedro Hernández (maintainer)
 - **Affects:** the evidence collector, `WPShield.Evidence`, the request-path rules, `wpshield`, the
   desktop, the MCP tools
@@ -141,3 +141,80 @@ host-wide decision, because their client IP is the proxy's.
   web rules.
 - When the gateway sits in front of a site (M3): decide whether that site's log evidence is still
   read, or whether the gateway's own evidence replaces it.
+
+## Amendment 1 - observations, and as built (2026-11-25)
+
+### Why the rules alone are not enough
+
+The request-path rules miss the incident this ADR starts from. Its botnet drove webshells with POST
+requests to PHP files in folders that legitimately hold PHP: a theme's templates, a plugin's admin
+modules, one modified WordPress core file. That is the known gap no path rule can close without
+refusing legitimate plugins. On 2026-11-19, after the plugins were removed, `php-cgi` on that host
+called out to the attacker again. A path rule never sees the status code, and the status code is what
+gave the shells away: they answered.
+
+### Observations
+
+The sensor adds **observations**: evidence only. An observation has no score, is not a rule, and is
+never enough to decide anything alone. The IDs are stable, untranslated, and their own family:
+
+- **`WEB-OBS-001`:** a 2xx answer to a `.php` path that is not a WordPress entry point. The script is
+  the first segment ending in `.php`, path-info included. The entry points are, by name at any install
+  depth:
+  - `index.php`, `wp-login.php`, `xmlrpc.php`, `wp-cron.php`, `wp-comments-post.php`,
+    `wp-trackback.php`, `wp-signup.php`, `wp-activate.php`, `wp-mail.php`, `wp-links-opml.php`;
+  - plus `wp-admin/*.php`, `wp-admin/network/*.php` and `wp-admin/user/*.php`.
+
+  Nothing under `wp-content` or `wp-includes` is ever an entry point. Every such request is stored as a
+  finding row with its method, so a POST is told from a GET.
+- **`WEB-OBS-002`:** a POST to `wp-login.php`.
+- **`WEB-OBS-003`:** a POST to `xmlrpc.php`.
+
+`002` and `003` are counted per site, address and hour, never stored one by one: brute force runs to
+thousands of requests an hour. All three count toward the per-address aggregate threshold of
+section 4.
+
+On a site without WordPress, every PHP answer is an observation. That is deliberate: on such a site a
+PHP file answering is exactly what the incident looked like. It is also why an observation decides
+nothing. The first week measures how much legitimate traffic it catches.
+
+### As built
+
+- **The stem is the once-decoded path.** HTTP.sys decodes the URL once before IIS logs it. The HTTP
+  Server API writes a `+` for a character that would break the line, a space among them. The stem is
+  therefore the same path the gateway sees as `Request.Path`, with `+` read back as a space. Windows
+  strips a trailing space at open time, and a literal plus means nothing to any path rule. The
+  normalized path, the second-decode view included, is built from it exactly as in the gateway: a
+  double-encoded `%252e` reaches the log as `%2e`, as it reaches the gateway.
+- **One rule catalog.** `RequestPathRuleCatalog`, in `Rules.WordPress`, is what the gateway registers
+  and what the sensor evaluates. A test proves the gateway's set equals it.
+- **Where the code lives.**
+  - The parsing, the rules, the observations and the tailing are in a new portable project,
+    `WPShield.WebEvidence`, tested on the Linux leg.
+  - The store stays SQLite only.
+  - The IIS configuration is read by the CLI, which hands the site list in.
+- **Schema 2, additive.** Four tables:
+  - `web_findings`;
+  - `web_hourly_sites`;
+  - `web_hourly_sources`;
+  - `web_sites`, the per-site state with reason and remedy.
+
+  A schema-1 store keeps every row it holds. Read positions are kept in `collector_state`, one per site
+  and file, written in the same transaction as what was read up to them.
+- **Bounds added.**
+  - At most 200 finding rows per address, site and hour; past that they are counted, not stored.
+  - At most 200,000 addresses counted per hour in memory; past that the period is recorded as limited.
+  - A catch-up with no position in a file finds where the 15-minute window starts by a binary search
+    on the lines' own times, so it reads a few probes, not the file. If the times cannot be read, it
+    falls back to the last 32 MB, and says so if that cut into the window.
+- **Protection.** A finding from a protected address is recorded with the reason, and the address is
+  never listed against. Protected addresses are this host, the allow-list, loopback, link-local and
+  private ranges. An address of a site in `http.proxied_sites` (IIS site names) is treated the same.
+- **Not wired into the service yet.** `wpshield evidence collect` reads the IIS logs. The collector the
+  gateway hosts as a service does not yet. The IIS configuration reader is the CLI's, and the service
+  account would first need the manual read grant on the log folders, which is printed as the remedy of
+  an `access-denied` site.
+- **No web record reaches the decision engine**, live or catch-up, and a test asserts it. The `live`
+  flag on a finding is kept for the ADR 0009 amendment that may one day use it.
+- **The MCP tools and the desktop tab come later**, on the read API this adds (`WebEvidenceQueries`).
+  The MCP tools must keep site names from leaving the host unless the operator allows it.

@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The IIS log sensor of ADR 0011: W3C parsing, the path rules and observations evaluated on each
+    logged request, and the tailing that feeds the evidence store.
+
+    Portable on purpose, like WPShield.Evidence beneath it: nothing here needs Windows, IIS or ASP.NET
+    Core. Which sites exist and where their logs are is read from the IIS configuration by the CLI and
+    handed in; this assembly only reads the files it is pointed at, read-only. The Linux CI leg builds
+    and tests it, so that claim is checked rather than asserted.
+
+    It never names a request body and has no column for a query string, a referer or a user name: those
+    W3C fields are skipped by position while a line is split, before any string exists for them.
+  -->
+  <ItemGroup>
+    <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
+    <ProjectReference Include="../WPShield.Rules.WordPress/WPShield.Rules.WordPress.csproj" />
+    <ProjectReference Include="../WPShield.Evidence/WPShield.Evidence.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPShield.WebEvidence.Tests" />
+  </ItemGroup>
+</Project>

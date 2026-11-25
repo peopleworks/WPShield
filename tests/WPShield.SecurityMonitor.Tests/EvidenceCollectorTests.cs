@@ -631,6 +631,82 @@ public sealed class EvidenceCollectorTests : IDisposable
     }
 
     // =============================================================================================
+    //  The IIS log sensor (ADR 0011): evidence only, never a decision, never in the way.
+    // =============================================================================================
+
+    private string WebLog(params string[] lines)
+    {
+        var logs = Path.Combine(directory, "LogFiles");
+        var folder = Path.Combine(logs, "W3SVC4");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "u_ex261124.log"),
+            "#Software: Microsoft Internet Information Services 10.0\r\n#Version: 1.0\r\n" +
+            "#Fields: date time s-ip cs-method cs-uri-stem cs-uri-query s-port cs-username c-ip cs(User-Agent) cs(Referer) " +
+            "sc-status sc-substatus sc-win32-status sc-bytes cs-bytes time-taken\r\n" + string.Concat(lines.Select(l => l + "\r\n")));
+        return logs;
+    }
+
+    private static string Request(DateTimeOffset at, string stem, string ip, int status) =>
+        $"{at:yyyy-MM-dd HH:mm:ss} 192.0.2.10 GET {stem} - 443 - {ip} agent - {status} 0 0 100 400 15";
+
+    [Fact]
+    public void WebEvidenceIsRecordedAndNeverReachesTheDecisionEngine()
+    {
+        // Enough, from one address, that a web rule for the engine would surely fire - if one could.
+        var lines = Enumerable.Range(0, 30).Select(i => Request(Now.AddMinutes(-5).AddSeconds(i), $"/wp-content/uploads/x{i}.php", "203.0.113.66", 200))
+            .Concat(Enumerable.Range(0, 60).Select(i => Request(Now.AddMinutes(-4).AddSeconds(i), $"/probe{i}", "203.0.113.66", 404)))
+            .ToArray();
+        var logs = WebLog(lines);
+        var sensor = new WebEvidence.WebLogSensor(
+            () => new WebEvidence.IisLogConfiguration([new WebEvidence.IisLogSite(4, "shop.example", logs, true, "W3C", true)], null, null),
+            () => [], logger);
+        var collector = new EvidenceCollector(StorePath, logger, clock, feed.Read, feed.Watch, Protection, web: sensor);
+
+        var session = CollectorSession.Start(collector, Now);
+        clock.Now = Now.AddSeconds(30);
+        session.Tick(clock.Now);
+        session.Stop(clock.Now);
+
+        using (var store = EvidenceStore.OpenReadOnly(StorePath))
+        {
+            var web = new WebEvidenceQueries(store);
+            Assert.Equal(30, web.Findings(Now.AddHours(-1), Now.AddHours(1), limit: 500).Count);
+            Assert.Equal(90, web.Summary(Now.AddHours(-1), Now.AddHours(1)).Requests);
+        }
+        Assert.Empty(Decisions());
+        Assert.Equal(0, collector.Engine.ActiveCount);
+    }
+
+    [Fact]
+    public void AFailingWebSensorNeverStopsFailedLogonCollection()
+    {
+        var logs = WebLog(Request(Now.AddMinutes(-1), "/", "203.0.113.1", 200));
+        var sensor = new WebEvidence.WebLogSensor(
+            () => new WebEvidence.IisLogConfiguration([new WebEvidence.IisLogSite(4, "shop.example", logs, true, "W3C", true)], null, null),
+            () => [], new ThrowingLogger());
+        var collector = new EvidenceCollector(StorePath, logger, clock, feed.Read, feed.Watch, Protection, web: sensor);
+
+        var session = CollectorSession.Start(collector, Now);
+        feed.Deliver(Failure(1, "198.51.100.7"));
+        clock.Now = Now.AddMinutes(2);
+        session.Tick(clock.Now);
+        session.Stop(clock.Now);
+
+        Assert.Equal(1, Attempts(Now.AddHours(1)));
+        Assert.Contains(logger.Entries, e => e.Level == LogLevel.Error && e.Message.Contains("Web evidence", StringComparison.Ordinal));
+    }
+
+    private sealed class ThrowingLogger : ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter) =>
+            throw new InvalidOperationException("synthetic logger failure");
+    }
+
+    // =============================================================================================
     //  Helpers.
     // =============================================================================================
 

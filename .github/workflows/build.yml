@@ -25,7 +25,8 @@ jobs:
   # WPShield.Abstractions and WPShield.Core are required to stay free of ASP.NET Core,
   # YARP, IIS and Windows dependencies. That claim is only credible if it is verified,
   # so the platform-independent half of the solution is built and tested on Linux too. The evidence
-  # store (ADR 0007) joins them: its schema, retention and queries must not need Windows.
+  # store (ADR 0007) joins them: its schema, retention and queries must not need Windows. So does the
+  # IIS log sensor (ADR 0011): it parses W3C files and runs the path rules, and needs no IIS to do it.
   portable-core:
     name: Verify portable core (Linux)
     runs-on: ubuntu-latest
@@ -41,7 +42,8 @@ jobs:
             tests/WPShield.Core.Tests \
             tests/WPShield.Rules.Windows.Tests \
             tests/WPShield.Rules.WordPress.Tests \
-            tests/WPShield.Evidence.Tests
+            tests/WPShield.Evidence.Tests \
+            tests/WPShield.WebEvidence.Tests
           do
             dotnet test "$project" --configuration Release
           done

@@ -145,9 +145,10 @@ Before modifying code:
 - Add unit tests and appropriate integration tests.
 - Use English for code identifiers and localize user-facing messages.
 - Preserve multi-site isolation.
-- `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows`, `WPShield.Rules.WordPress` and
-  `WPShield.Evidence` must stay free of ASP.NET Core, YARP, IIS and Windows-only dependencies. The Linux
-  CI leg builds and tests exactly those five so the claim is falsifiable rather than asserted. `Rules.Windows` names the
+- `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows`, `WPShield.Rules.WordPress`,
+  `WPShield.Evidence` and `WPShield.WebEvidence` must stay free of ASP.NET Core, YARP, IIS and Windows-only
+  dependencies. The Linux CI leg builds and tests exactly those six so the claim is falsifiable rather than
+  asserted. The IIS log sensor reads W3C files; which sites exist is read from IIS by the CLI and handed in. `Rules.Windows` names the
   attack surface its rules understand, not a platform it depends on - which is precisely why it is
   on this list.
 - **The rule packages layer one way: `Rules.WordPress` references `Rules.Windows`, never the reverse.**
@@ -187,6 +188,16 @@ desktop, the CLI and a future MCP server answer from, so these rules protect eve
   `settings_history`. A label describes an address; it never allows or blocks one.
 - **New kinds of evidence go to `events`** with a lowercase kind and a bounded JSON detail. A dedicated
   table is added only when a query needs it, with a migration that bumps `EvidenceStore.SchemaVersion`.
+  **A migration is additive:** a store written by an earlier build keeps every row, and a test builds the
+  earlier schema literally and opens it with the new code. Schema 2 added the `web_*` tables of ADR 0011.
+- **The IIS log sensor (ADR 0011) never reads the query string, the referer or the user name of a
+  request.** Those W3C columns are skipped by position before any string exists for them, and a test
+  puts markers in them and searches the database files, the log output and every reader answer. Only
+  the normalized path is stored, never the logged stem. Its observations (`WEB-OBS-*`) are evidence
+  only: no score, never a rule, and nothing from web evidence reaches the decision engine until an
+  amendment to ADR 0009 says so.
+- **The gateway and the sensor run one rule catalog,** `RequestPathRuleCatalog`. A path rule is added
+  there, once; both registration tests compare it with the rules the packages contain.
 
 ## Operator scripts
 

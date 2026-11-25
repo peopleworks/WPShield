@@ -13,7 +13,8 @@
       OperatingSystem.IsWindows() guard. The event-log package ships a Windows runtime asset that a
       win-x64 publish picks up.
 
-      It references only WPShield.Abstractions and WPShield.Evidence, never the reverse. This keeps
+      It references only portable projects - WPShield.Abstractions, WPShield.Evidence and the IIS log
+      sensor WPShield.WebEvidence (which brings the rule packages) - never the reverse. This keeps
       the platform-independent projects buildable and testable on Linux.
 
       Reading the Security log requires Administrator privileges, or membership in Event Log Readers
@@ -25,6 +26,8 @@
   <ItemGroup>
     <ProjectReference Include="../WPShield.Abstractions/WPShield.Abstractions.csproj" />
     <ProjectReference Include="../WPShield.Evidence/WPShield.Evidence.csproj" />
+    <!-- The portable IIS log sensor (ADR 0011). The collector's loop runs it beside the event-log reading. -->
+    <ProjectReference Include="../WPShield.WebEvidence/WPShield.WebEvidence.csproj" />
   </ItemGroup>
 
   <ItemGroup>
