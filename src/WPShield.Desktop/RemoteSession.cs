@@ -5,8 +5,8 @@ using System.Runtime.InteropServices;
 namespace WPShield.Desktop;
 
 /// <summary>
-/// What Windows reports for this Remote Desktop session's client: an address, or the reason there is
-/// none. <see cref="Problem"/> is a stable English code the window words in the operator's language.
+/// What this Remote Desktop session's client reports about itself: an address, or the reason there is
+/// none. For information only - see <see cref="RemoteSession"/>.
 /// </summary>
 internal sealed record RemoteClient(string? Address, string? Problem)
 {
@@ -20,23 +20,23 @@ internal sealed record RemoteClient(string? Address, string? Problem)
 }
 
 /// <summary>
-/// Reads the client address of the current Remote Desktop session (<c>WTSQuerySessionInformation</c>
-/// with <c>WTSClientAddress</c> for <c>WTS_CURRENT_SESSION</c>), for the settings window's
-/// "My current connection" button.
+/// Whether the current session is a Remote Desktop session (<c>WTSClientProtocolType</c>), and the
+/// address its client reports about itself (<c>WTSClientAddress</c> for <c>WTS_CURRENT_SESSION</c>).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>This is the address the Remote Desktop client reports about itself</b>, not necessarily the one
-/// this server sees. Microsoft's documentation of <c>WTS_CLIENT_ADDRESS</c> says so: behind NAT the
-/// client reports its own private address, through a VPN it may report the only address it has, and
-/// through a Remote Desktop Gateway or the Store app none is reported. It must not be used to
-/// authenticate anyone, and the window says what it is rather than calling it "your address".
+/// <b>The client-reported address is never offered as "My current connection".</b> Microsoft's
+/// documentation of <c>WTS_CLIENT_ADDRESS</c> says the Remote Desktop client reports it itself: behind
+/// NAT it is the client's private address, through a VPN it may be the only address the client has,
+/// and through a Remote Desktop Gateway or the Store app there is none. It must not be used to
+/// authenticate anyone. The settings window offers the address this server sees instead
+/// (<see cref="ConnectionResolver"/>) and mentions this one only to explain a difference.
 /// </para>
 /// <para>
 /// Never a guess. An IPv4 address is at offset 2 of the <c>Address</c> field, as the documentation
-/// states. For IPv6 the same documentation contradicts itself on the offset, so an IPv6 client is
+/// states. For IPv6 the same documentation contradicts itself on the offset, so an IPv6 value is
 /// reported as unknown rather than read from a position that might be wrong. All zeros, a console
-/// session or a failed call fill nothing.
+/// session or a failed call give nothing.
 /// </para>
 /// </remarks>
 internal static class RemoteSession
@@ -59,7 +59,25 @@ internal static class RemoteSession
     [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     private static extern void WTSFreeMemory(IntPtr memory);
 
-    /// <summary>The current session's client as Windows reports it. Never throws.</summary>
+    /// <summary>
+    /// <see langword="true"/> for a Remote Desktop session, <see langword="false"/> for the console, and
+    /// <see langword="null"/> when Windows could not say. Never throws.
+    /// </summary>
+    internal static bool? IsRemote()
+    {
+        try
+        {
+            var protocol = Query(WtsClientProtocolType);
+            // 0 is the console session; 2 is RDP.
+            return protocol is null || protocol.Length < 2 ? null : BinaryPrimitives.ReadUInt16LittleEndian(protocol) != 0;
+        }
+        catch (Exception ex) when (ex is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The current session's client as the client reports itself. For information only. Never throws.</summary>
     internal static RemoteClient Current()
     {
         try

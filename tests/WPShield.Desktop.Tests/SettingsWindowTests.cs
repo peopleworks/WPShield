@@ -1,4 +1,5 @@
 using System.IO;
+using System.Net;
 using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Automation;
@@ -7,6 +8,7 @@ using System.Windows.Controls.Primitives;
 using System.Windows.Media;
 using Microsoft.Data.Sqlite;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 using Xunit;
 
 namespace WPShield.Desktop.Tests;
@@ -18,7 +20,12 @@ namespace WPShield.Desktop.Tests;
 public sealed class SettingsWindowTests
 {
     private const string Operator = @"WPSHIELD-LAB\operator";
-    private static readonly RemoteClient Console = RemoteClient.Failed(RemoteClient.NotRemote);
+    private static readonly OwnConnection Console = OwnConnection.None(OwnConnection.NotRemote);
+
+    /// <summary>What the resolver offers when this session's own record names an address that is connected now.</summary>
+    private static OwnConnection Seen(string address, string? client = null) => ConnectionResolver.Resolve(true,
+        new SessionRecord(21, 3, address, DateTimeOffset.UtcNow), null, RemoteDesktopSnapshot.Of([IPAddress.Parse(address)]), client,
+        DateTimeOffset.UtcNow);
 
     private static string TempStore(Action<EvidenceStore>? fill = null, bool create = true)
     {
@@ -38,7 +45,7 @@ public sealed class SettingsWindowTests
         try { Directory.Delete(Path.GetDirectoryName(path)!, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
     }
 
-    private static SettingsWindow Window(string path, bool elevated = true, bool spanish = false, RemoteClient? remote = null) =>
+    private static SettingsWindow Window(string path, bool elevated = true, bool spanish = false, OwnConnection? remote = null) =>
         new(spanish, new EvidenceSettingsStore(path, () => elevated, () => Operator), () => remote ?? Console);
 
     private static JsonNode Stored(string path, string key)
@@ -158,7 +165,7 @@ public sealed class SettingsWindowTests
         {
             var path = TempStore(store => new EvidenceSettings(store).Set(AddressLabels.SettingKey, """{"203.0.113.0/24":"Scanner network"}""",
                 "LAB\\earlier", "names"));
-            var window = Window(path, remote: new RemoteClient("198.51.100.23", null));
+            var window = Window(path, remote: Seen("198.51.100.23", client: "192.0.2.200"));
             try
             {
                 window.Show();
@@ -167,7 +174,10 @@ public sealed class SettingsWindowTests
                 Assert.Equal(Visibility.Visible, window.AddressEditor.Visibility);
                 Assert.Equal(Visibility.Visible, window.RowActions.Visibility);
                 Assert.True(window.ConnectionButton.IsEnabled);
-                Assert.Contains("reports", (string)window.ConnectionButton.ToolTip, StringComparison.Ordinal);
+                var tip = (string)window.ConnectionButton.ToolTip;
+                Assert.Contains("198.51.100.23: the address this server sees for this Remote Desktop session", tip, StringComparison.Ordinal);
+                // The client's own report explains a difference; it is never what gets added.
+                Assert.Contains("Your client reports 192.0.2.200", tip, StringComparison.Ordinal);
 
                 window.AddConnection();
                 var edit = window.Edit!;
@@ -230,7 +240,7 @@ public sealed class SettingsWindowTests
         DesktopDispatcher.RunAsync(async () =>
         {
             var path = TempStore();
-            var window = Window(path, elevated: false, remote: new RemoteClient("192.0.2.44", null));
+            var window = Window(path, elevated: false, remote: Seen("192.0.2.44"));
             try
             {
                 window.Show();
@@ -398,7 +408,7 @@ public sealed class SettingsWindowTests
         DesktopDispatcher.RunAsync(async () =>
         {
             var fake = new FakeStore();
-            var window = new SettingsWindow(true, fake, () => new RemoteClient("203.0.113.77", null));
+            var window = new SettingsWindow(true, fake, () => Seen("203.0.113.77"));
             try
             {
                 window.Show();
@@ -443,7 +453,8 @@ public sealed class SettingsWindowTests
         {
             var path = TempStore();
             var console = Window(path);
-            var ipv6 = Window(path, spanish: true, remote: RemoteClient.Failed(RemoteClient.Ipv6));
+            var several = Window(path, spanish: true, remote: ConnectionResolver.Resolve(true, null, null,
+                RemoteDesktopSnapshot.Of([IPAddress.Parse("203.0.113.5"), IPAddress.Parse("2001:db8::6")]), "192.0.2.200", DateTimeOffset.UtcNow));
             try
             {
                 console.Show();
@@ -455,16 +466,20 @@ public sealed class SettingsWindowTests
                 console.AddConnection();
                 Assert.Empty(console.Edit!.Addresses);
 
-                ipv6.Show();
-                await ipv6.LoadAsync();
-                await ipv6.Select(AddressLabels.SettingKey);
-                Assert.False(ipv6.ConnectionButton.IsEnabled);
-                Assert.Contains("IPv6", (string)ipv6.ConnectionButton.ToolTip, StringComparison.Ordinal);
+                // Two people connected and nothing says which is this session: list them, fill nothing.
+                several.Show();
+                await several.LoadAsync();
+                await several.Select(AddressLabels.SettingKey);
+                Assert.False(several.ConnectionButton.IsEnabled);
+                var tip = (string)several.ConnectionButton.ToolTip;
+                Assert.Contains("varias conexiones de Escritorio remoto (203.0.113.5, 2001:db8::6)", tip, StringComparison.Ordinal);
+                several.AddConnection();
+                Assert.Empty(several.Edit!.Addresses);
             }
             finally
             {
                 console.Close();
-                ipv6.Close();
+                several.Close();
                 Remove(path);
             }
         });

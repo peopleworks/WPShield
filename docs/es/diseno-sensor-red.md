@@ -144,14 +144,24 @@ Windows y el motivo, igual que lo registra la línea de comandos.
 poda, consulta o vista que lo lea) o la próxima vez que arranque el proceso que lo lee. La ventana no
 reinicia nada.
 
-**Mi conexión actual** añade una fila con la dirección que Windows indica para el cliente de esta
-sesión de Escritorio remoto. Microsoft documenta que esa dirección la comunica el propio cliente de
-Escritorio remoto: detrás de NAT suele ser la dirección privada de su propia red, a través de una VPN
-puede ser otra, y a través de una puerta de enlace de Escritorio remoto o de la aplicación de la Store
-no hay ninguna. Compárela con la vista Ataques antes de fiarse de ella. El botón queda deshabilitado,
-con el motivo en su información emergente, en una sesión de consola, cuando Windows no tiene
-dirección y para un cliente IPv6, cuyo formato Windows documenta de forma contradictoria; escriba la
-dirección.
+**Mi conexión actual** añade una fila con la dirección que **este servidor ve** para su sesión de
+Escritorio remoto: la dirección desde la que llegaría un ataque y la que tiene que nombrar una lista de
+permitidos. Se lee de las conexiones establecidas al puerto de Escritorio remoto del servidor (el
+puerto configurado para la escucha, no un 3389 supuesto). Si hay varias personas conectadas, el
+registro de inicio o de reconexión más reciente de esta sesión en el registro
+`TerminalServices-LocalSessionManager/Operational` (eventos 21 y 25) indica cuál de ellas es la suya, y
+solo se usa si esa dirección está conectada ahora. Con una sola conexión y sin ese registro, se ofrece
+esa conexión y la información emergente lo dice. No se ofrece nada, y la información emergente explica
+por qué, en una sesión de consola, cuando no se pueden leer las conexiones, cuando hay varias personas
+conectadas y nada indica cuál es usted (se enumeran para que escriba la correcta) y cuando su registro
+indica una dirección que no está conectada ahora, como a través de una puerta de enlace de Escritorio
+remoto. La ventana lee todo esto al abrirse y con **Actualizar**; la información emergente indica la
+hora.
+
+Nunca se ofrece la dirección que su cliente de Escritorio remoto comunica sobre sí mismo. Microsoft
+documenta que la comunica el cliente: detrás de NAT es la dirección privada de su propia red, que nunca
+coincide con nada de lo que ve este servidor. Si difiere de la dirección ofrecida, la información
+emergente la menciona solo para explicar la diferencia.
 
 Lo que la ventana no hace:
 

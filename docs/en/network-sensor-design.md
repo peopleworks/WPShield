@@ -132,13 +132,23 @@ recorded with your Windows user name and the reason, exactly as the command line
 pass, query or view that reads it), or the next time the process that reads it starts. The window
 restarts nothing.
 
-**My current connection** adds a row with the address Windows reports for the client of this Remote
-Desktop session. Microsoft documents that this address is reported by the Remote Desktop client
-itself: behind NAT it is usually your own network's private address, through a VPN it can be another
-one, and through a Remote Desktop Gateway or the Store app there is none. Compare it with the Attacks
-view before relying on it. The button is disabled, with the reason in its tooltip, in a console
-session, when Windows has no address, and for an IPv6 client, whose layout Windows documents
-inconsistently; type the address instead.
+**My current connection** adds a row with the address **this server sees** for your Remote Desktop
+session - the address an attack would come from, and the one an allow-list has to name. It is read
+from the server's established connections to its Remote Desktop port (the port configured for the
+listener, not an assumed 3389). When several people are connected, this session's newest logon or
+reconnection record in the `TerminalServices-LocalSessionManager/Operational` log (events 21 and 25)
+says which connection is yours, and it is used only if that address is connected now. With exactly one
+connection and no such record, that connection is offered and the tooltip says so. Nothing is offered,
+and the tooltip says why, in a console session, when the connections cannot be read, when several
+people are connected and nothing says which one is you (the tooltip lists them so you can type the
+right one), and when your record names an address that is not connected now, as through a Remote
+Desktop Gateway. The window reads all this when it opens and on **Refresh**; the tooltip gives the
+time.
+
+The address your Remote Desktop client reports about itself is never offered. Microsoft documents that
+the client reports it: behind NAT it is your own network's private address, which never matches
+anything this server sees. When it differs from the address offered, the tooltip mentions it only to
+explain the difference.
 
 What the window will not do:
 

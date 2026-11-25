@@ -55,11 +55,11 @@ public partial class SettingsWindow : Window
 
     private readonly bool spanish;
     private readonly ISettingsStore store;
-    private readonly Func<RemoteClient> remote;
+    private readonly Func<OwnConnection> remote;
     private SettingsSnapshot? snapshot;
     private SettingRow? shown;
     private SettingEdit? edit;
-    private RemoteClient connection = RemoteClient.Failed(RemoteClient.QueryFailed);
+    private OwnConnection connection = OwnConnection.None(OwnConnection.Unknown, "not-read");
     private Task? loading;
     private Task? historyRead;
     private bool filling;
@@ -67,11 +67,11 @@ public partial class SettingsWindow : Window
     private bool closed;
 
     public SettingsWindow(bool spanish) : this(spanish,
-        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser), RemoteSession.Current)
+        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser), OwnConnectionReader.Read)
     {
     }
 
-    internal SettingsWindow(bool spanish, ISettingsStore store, Func<RemoteClient> remote)
+    internal SettingsWindow(bool spanish, ISettingsStore store, Func<OwnConnection> remote)
     {
         this.spanish = spanish;
         this.store = store;
@@ -133,8 +133,10 @@ public partial class SettingsWindow : Window
         Footer.Text = L("Reading the settings…", "Leyendo los ajustes…");
         try
         {
-            connection = remote();
+            // The connection is read alongside the store: the session log may take up to two seconds.
+            var own = Task.Run(remote);
             var read = await Task.Run(store.Read);
+            connection = await own;
             if (closed) return;
             snapshot = read;
             ShowAccess(read);
@@ -351,37 +353,72 @@ public partial class SettingsWindow : Window
             : L("The evidence store cannot be written; the notice above says why.",
                 "No se puede escribir en el almacén de evidencia; el aviso de arriba explica por qué.");
 
-    /// <summary>Enables "My current connection" only for an address Windows reported, and says why otherwise.</summary>
+    /// <summary>
+    /// Enables "My current connection" only for the address this server sees for this session, and
+    /// says why otherwise. The address the client reports about itself is mentioned, never offered.
+    /// </summary>
     private void ShowConnection(bool writable)
     {
         var address = connection.Address;
         ConnectionButton.IsEnabled = writable && address is not null;
-        ConnectionButton.ToolTip = address is not null
-            ? L($"Adds {address}: the address this Remote Desktop session's client reports to Windows. Behind NAT, a VPN or a gateway " +
-                "it can differ from the address this server sees, so compare it with the Attacks view before you rely on it.",
-                $"Añade {address}: la dirección que el cliente de esta sesión de Escritorio remoto comunica a Windows. Detrás de NAT, una VPN " +
-                "o una puerta de enlace puede no ser la que ve este servidor; compárela con la vista Ataques antes de fiarse de ella.") +
-                (writable ? "" : " " + NotWritable())
-            : ConnectionProblem(connection.Problem);
+        var read = L($" Read at {connection.ReadAt:HH:mm:ss} UTC; Refresh reads again.",
+            $" Leído a las {connection.ReadAt:HH:mm:ss} UTC; Actualizar vuelve a leer.");
+        ConnectionButton.ToolTip = ConnectionText() + ClientNote() + read + (address is not null && !writable ? " " + NotWritable() : "");
     }
 
-    private string ConnectionProblem(string? problem) => problem switch
+    private string ConnectionText()
     {
-        RemoteClient.NotRemote => L("This is not a Remote Desktop session, so there is no client address to add.",
-            "Esta no es una sesión de Escritorio remoto, así que no hay dirección de cliente que añadir."),
-        RemoteClient.NotReported => L("Windows has no client address for this session (a Remote Desktop Gateway or the Store app does not " +
-            "report one). Type the address instead.",
-            "Windows no tiene dirección de cliente para esta sesión (una puerta de enlace de Escritorio remoto o la aplicación de la Store " +
-            "no la comunican). Escriba la dirección."),
-        RemoteClient.Ipv6 => L("This session's client reported an IPv6 address, and Windows documents its layout inconsistently, so it is " +
-            "not read rather than guessed. Type the address instead.",
-            "El cliente de esta sesión comunicó una dirección IPv6, y Windows documenta su formato de forma contradictoria, así que no se " +
-            "lee para no adivinarla. Escriba la dirección."),
-        RemoteClient.OtherFamily => L("This session's client address is not an IP address.", "La dirección del cliente de esta sesión no es una dirección IP."),
-        _ => L("Windows could not say what this session's client address is. Type the address instead.",
-            "Windows no pudo indicar la dirección del cliente de esta sesión. Escriba la dirección.")
-    };
+        var address = connection.Address;
+        var peers = Peers();
+        var why = connection.Problem is null ? "" : $" ({DisplayText.Clean(connection.Problem, 60)})";
+        return connection.Code switch
+        {
+            OwnConnection.ThisSession => L($"Adds {address}: the address this server sees for this Remote Desktop session, connected now.",
+                $"Añade {address}: la dirección que este servidor ve para esta sesión de Escritorio remoto, conectada ahora."),
+            OwnConnection.OnlyConnection => L($"Adds {address}: the only Remote Desktop connection this server sees now. No logon record of " +
+                    $"this session named an address{why}.",
+                $"Añade {address}: la única conexión de Escritorio remoto que ve ahora este servidor. Ningún registro de inicio de sesión " +
+                    $"de esta sesión indicaba una dirección{why}."),
+            OwnConnection.NotRemote => L("This is not a Remote Desktop session, so there is no connection to add.",
+                "Esta no es una sesión de Escritorio remoto, así que no hay conexión que añadir."),
+            OwnConnection.Ambiguous => L($"This server sees several Remote Desktop connections ({peers}) and nothing says which one is this " +
+                    "session, so none is filled in. Type the right one.",
+                $"Este servidor ve varias conexiones de Escritorio remoto ({peers}) y nada indica cuál es esta sesión, así que no se " +
+                    "rellena ninguna. Escriba la correcta."),
+            OwnConnection.RecordNotConnected => L($"This session's logon record names {DisplayText.Clean(connection.Recorded, 64)}, but this " +
+                    $"server sees no Remote Desktop connection from it now (a Remote Desktop Gateway, or an older record), so it is not filled " +
+                    $"in. Connections now: {peers}. Type the address instead.",
+                $"El registro de inicio de esta sesión indica {DisplayText.Clean(connection.Recorded, 64)}, pero este servidor no ve ahora " +
+                    $"ninguna conexión de Escritorio remoto desde ella (una puerta de enlace de Escritorio remoto, o un registro antiguo), así " +
+                    $"que no se rellena. Conexiones ahora: {peers}. Escriba la dirección."),
+            OwnConnection.NoConnection => L("This server sees no established Remote Desktop connection now, so there is nothing to add. " +
+                    "Type the address instead.",
+                "Este servidor no ve ahora ninguna conexión de Escritorio remoto establecida, así que no hay nada que añadir. " +
+                    "Escriba la dirección."),
+            _ => connection.Problem == "session-type-unknown"
+                ? L("Windows could not say whether this is a Remote Desktop session, so nothing is filled in. Type the address instead.",
+                    "Windows no pudo indicar si esta es una sesión de Escritorio remoto, así que no se rellena nada. Escriba la dirección.")
+                : L($"This server's Remote Desktop connections could not be read{why}, so nothing is filled in. Type the address instead.",
+                    $"No se pudieron leer las conexiones de Escritorio remoto de este servidor{why}, así que no se rellena nada. " +
+                    "Escriba la dirección.")
+        };
+    }
 
+    /// <summary>The client's own report, only when it differs from what is offered, and only as an explanation.</summary>
+    private string ClientNote()
+    {
+        var reported = connection.ClientReported;
+        if (reported is null || reported == connection.Address) return "";
+        return L($" Your client reports {DisplayText.Clean(reported, 64)}, often its private address behind NAT; that one is not used.",
+            $" Su cliente comunica {DisplayText.Clean(reported, 64)}, a menudo su dirección privada detrás de NAT; esa no se usa.");
+    }
+
+    private string Peers()
+    {
+        if (connection.Peers.Count == 0) return L("none", "ninguna");
+        var shown = string.Join(", ", connection.Peers.Take(10).Select(p => DisplayText.Clean(p, 64)));
+        return connection.Peers.Count > 10 ? shown + L($" and {connection.Peers.Count - 10} more", $" y {connection.Peers.Count - 10} más") : shown;
+    }
     private async Task LoadHistoryAsync(SettingRow row)
     {
         HistoryRows.ItemsSource = Array.Empty<SettingHistoryRow>();
@@ -444,7 +481,7 @@ public partial class SettingsWindow : Window
 
     private void OnAddConnection(object sender, RoutedEventArgs e) => AddConnection();
 
-    /// <summary>Adds a row with the address Windows reports for this session's client. Never anything else.</summary>
+    /// <summary>Adds a row with the address this server sees for this session. Never the client's own report.</summary>
     internal void AddConnection()
     {
         if (edit is null || connection.Address is not { } address || !Writable) return;
@@ -459,8 +496,8 @@ public partial class SettingsWindow : Window
         if (edit.Kind == SettingEditorKind.AddressTable) edit.AddAddress(address);
         else if (edit.Kind == SettingEditorKind.StringList) edit.AddItem(address);
         else return;
-        StatusText.Text = L($"Added {address}, as this session's client reports it. Check it, give a reason, then save.",
-            $"Se añadió {address}, tal como lo comunica el cliente de esta sesión. Compruébela, indique un motivo y guarde.");
+        StatusText.Text = L($"Added {address}, the address this server sees for this session. Give a reason, then save.",
+            $"Se añadió {address}, la dirección que este servidor ve para esta sesión. Indique un motivo y guarde.");
     }
 
     private async void OnSave(object sender, RoutedEventArgs e) => await SaveAsync();
