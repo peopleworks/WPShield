@@ -439,6 +439,42 @@ ciclo de vida que responde a las peticiones de parada y apagado, y agrega el Reg
 Windows como segundo destino — de modo que un gateway que no arranca dice por qué en algún lugar
 donde un operador lo va a encontrar.
 
+## Almacén de evidencia
+
+La sección `Evidence` controla el recolector que registra los inicios de sesión fallidos de Windows en
+el almacén local de evidencia ([ADR 0007](adr/0007-almacen-local-de-evidencia.md); qué registra y cómo
+informa de los huecos está en [despliegue](despliegue.md#el-recolector-de-evidencia-y-event-log-readers)).
+
+```json
+"Evidence": {
+  "Enabled": true,
+  "Path": "C:\\ProgramData\\WPShield\\evidence\\wpshield-evidence.db"
+}
+```
+
+| Clave | Por omisión | Significado |
+| --- | --- | --- |
+| `Enabled` | `false` en el código, `true` en el `appsettings.json` publicado | Si el servicio recolecta o no. |
+| `Path` | `%ProgramData%\WPShield\evidence\wpshield-evidence.db` | El archivo de la base de datos. Debe ser absoluto y nombrar un archivo. |
+
+`Enabled` sigue la misma división que `Logging:File:Enabled`, por la misma razón: un despliegue lee el
+archivo publicado y recolecta, mientras que un host de pruebas que aporta su configuración en memoria
+recibe el valor del código y nunca toca el registro de Seguridad real ni el almacén real.
+
+Rara vez conviene cambiar `Path`. `wpshield install` crea y restringe sólo el directorio de la ruta
+por omisión, y **el recolector nunca crea un directorio**: uno creado por él heredaría los permisos de
+`C:\ProgramData`, que dejan leer la evidencia a todo usuario local. Apúntelo a otro sitio sólo si es un
+directorio restringido de la misma forma (SYSTEM y Administradores con control total, la cuenta del
+servicio con modificación, sin entradas heredadas, concedido por SID). Un directorio que falta se
+informa una vez como advertencia y el recolector queda inactivo; una ruta relativa o que sólo nombra
+un directorio impide el arranque como cualquier otro ajuste inválido.
+
+La retención no se configura aquí. Es un ajuste guardado en la propia base de evidencia
+(`retention.*`, validado contra su catálogo y auditado), que se vuelve a leer en cada poda horaria.
+
+La recolección sólo corre en Windows. En otra plataforma, una sección habilitada se informa al
+arrancar y no se recolecta nada.
+
 ## La configuración no se recarga en caliente
 
 Las opciones del gateway y de los sitios se validan una sola vez al arrancar y se capturan durante

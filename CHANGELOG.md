@@ -14,6 +14,11 @@ must complete first.
 
 ### Added
 
+- The WPShield service records failed Windows logons (Security 4625 and Remote Desktop's RdpCoreTS 140) into the evidence store, continuously: on start it catches up from the logs since the last stored record (at most the raw retention), then follows them live, writes every two seconds, extends its coverage every minute and prunes hourly with the current retention setting. A period is `collected` only while the Security log is actually read; otherwise it is `unavailable` with the reason, and a read bound, a log that starts later, a missing Remote Desktop channel or a full buffer is recorded as such. A failure is logged and retried with a back-off and never stops the gateway; a missing evidence directory is reported once and never created. It records history only. Configured by the new `Evidence` section (`Enabled`, on in the shipped `appsettings.json`; `Path`).
+- `wpshield evidence collect [--store <file>]` runs the same collector in the foreground until Ctrl+C, for validating a host without the service. It requires elevation and refuses while the `WPShield` service is running.
+- `wpshield install` creates `%ProgramData%\WPShield\evidence` with replaced permissions (SYSTEM and Administrators full control, the service modify, by SID) and prints the Event Log Readers command; `wpshield uninstall` keeps the evidence store and says so.
+- Preflight `PRE-020`: whether `NT SERVICE\WPShield` is in Event Log Readers (`S-1-5-32-573`), read by SID. A blocker with the by-SID `Add-LocalGroupMember` command once the service exists, and a blocker when membership cannot be read; information before the install. It never adds the account.
+
 - `WPShield.Evidence`, the local SQLite evidence store of ADR 0007 (accepted, with an amendment for settings and events): failed logons (detailed and hourly), block decisions, coverage intervals so gaps read as "no data", a generic `events` table for new kinds of evidence, and catalog-validated `settings` with an audited `settings_history`. Bounded by age, rows and file size (retention is itself a setting); fixed parameterised queries for every reader; no entry point accepts a stream or raw bytes. `AuthFailure` and the 4625/140 pairing rule moved here so the desktop and the store count attempts the same way. Tested on Linux as well.
 
 - The desktop monitor's **Attacks** view shows failed Windows logons (Security 4625, any logon type, and Remote Desktop's RdpCoreTS 140) for the last 24 hours and then live: totals, a timeline split into nonexistent accounts and the rest, one row per source address with its network neighbours, search, and a slide-in detail per source. It needs administrator rights and offers to reopen elevated; without them it shows `—`, never zero, and intervals the log no longer covers are drawn as "no data".
@@ -73,6 +78,7 @@ must complete first.
 
 ### Changed
 
+- `WPShield.SecurityMonitor` targets `net10.0` with an assembly-level `SupportedOSPlatform("windows")` instead of `net10.0-windows`, so the gateway can host the evidence collector; the platform analyzer still refuses any unguarded caller.
 - The README and bilingual GitHub Pages landing page now organize the gateway, host flow monitor
   and login evidence by operator task. A synthetic example shows the limits of SQL flow attribution.
 

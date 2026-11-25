@@ -423,6 +423,42 @@ pins its content root to the installation directory, installs the lifetime that 
 shutdown, and adds the Windows Event Log as a second destination — so a gateway that fails to start
 says why somewhere an operator will find it.
 
+## Evidence store
+
+The `Evidence` section controls the collector that records failed Windows logons into the local
+evidence store ([ADR 0007](adr/0007-local-evidence-store.md); what it records and how it reports
+gaps is in [deployment](deployment.md#the-evidence-collector-and-event-log-readers)).
+
+```json
+"Evidence": {
+  "Enabled": true,
+  "Path": "C:\\ProgramData\\WPShield\\evidence\\wpshield-evidence.db"
+}
+```
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `Enabled` | `false` in code, `true` in the shipped `appsettings.json` | Whether the service collects at all. |
+| `Path` | `%ProgramData%\WPShield\evidence\wpshield-evidence.db` | The database file. Must be absolute and name a file. |
+
+`Enabled` follows the same split as `Logging:File:Enabled`, for the same reason: a deployment reads
+the shipped file and collects, while a test host that supplies its settings in memory gets the code
+default and never touches the real Security log or the real store.
+
+`Path` is rarely worth changing. `wpshield install` creates and restricts the directory of the
+default path only, and **the collector never creates a directory**: one it created would inherit
+`C:\ProgramData`'s permissions, which let every local user read the evidence. Point it elsewhere only
+at a directory you have restricted the same way (SYSTEM and Administrators full control, the service
+account modify, no inherited entries, granted by SID). A missing directory is reported once as a
+warning and the collector stays idle; a relative or directory-only path refuses startup like any
+other invalid setting.
+
+Retention is not set here. It is a setting stored in the evidence database itself (`retention.*`,
+validated against its catalog and audited), read again at every hourly pruning pass.
+
+Collection runs on Windows only. On another platform an enabled section is reported at startup and
+nothing is collected.
+
 ## Configuration is not hot-reloaded
 
 Gateway and site options are validated once at startup and captured for the lifetime of the process.

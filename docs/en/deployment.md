@@ -85,7 +85,9 @@ What it does:
 
 - **Refuses to run if `-InstallPath` or `-LogPath` is inside a directory IIS serves**, before it has
   created, copied or registered anything. `--allow-web-root-paths` overrides it and warns.
-- Creates `C:\Program Files\WPShield` and `C:\ProgramData\WPShield\logs`.
+- Creates `C:\Program Files\WPShield`, `C:\ProgramData\WPShield\logs` and
+  `C:\ProgramData\WPShield\evidence`, the evidence store's directory (see
+  [the evidence collector](#the-evidence-collector-and-event-log-readers) below).
 - Copies the build, and the operator configuration if you pass one.
 - **Writes the log path into `Logging:File:Directory` in the installed `appsettings.json`.** Creating
   and hardening a directory the gateway was never told about hardens nothing; it only reports that it
@@ -93,10 +95,11 @@ What it does:
 - Registers a service named `WPShield`, and only ever that one.
 - Gives it the **virtual account `NT SERVICE\WPShield`** — no password to store anywhere, no account
   to manage, and a per-service identity that can be named in an ACL.
-- Replaces the permissions on both directories with three entries: SYSTEM and the local
+- Replaces the permissions on all three directories with three entries: SYSTEM and the local
   Administrators group get full control, the service account gets **read and execute** on the
-  program files and **modify** on the logs. Inheritance is disabled and the inherited entries are
-  discarded rather than copied, because copying them keeps exactly the broad access this removes.
+  program files and **modify** on the logs and on the evidence store. Inheritance is disabled and the
+  inherited entries are discarded rather than copied, because copying them keeps exactly the broad
+  access this removes.
 - Configures the service to restart itself after a crash: 5s, 15s, 60s.
 
 Principals are granted by well-known SID, not by name. `BUILTIN\Administrators` is
@@ -130,6 +133,53 @@ Two things changed. The installer writes the path it hardened into the configura
 reads, and the gateway **refuses to start** when it cannot write there. `Test-WPShieldScripts.ps1`
 now asserts that the installer's `-LogPath` default and the shipped `Logging:File:Directory` name the
 same directory, and exercises the edit against a real copy of the shipped file.
+
+### The evidence collector and Event Log Readers
+
+The service also records **failed Windows logons** - Security event 4625, any logon type, and Remote
+Desktop's RdpCoreTS event 140 - into the local evidence store of
+[ADR 0007](adr/0007-local-evidence-store.md),
+`C:\ProgramData\WPShield\evidence\wpshield-evidence.db`. It runs inside the gateway's process,
+because there is one WPShield service. On start it catches up from the Windows logs since the last
+record it stored (at most the raw retention, 14 days by default), then follows them live, writes every
+two seconds, prunes hourly, and records **coverage**: which periods it read, which it could not, and
+why. A quiet period and an unrecorded one never look alike.
+
+It is history. It blocks nothing, and nothing it stores is fed to a decision or restores a block.
+
+**One manual step is needed, and nothing in WPShield does it for you.** The service account must be a
+member of the built-in **Event Log Readers** group to read the Security log. Add it by SID, because
+the group's name is localized, from an elevated PowerShell:
+
+```powershell
+Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'
+Restart-Service WPShield
+```
+
+The restart matters: a service reads its group memberships when it starts. Until then the collector
+records every period as `unavailable` with the reason `access-denied`, and says so in the log with
+the command above. `wpshield preflight` reports the membership as `PRE-020`, a blocker once the
+service exists.
+
+The collector never creates its directory: one it created would inherit `C:\ProgramData`'s
+permissions, which let every local user read it. If the directory is missing it logs one warning
+naming `wpshield install` and stays idle until the service restarts. A failure of the store or of a
+log subscription is logged and retried with a back-off; it never stops the gateway.
+
+`Evidence:Enabled` (on in the shipped `appsettings.json`) turns it off; `Evidence:Path` moves the
+database. See [operator configuration](operator-configuration.md#evidence-store).
+
+To validate collection on a host before trusting the service with it, run the same collector in the
+foreground, elevated, with the service stopped:
+
+```powershell
+wpshield evidence collect
+wpshield evidence collect --store D:\evidence\wpshield-evidence.db
+```
+
+It stops on Ctrl+C, after writing what it buffered. It refuses to run while the `WPShield` service is
+running, because the service is the evidence writer, and refuses when the store's directory does not
+exist. A `--store` elsewhere must be in a directory restricted the same way; it is never created.
 
 ## 5. Confirm it listens, before touching IIS
 
@@ -218,6 +268,11 @@ overrides, for when you have confirmed the rule is disabled or the site is alrea
 
 Logs are **kept** by default. They are the record of what the gateway saw, and an uninstall during
 an incident is the worst moment to delete evidence. Pass `--remove-logs` when you mean it.
+
+The **evidence store is always kept**, and the uninstall says so: there is no flag to remove it. It is
+the record of what happened, for the same reason as the logs. Delete
+`C:\ProgramData\WPShield\evidence` by hand if you mean to. The service account's membership in
+Event Log Readers is not changed either; remove it yourself if you added it.
 
 The virtual account disappears with the service; there is no account left behind. The IIS bindings
 and rules you added by hand are still there — remove those yourself if the gateway is not coming

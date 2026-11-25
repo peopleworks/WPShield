@@ -69,6 +69,7 @@ producción.
 | `PRE-017` | **Qué otras aplicaciones ya pasan por ARR** — el radio de impacto del arreglo de `PRE-008`. |
 | `PRE-018` | Reglas atrapa-todo antes de las cuales debe ir la de WPShield. |
 | `PRE-019` | **¿Alguna parte de WPShield quedaría dentro de un directorio que IIS sirve?** |
+| `PRE-020` | **¿Puede la cuenta del servicio leer el registro de Seguridad?** Pertenencia a Event Log Readers, para el recolector de evidencia. |
 
 `PRE-016` es bloqueante y no advertencia. `C:\ProgramData` es el sitio convencional para un directorio
 de registros y su ACL por omisión concede lectura a `BUILTIN\Users` — así que un registro de WPShield
@@ -152,6 +153,32 @@ Esta comprobación existe porque pasó. WPShield se descomprimió en `C:\inetpub
 servidor para el cual se construyó este proyecto, y escribió su log ahí durante un día antes de que
 alguien leyera la primera línea. `wpshield install` ahora rechaza esa disposición de plano;
 `--allow-web-root-paths` lo permite con advertencia.
+
+## `PRE-020` — la cuenta del servicio y Event Log Readers
+
+El servicio registra los inicios de sesión fallidos de Windows en el almacén de evidencia (ADR 0007),
+leyendo el registro de Seguridad como `NT SERVICE\WPShield`. Para eso la cuenta tiene que estar en el
+grupo integrado **Event Log Readers** («Lectores del registro de eventos» en un Windows en español),
+`S-1-5-32-573`. La pertenencia a un grupo es un ajuste del servidor, así que la verificación previa la
+reporta e imprime el comando; nunca añade la cuenta:
+
+```powershell
+Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'
+Restart-Service WPShield
+```
+
+Por SID, porque el nombre del grupo está traducido. El reinicio, porque un servicio lee sus
+pertenencias a grupos cuando arranca.
+
+| Situación | Estado |
+| --- | --- |
+| El servicio aún no está instalado | `Info`, con el comando para después de instalar. La cuenta no se resuelve hasta que el servicio existe, así que un bloqueante aquí detendría `wpshield setup` en algo que nadie puede resolver todavía. |
+| Instalado, y es miembro | `Pass` |
+| Instalado, y no es miembro | `Blocker`. El almacén registraría cada periodo como no disponible. |
+| No se pudo leer la pertenencia | `Blocker`. «Nadie pudo mirar» no es «no es miembro». |
+
+Una vez que el servicio existe esto es bloqueante, así que `wpshield setup` se detiene en el paso 1
+hasta que se añada la cuenta.
 
 ## La ausencia de hallazgos no es un hallazgo
 

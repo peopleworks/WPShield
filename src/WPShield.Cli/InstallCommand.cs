@@ -29,6 +29,11 @@ internal static class InstallCommand
 
           It does not touch any service other than WPShield.
 
+          It does not add NT SERVICE\WPShield to Event Log Readers, which the evidence collector
+          needs to read the Security log. That is a server setting; it prints the by-SID command,
+          and 'wpshield preflight' reports it as PRE-020. It does create the evidence store's
+          directory, %ProgramData%\WPShield\evidence, with replaced permissions.
+
           It does not write appsettings.Local.json. That file carries real hostnames and topology; it
           belongs to the operator, and 'wpshield preflight' prints its contents to be pasted.
 
@@ -95,6 +100,9 @@ internal static class UninstallCommand
           --force               Proceed even though a WPShield rewrite rule is still present, or
                                 even though IIS could not be read at all.
           --dry-run             Print every step without doing any of it.
+
+        The evidence store (%ProgramData%\WPShield\evidence) is always kept; there is no option to
+        remove it. Delete it by hand if you mean to.
 
         READ THIS FIRST, BECAUSE IT IS THE MISTAKE THIS CANNOT UNDO:
           If the IIS rewrite rule is still enabled, removing this service TAKES THE SITE DOWN. IIS
