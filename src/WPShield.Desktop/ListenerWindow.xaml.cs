@@ -18,6 +18,7 @@ public partial class ListenerWindow : Window
     private PortTrafficWindow? portTrafficWindow;
     private AuditReferenceWindow? auditWindow;
     private AttacksWindow? attacksWindow;
+    private SettingsWindow? settingsWindow;
     private IReadOnlyList<LocalListenerInventory.Table> latest = [];
 
     public ListenerWindow()
@@ -32,6 +33,7 @@ public partial class ListenerWindow : Window
         PortTrafficButton.Content = L("Port traffic", "Tráfico por puertos");
         AuditButton.Content = L("Audit references", "Referencias de auditoría");
         AttacksButton.Content = L("Attacks", "Ataques");
+        SettingsButton.Content = L("Settings", "Ajustes");
         AllProtocols.Content = L("All protocols", "Todos los protocolos");
         PreviewLabel.Text = L("Research preview", "Vista previa de investigación");
         RefreshButton.Content = L("Refresh", "Actualizar");
@@ -85,8 +87,11 @@ public partial class ListenerWindow : Window
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
-        // "Reopen as administrator" in the attacks view relaunches with --attacks to land there again.
-        if (Environment.GetCommandLineArgs().Contains("--attacks")) OpenAttacks(this, e);
+        // "Reopen as administrator" in the attacks and settings views relaunches with --attacks or
+        // --settings to land there again.
+        var args = Environment.GetCommandLineArgs();
+        if (args.Contains("--attacks")) OpenAttacks(this, e);
+        if (args.Contains("--settings")) OpenSettings(this, e);
         await RefreshAsync();
     }
 
@@ -102,6 +107,21 @@ public partial class ListenerWindow : Window
         {
             if (attacksWindow.WindowState == WindowState.Minimized) attacksWindow.WindowState = WindowState.Normal;
             attacksWindow.Activate();
+        }
+    }
+
+    private void OpenSettings(object sender, RoutedEventArgs e)
+    {
+        if (settingsWindow is null)
+        {
+            settingsWindow = new SettingsWindow(spanish) { Owner = this };
+            settingsWindow.Closed += (_, _) => settingsWindow = null;
+            settingsWindow.Show();
+        }
+        else
+        {
+            if (settingsWindow.WindowState == WindowState.Minimized) settingsWindow.WindowState = WindowState.Normal;
+            settingsWindow.Activate();
         }
     }
 
