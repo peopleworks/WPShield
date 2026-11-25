@@ -65,7 +65,11 @@ internal static partial class ReportRenderer
         return report.Question is null ? heading : heading + Environment.NewLine + (es ? "Pregunta: " : "Question: ") + report.Question;
     }
 
-    private static string Subject(AnalystReport report) => report.Role == "ask" ? report.Question ?? "" : report.Subject ?? "";
+    private static string Subject(AnalystReport report)
+    {
+        var subject = report.Role == "ask" ? report.Question ?? "" : report.Subject ?? "";
+        return subject.Length <= 80 ? subject : subject[..77] + "...";
+    }
 
     private static string Reason(AnalystReport report) => report.StopReason is null ? "" : $" ({report.StopReason})";
 

@@ -73,6 +73,7 @@ public sealed class MessagesProviderTests
         Assert.Contains(MessagesProvider.FallbackBeta, request.Headers["anthropic-beta"], StringComparison.Ordinal);
         Assert.Equal("default", (string)request.Json["fallbacks"]!);
         Assert.Equal("high", (string)request.Json["output_config"]!["effort"]!);
+        Assert.Equal("ephemeral", (string)request.Json["cache_control"]!["type"]!);
     }
 
     [Fact]
@@ -177,6 +178,21 @@ public sealed class MessagesProviderTests
         Assert.Equal(HttpMethod.Get, request.Method);
         Assert.Equal("https://relay.example/v1/auth/whoami", request.Uri.ToString());
         Assert.Equal(Key, request.Headers["x-api-key"]);
+    }
+
+    [Fact]
+    public async Task ARelayUnderAPathPrefixKeepsItForBothLanes()
+    {
+        var handler = new FakeHandler()
+            .ThenJson("""{"proyecto":"wpshield-example"}""")
+            .ThenJson(FakeHandler.Message("end_turn", FakeHandler.Text("ok")));
+        using var provider = MessagesProvider.Relay(Key, new Uri("https://relay.example/gateway"), "claude-opus-5-5", "medium", handler);
+
+        await provider.TestAsync(CancellationToken.None);
+        await provider.Begin(Spec()).NextAsync([], CancellationToken.None);
+
+        Assert.Equal("/gateway/v1/auth/whoami", handler.Requests[0].Uri.AbsolutePath);
+        Assert.Equal("/gateway/v1/messages", handler.Requests[1].Uri.AbsolutePath);
     }
 
     [Fact]

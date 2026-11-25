@@ -110,7 +110,8 @@ internal sealed class MessagesProvider : IAnalystProvider, IDisposable
     /// </summary>
     private async Task<ProviderCheck> WhoAmIAsync(CancellationToken cancellationToken)
     {
-        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(baseUrl, "v1/auth/whoami"));
+        // Resolved against the base with a trailing slash, so a Relay under a path prefix keeps its prefix.
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(new Uri(baseUrl.ToString().TrimEnd('/') + "/"), "v1/auth/whoami"));
         request.Headers.Add("x-api-key", key);
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -229,6 +230,9 @@ internal sealed class MessagesProvider : IAnalystProvider, IDisposable
             ToolChoice = new BetaToolChoiceAuto(),
             Thinking = new BetaThinkingConfigAdaptive(),
             OutputConfig = new BetaOutputConfig { Effort = EffortOf(provider.effort) },
+            // Every turn re-sends the conversation; caching its prefix makes those re-reads cheaper. The
+            // budget still counts cached input tokens as input tokens.
+            CacheControl = new BetaCacheControlEphemeral(),
             // Server-side fallback on a refusal, on the Anthropic API only: the Relay forwards to a host
             // whose configuration WPShield does not know, and it offers no such retry.
             Betas = provider.IsRelay ? null : [FallbackBeta],
