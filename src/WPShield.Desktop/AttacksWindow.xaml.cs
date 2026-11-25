@@ -13,6 +13,7 @@ using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using WPShield.Cli;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 using WPShield.SecurityMonitor;
 
 namespace WPShield.Desktop;
@@ -33,6 +34,11 @@ namespace WPShield.Desktop;
 /// store through <see cref="IAttackStore"/>, read off the interface thread and kept until the next
 /// refresh; when the store cannot be opened those chips are disabled and say why. Labels from the
 /// store's <c>labels.addresses</c> setting are shown in every range when the store can be read.
+/// </para>
+/// <para>
+/// The decision engine's records (ADR 0009) are shown the same way: a column marks each source with the
+/// decision in force about it or its network - "—" when the store could not be read, empty when nothing
+/// is in force - and a source's detail lists its decisions. Monitor only: the words say "would block".
 /// </para>
 /// </remarks>
 public partial class AttacksWindow : Window
@@ -63,6 +69,10 @@ public partial class AttacksWindow : Window
     private string? storedError;
     private StoredDetail? storedDetail;
     private Task? storedDetailRead;
+    private ActiveDecisions? decisions;
+    private DecisionDetail? decisionDetail;
+    private Task? decisionDetailRead;
+    private bool probing;
     private bool securityReadable;
     private bool reading;
     private bool closed;
@@ -70,6 +80,9 @@ public partial class AttacksWindow : Window
 
     /// <summary>The detail of one source in a stored range: read, being read, or failed.</summary>
     private sealed record StoredDetail(AttackRange Range, string Address, AttackDetail? Detail, bool Loading, string? Error);
+
+    /// <summary>One source's decisions from the store: read, being read, or failed.</summary>
+    private sealed record DecisionDetail(string Address, IReadOnlyList<DecisionRecord>? Rows, bool Loading, string? Error);
 
     public AttacksWindow(bool spanish) : this(spanish, end => AuthFailureFeed.ReadRecent(end, TimeSpan.FromHours(24)),
         AuthFailureFeed.Watch, new EvidenceAttackStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated))
@@ -115,7 +128,8 @@ public partial class AttacksWindow : Window
         DetailRecentLabel.Text = L("Latest attempts", "Últimos intentos");
         string[] headers = [L("Address", "Dirección"), L("Label", "Etiqueta"), L("Attempts", "Intentos"), L("Accounts", "Cuentas"),
             L("Most tried", "Más probadas"), L("Nonexistent", "Inexistentes"), L("Type", "Tipo"), L("Network", "Red"),
-            L("Neighbors", "Vecinas"), L("Last (UTC)", "Último (UTC)")];
+            L("Neighbors", "Vecinas"), L("Decision", "Decisión"), L("Last (UTC)", "Último (UTC)")];
+        DetailDecisionsLabel.Text = L("Decisions, last 30 days (Monitor: nothing is blocked)", "Decisiones, últimos 30 días (Monitor: no se bloquea nada)");
         for (var i = 0; i < headers.Length; i++) Rows.Columns[i].Header = headers[i];
         RangeWeek.ToolTip = RangeMonth.ToolTip = L("Checking the WPShield evidence store…", "Comprobando el almacén de evidencia de WPShield…");
         RangeDay.IsChecked = true;
@@ -171,16 +185,19 @@ public partial class AttacksWindow : Window
     {
         stored.Clear();
         storedDetail = null;
+        decisionDetail = null;
         if (store is null)
         {
             ShowStore(EvidenceProblem.Missing);
             return;
         }
+        probing = true;
         try
         {
-            var status = await Task.Run(() => store.Probe());
+            var status = await Task.Run(() => store.Probe(DateTimeOffset.UtcNow));
             if (closed) return;
             labels = status.Labels;
+            decisions = status.Decisions;
             ShowStore(null);
             if (!defaultApplied)
             {
@@ -198,6 +215,10 @@ public partial class AttacksWindow : Window
             if (closed) return;
             ShowStore(EvidenceProblem.Unreadable);
         }
+        finally
+        {
+            probing = false;
+        }
         if (closed || !IsLoaded) return;
         if (StoredAttackBoard.IsStored(range)) await LoadStoredAsync();
         // Only redraw a board that was drawn: after a failed live read the footer holds the reason.
@@ -208,6 +229,7 @@ public partial class AttacksWindow : Window
     private void ShowStore(EvidenceProblem? problem)
     {
         storeProblem = problem;
+        if (problem is not null) decisions = null;
         var available = problem is null;
         RangeWeek.IsEnabled = RangeMonth.IsEnabled = available;
         RangeWeek.ToolTip = RangeMonth.ToolTip = problem switch
@@ -379,6 +401,8 @@ public partial class AttacksWindow : Window
                 : L("No data: the evidence store could not be read. ", "Sin datos: no se pudo leer el almacén de evidencia. ") + storedError);
             return;
         }
+        // Nobody could look is "—", never an empty cell that would read as "no decision".
+        view = AttackDecisions.Apply(view, storeProblem is null ? decisions : null, spanish);
         RenderCards(view);
         RenderChart(view.Buckets);
         var previous = selected;
@@ -401,6 +425,9 @@ public partial class AttacksWindow : Window
                     " · agregados por hora: los nombres de cuenta ya no se guardan para este periodo"))
             : L($"{view.Rows.Count:N0} of {view.MatchingRows:N0} sources shown · {board.Count:N0} records in memory",
                 $"{view.Rows.Count:N0} de {view.MatchingRows:N0} orígenes · {board.Count:N0} registros en memoria");
+        Footer.Text += " · " + (probing && store is not null
+            ? L("decisions: reading…", "decisiones: leyendo…")
+            : AttackDecisions.Status(storeProblem is null && store is not null ? decisions : null, spanish));
         if (selected is not null) RenderDetail(selected);
     }
 
@@ -592,6 +619,59 @@ public partial class AttacksWindow : Window
             : detail.Recent.Select(f =>
                 $"{f.Timestamp.ToString(time, CultureInfo.InvariantCulture)}   {(f.Account.Length > 0 ? DisplayText.Clean(f.Account, 32) : "—")}   ·   {AuthReason(f.Reason)}" +
                 (f.LogonType is int t ? $"   ·   {LogonTypes(t.ToString(CultureInfo.InvariantCulture))}" : "")).ToArray();
+        RenderDecisions(address);
+    }
+
+    /// <summary>The selected source's decisions, read from the store off the interface thread.</summary>
+    private void RenderDecisions(string address)
+    {
+        if (store is null || storeProblem is not null)
+        {
+            DetailDecisions.ItemsSource = new[] { L("Not read: the evidence store is not available, so nobody could look.",
+                "Sin lectura: el almacén de evidencia no está disponible, así que nadie pudo mirar.") };
+            return;
+        }
+        if (decisionDetail is not { } state || state.Address != address)
+        {
+            _ = LoadDecisionDetailAsync(address);
+            return;
+        }
+        DetailDecisions.ItemsSource = state.Loading
+            ? new[] { L("Reading the evidence store…", "Leyendo el almacén de evidencia…") }
+            : state.Error is not null
+                ? new[] { state.Error }
+                : state.Rows!.Count == 0
+                    ? new[] { L("No decision about this address or its network.", "Ninguna decisión sobre esta dirección o su red.") }
+                    : state.Rows.Select(d => AttackDecisions.Line(d, spanish)).ToArray();
+    }
+
+    /// <summary>Asks the store for one source's decisions, unless that read is already running.</summary>
+    internal Task LoadDecisionDetailAsync(string address)
+    {
+        if (decisionDetail is { Loading: true } running && running.Address == address && decisionDetailRead is not null)
+            return decisionDetailRead;
+        return decisionDetailRead = ReadDecisionDetailAsync(address);
+    }
+
+    private async Task ReadDecisionDetailAsync(string address)
+    {
+        if (store is null || storeProblem is not null) return;
+        decisionDetail = new DecisionDetail(address, null, true, null);
+        DetailDecisions.ItemsSource = new[] { L("Reading the evidence store…", "Leyendo el almacén de evidencia…") };
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var rows = await Task.Run(() => store.Decisions(address, now - AttackDecisions.DetailSpan, now.AddMinutes(1)));
+            if (closed) return;
+            decisionDetail = new DecisionDetail(address, rows, false, null);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (closed) return;
+            decisionDetail = new DecisionDetail(address, null, false,
+                L("The evidence store could not be read: ", "No se pudo leer el almacén de evidencia: ") + DisplayText.Clean(ex.Message, 200));
+        }
+        if (selected == address) RenderDecisions(address);
     }
 
     private void ClearDetail(string address, string message)
@@ -600,7 +680,7 @@ public partial class AttacksWindow : Window
         DetailLabel.Visibility = Visibility.Collapsed;
         DetailNoteBox.Visibility = Visibility.Collapsed;
         DetailSummary.Text = message;
-        DetailAccounts.ItemsSource = DetailNeighbors.ItemsSource = DetailRecent.ItemsSource = null;
+        DetailAccounts.ItemsSource = DetailNeighbors.ItemsSource = DetailRecent.ItemsSource = DetailDecisions.ItemsSource = null;
         DetailPlot.Children.Clear();
     }
 

@@ -1,10 +1,11 @@
 using WPShield.Cli;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 
 namespace WPShield.Desktop;
 
-/// <summary>What opening the store told the window: the labels, and the range to open with.</summary>
-internal sealed record AttackStoreStatus(AddressLabels Labels, string DefaultRange);
+/// <summary>What opening the store told the window: the labels, the range to open with, and the decisions in force.</summary>
+internal sealed record AttackStoreStatus(AddressLabels Labels, string DefaultRange, ActiveDecisions Decisions);
 
 /// <summary>One read of the evidence store for a 7-day or 30-day range, kept until the next refresh.</summary>
 /// <param name="LastHour">Attempts in the last hour, or <see langword="null"/> when the service recorded none of it.</param>
@@ -20,7 +21,10 @@ internal sealed record StoredAttacks(AttackRange Range, EvidenceWindow Window, E
 /// </summary>
 internal interface IAttackStore
 {
-    AttackStoreStatus Probe();
+    AttackStoreStatus Probe(DateTimeOffset now);
+
+    /// <summary>Decisions about one address and its /24 or /64, newest first.</summary>
+    IReadOnlyList<DecisionRecord> Decisions(string address, DateTimeOffset from, DateTimeOffset to);
 
     StoredAttacks Read(AttackRange range, DateTimeOffset now);
 
@@ -29,10 +33,17 @@ internal interface IAttackStore
 
 internal sealed class EvidenceAttackStore(string path, Func<bool> elevated) : IAttackStore
 {
-    public AttackStoreStatus Probe()
+    public AttackStoreStatus Probe(DateTimeOffset now)
     {
         using var store = EvidenceAccess.OpenReadOnly(path, elevated());
-        return new(AddressLabels.Read(store), AttacksCommand.DefaultRange(new EvidenceSettings(store)));
+        return new(AddressLabels.Read(store), AttacksCommand.DefaultRange(new EvidenceSettings(store)),
+            new EvidenceQueries(store).ActiveDecisions(now));
+    }
+
+    public IReadOnlyList<DecisionRecord> Decisions(string address, DateTimeOffset from, DateTimeOffset to)
+    {
+        using var store = EvidenceAccess.OpenReadOnly(path, elevated());
+        return new EvidenceQueries(store).DecisionsAbout(address, from, to, AttackDecisions.DetailRows);
     }
 
     public StoredAttacks Read(AttackRange range, DateTimeOffset now)
@@ -126,4 +137,62 @@ internal static class StoredAttackBoard
         new(bucket.Start, bucket.End, Int(bucket.UnknownAccount), Int(bucket.Attempts - bucket.UnknownAccount), bucket.Covered);
 
     private static int Int(long value) => (int)Math.Clamp(value, 0, int.MaxValue);
+}
+
+/// <summary>
+/// The decision engine's records as the attacks view shows them (ADR 0009): a mark per source for the
+/// decision in force, and the lines of a source's detail. Monitor only - the words say "would", never
+/// "blocked".
+/// </summary>
+/// <remarks>
+/// A store that could not be read marks every source "—": nobody could look, which is not the same as
+/// no decision. A readable store with nothing in force leaves the cell empty.
+/// </remarks>
+internal static class AttackDecisions
+{
+    internal const int DetailRows = 50;
+    internal static readonly TimeSpan DetailSpan = TimeSpan.FromDays(30);
+
+    internal static string Mark(ActiveDecisions? decisions, string address, bool spanish) =>
+        decisions is null ? StoredAttackBoard.NotAsked
+        : decisions.For(address) is { } decision ? Action(decision.Action, spanish)
+        : "";
+
+    internal static AttackView Apply(AttackView view, ActiveDecisions? decisions, bool spanish) =>
+        view with { Rows = view.Rows.Select(r => r with { Decision = Mark(decisions, r.Address, spanish) }).ToArray() };
+
+    internal static string Action(string action, bool spanish) => action switch
+    {
+        DecisionActions.WouldBlock => spanish ? "bloquearía" : "would block",
+        DecisionActions.Protected => spanish ? "protegida" : "protected",
+        DecisionActions.Refused => spanish ? "rechazada" : "refused",
+        DecisionActions.Report => spanish ? "informe" : "report",
+        DecisionActions.Expire => spanish ? "terminó" : "ended",
+        _ => DisplayText.Clean(action, 16)
+    };
+
+    /// <summary>One line of a source's detail. The reason is the engine's stored English text, cleaned.</summary>
+    internal static string Line(DecisionRecord decision, bool spanish)
+    {
+        var time = decision.Timestamp.ToUniversalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+        var until = decision.ExpiresAt is { } expires && decision.Action != DecisionActions.Expire
+            ? (spanish ? " hasta " : " until ") + expires.ToUniversalTime().ToString("yyyy-MM-dd HH:mm", System.Globalization.CultureInfo.InvariantCulture)
+            : "";
+        return $"{time}  {Action(decision.Action, spanish)}{until}  ·  {DisplayText.Clean(decision.RuleId, 16)}  ·  " +
+            $"{DisplayText.Clean(decision.Target, 64)}  ·  {DisplayText.Clean(decision.Reason, 200)}";
+    }
+
+    /// <summary>What the footer says about decisions, so an empty column is never read as "the engine looked and found nothing".</summary>
+    internal static string Status(ActiveDecisions? decisions, bool spanish)
+    {
+        if (decisions is null)
+            return spanish ? "decisiones: sin lectura (almacén de evidencia no disponible)" : "decisions: not read (evidence store unavailable)";
+        if (decisions.EngineStarted is null)
+            return spanish ? "decisiones: el motor de decisiones nunca se ejecutó" : "decisions: the decision engine has never run";
+        if (!decisions.CollectorCurrent)
+            return spanish ? "decisiones: ninguna vigente, el servicio no está registrando" : "decisions: none in force, the service is not recording";
+        return spanish
+            ? $"decisiones vigentes: {decisions.Decisions.Count:N0} (Monitor: no se bloquea nada)"
+            : $"decisions in force: {decisions.Decisions.Count:N0} (Monitor: nothing is blocked)";
+    }
 }

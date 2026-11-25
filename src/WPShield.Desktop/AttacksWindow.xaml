@@ -160,6 +160,8 @@
               <DataGridTextColumn Binding="{Binding LogonTypes}" Width="80" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Network}" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Neighbors}" Width="80" ElementStyle="{StaticResource CellText}"/>
+              <!-- The decision in force (Monitor). Before "Last", which the code finds as the last column. -->
+              <DataGridTextColumn Binding="{Binding Decision}" Width="110" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Last, StringFormat=HH:mm:ss}" Width="100" ElementStyle="{StaticResource CellText}"/>
             </DataGrid.Columns>
           </DataGrid>
@@ -201,6 +203,14 @@
             <ItemsControl x:Name="DetailAccounts" ItemTemplate="{StaticResource Line}" Margin="0,0,0,14"/>
             <TextBlock x:Name="DetailNeighborsLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
             <ItemsControl x:Name="DetailNeighbors" ItemTemplate="{StaticResource Line}" Margin="0,0,0,14"/>
+            <TextBlock x:Name="DetailDecisionsLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <ItemsControl x:Name="DetailDecisions" Margin="0,0,0,14">
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <TextBlock Text="{Binding}" TextWrapping="Wrap" FontSize="12" Margin="0,1"/>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
             <TextBlock x:Name="DetailRecentLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
             <ItemsControl x:Name="DetailRecent" ItemTemplate="{StaticResource Line}"/>
           </StackPanel>

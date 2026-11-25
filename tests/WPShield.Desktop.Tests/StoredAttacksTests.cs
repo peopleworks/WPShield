@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text.Json.Nodes;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 using WPShield.SecurityMonitor;
 using Xunit;
 
@@ -182,7 +183,7 @@ public sealed class StoredAttacksTests : IDisposable
         Week();
         Fill(store => new EvidenceSettings(store).Set("attacks.default_range", "\"30d\"", "test", "a month"));
 
-        var status = Store().Probe();
+        var status = Store().Probe(Now);
 
         Assert.Equal("30d", status.DefaultRange);
         Assert.Equal("My office", status.Labels.For("198.51.100.7"));
@@ -191,7 +192,7 @@ public sealed class StoredAttacksTests : IDisposable
     [Fact]
     public void WithoutElevationAMissingStoreIsCouldNotLook()
     {
-        var refusal = Assert.ThrowsAny<Exception>(() => Store(elevated: false).Probe());
+        var refusal = Assert.ThrowsAny<Exception>(() => Store(elevated: false).Probe(Now));
 
         Assert.Contains("not elevated", refusal.Message, StringComparison.Ordinal);
     }
@@ -211,6 +212,88 @@ public sealed class StoredAttacksTests : IDisposable
         Assert.Equal("", board.View(Now, AttackRange.Day, "").Rows[0].Label);
     }
 
+    // =============================================================================================
+    //  Decisions (ADR 0009): a mark per source and a source's list. Monitor only.
+    // =============================================================================================
+
+    private static DecisionRecord Decision(double minutesAgo, string action, string target, double? lastsMinutes = 60,
+        string rule = DecisionRules.RepeatedFailures) =>
+        new(Now.AddMinutes(-minutesAgo), action, target, rule, DecisionActions.MonitorMode, "10 failed logons in 4 minutes (threshold 10 in 10 minutes)",
+            AttemptPairing.SecurityChannel, lastsMinutes is null ? null : Now.AddMinutes(-minutesAgo + lastsMinutes.Value));
+
+    private void Decided(params DecisionRecord[] decisions)
+    {
+        Week();
+        Fill(store =>
+        {
+            var writer = new EvidenceWriter(store);
+            writer.BeginCoverage(EvidenceWriter.RawSource, Now.AddMinutes(-1), Now);
+            writer.RecordEngineStart(Now.AddHours(-2));
+            foreach (var decision in decisions) writer.RecordDecision(decision);
+        });
+    }
+
+    [Fact]
+    public void TheProbeReadsTheDecisionsInForceAndTheViewMarksThem()
+    {
+        Decided(Decision(30, DecisionActions.WouldBlock, "203.0.113.0/24", rule: DecisionRules.Network),
+            Decision(20, DecisionActions.Protected, "198.51.100.7"),
+            Decision(10, DecisionActions.Report, "203.0.113.11", lastsMinutes: null, rule: DecisionRules.SharedAccount));
+
+        var status = Store().Probe(Now);
+        var view = AttackDecisions.Apply(StoredAttackBoard.View(Store().Read(AttackRange.Week, Now), ""), status.Decisions, spanish: false);
+
+        Assert.Equal(2, status.Decisions.Decisions.Count);
+        // The network decision covers both of its addresses; a report is never "in force".
+        Assert.Equal("would block", view.Rows.Single(r => r.Address == "203.0.113.10").Decision);
+        Assert.Equal("would block", view.Rows.Single(r => r.Address == "203.0.113.11").Decision);
+        Assert.Equal("protected", view.Rows.Single(r => r.Address == "198.51.100.7").Decision);
+    }
+
+    [Fact]
+    public void AStoreNobodyCouldReadMarksADashAndNothingInForceMarksNothing()
+    {
+        Decided(Decision(30, DecisionActions.WouldBlock, "198.51.100.7"));
+        var active = Store().Probe(Now).Decisions;
+
+        Assert.Equal(StoredAttackBoard.NotAsked, AttackDecisions.Mark(null, "203.0.113.10", spanish: false));
+        Assert.Equal("", AttackDecisions.Mark(active, "203.0.113.10", spanish: false));
+        Assert.Equal("bloquearía", AttackDecisions.Mark(active, "198.51.100.7", spanish: true));
+    }
+
+    [Fact]
+    public void TheFooterSaysWhyNothingIsInForce()
+    {
+        Week();
+        var never = Store().Probe(Now).Decisions;
+        Fill(store => new EvidenceWriter(store).RecordEngineStart(Now.AddDays(-1)));
+        // The week's coverage ends a minute before Now: recording. An hour later, it is not.
+        var stopped = Store().Probe(Now.AddHours(1)).Decisions;
+
+        Assert.Contains("never run", AttackDecisions.Status(never, spanish: false), StringComparison.Ordinal);
+        Assert.Contains("not recording", AttackDecisions.Status(stopped, spanish: false), StringComparison.Ordinal);
+        Assert.Contains("no está registrando", AttackDecisions.Status(stopped, spanish: true), StringComparison.Ordinal);
+        Assert.Contains("not read", AttackDecisions.Status(null, spanish: false), StringComparison.Ordinal);
+        Assert.Contains("Monitor: nothing is blocked", AttackDecisions.Status(Store().Probe(Now).Decisions, spanish: false), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ASourcesDecisionsIncludeItsNetworksAndSayWouldNeverBlocked()
+    {
+        Decided(Decision(30, DecisionActions.WouldBlock, "203.0.113.0/24", rule: DecisionRules.Network),
+            Decision(20, DecisionActions.WouldBlock, "203.0.113.10"),
+            Decision(10, DecisionActions.Expire, "203.0.113.10", lastsMinutes: null),
+            Decision(5, DecisionActions.WouldBlock, "198.51.100.7"));
+
+        var rows = Store().Decisions("203.0.113.10", Now.AddDays(-30), Now.AddMinutes(1));
+        var lines = rows.Select(d => AttackDecisions.Line(d, spanish: false)).ToArray();
+
+        Assert.Equal(3, rows.Count);
+        Assert.StartsWith("2026-11-24 11:50  ended  ·  HOST-AUTH-001  ·  203.0.113.10", lines[0], StringComparison.Ordinal);
+        Assert.StartsWith("2026-11-24 11:30  would block until 2026-11-24 12:30  ·  HOST-AUTH-003  ·  203.0.113.0/24", lines[2], StringComparison.Ordinal);
+        Assert.All(lines, l => Assert.DoesNotContain("blocked", l, StringComparison.Ordinal));
+        Assert.Contains("hasta", AttackDecisions.Line(rows[1], spanish: true), StringComparison.Ordinal);
+    }
     [Theory]
     [InlineData(1, "12:00–12:01 UTC")]
     [InlineData(60, "2026-11-24 12:00–13:00 UTC")]

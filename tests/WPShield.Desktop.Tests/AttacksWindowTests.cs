@@ -2,6 +2,7 @@ using System.Net;
 using System.Windows;
 using System.Windows.Controls;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 using WPShield.SecurityMonitor;
 using Xunit;
 
@@ -215,6 +216,72 @@ public sealed class AttacksWindowTests
             }
         });
 
+    [Fact]
+    public Task TheDecisionColumnMarksSourcesInEveryRangeAndTheDetailListsTheirDecisions() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var path = TempStore(store =>
+            {
+                var writer = new EvidenceWriter(store);
+                writer.BeginCoverage(EvidenceWriter.RawSource, now.AddDays(-8), now);
+                writer.Append([Failure(now.AddDays(-2), "203.0.113.10", "admin", 1), Failure(now.AddDays(-2), "198.51.100.7", "pedro", 2)]);
+                writer.RecordEngineStart(now.AddHours(-1));
+                writer.RecordDecision(new(now.AddMinutes(-10), DecisionActions.WouldBlock, "203.0.113.10", DecisionRules.RepeatedFailures,
+                    DecisionActions.MonitorMode, "10 failed logons in 4 minutes (threshold 10 in 10 minutes)", AttemptPairing.SecurityChannel,
+                    now.AddMinutes(50)));
+            });
+            var window = new AttacksWindow(false, end => Snapshot(end, "read", null, Failure(end.AddHours(-1), "203.0.113.10", "admin", 9)),
+                (_, _) => new NoWatch(), new EvidenceAttackStore(path, () => true));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                // 24 h, from the Security log: the mark comes from the store all the same.
+                Assert.Equal("would block", Assert.IsType<AttackSource>(window.Rows.Items[0]).Decision);
+                Assert.Contains("decisions in force: 1 (Monitor: nothing is blocked)", window.Footer.Text, StringComparison.Ordinal);
+                Assert.Equal("Decision", window.Rows.Columns[^2].Header);
+
+                window.RangeWeek.IsChecked = true;
+                await window.LoadStoredAsync();
+                var rows = window.Rows.Items.Cast<AttackSource>().ToArray();
+                Assert.Equal("would block", rows.Single(r => r.Address == "203.0.113.10").Decision);
+                Assert.Equal("", rows.Single(r => r.Address == "198.51.100.7").Decision);
+
+                var top = rows.Single(r => r.Address == "203.0.113.10");
+                window.Rows.SelectedItem = top;
+                await window.LoadStoredDetailAsync(top.Address);
+                await window.LoadDecisionDetailAsync(top.Address);
+                var line = Assert.Single(window.DetailDecisions.ItemsSource.Cast<string>());
+                Assert.Contains("would block until", line, StringComparison.Ordinal);
+                Assert.Contains("HOST-AUTH-001", line, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
+    public Task WithoutAStoreTheDecisionColumnSaysNobodyCouldLook() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var window = new AttacksWindow(false, end => Snapshot(end, "read", null, Failure(end.AddHours(-1), "203.0.113.10", "admin", 9)),
+                (_, _) => new NoWatch());
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                var row = Assert.IsType<AttackSource>(window.Rows.Items[0]);
+                Assert.Equal("—", row.Decision);
+                Assert.Contains("decisions: not read", window.Footer.Text, StringComparison.Ordinal);
+
+                window.Rows.SelectedItem = row;
+                Assert.Contains("nobody could look", Assert.Single(window.DetailDecisions.ItemsSource.Cast<string>()), StringComparison.Ordinal);
+            }
+            finally { window.Close(); }
+        });
     [Fact]
     public Task AStoreThatRecordedNothingShowsADashNotZero() =>
         DesktopDispatcher.RunAsync(async () =>
