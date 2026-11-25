@@ -216,5 +216,5 @@ nothing. The first week measures how much legitimate traffic it catches.
   an `access-denied` site.
 - **No web record reaches the decision engine**, live or catch-up, and a test asserts it. The `live`
   flag on a finding is kept for the ADR 0009 amendment that may one day use it.
-- **The MCP tools and the desktop tab come later**, on the read API this adds (`WebEvidenceQueries`).
-  The MCP tools must keep site names from leaving the host unless the operator allows it.
+- **The desktop Web tab** reads through `WebEvidenceQueries`.
+  The planned MCP tools must keep site names from leaving the host unless the operator allows it.

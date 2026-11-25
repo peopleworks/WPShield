@@ -10,6 +10,7 @@
 | Which local ports are in use? | `wpshield network-monitor --listeners` | Use `--protocol tcp --local-address 127.0.0.1` to find sockets bound to IPv4 loopback. Add `--port-hints` for conventional port names or `--owners` for the observed PID. [Listener inventory](network-sensor-design.md#local-listener-inventory) |
 | Can I see local ports in a window? | `dotnet run --project src/WPShield.Desktop -c Release` | Browse TCP listeners and bound UDP sockets in a Windows desktop window, with the process name when its start time confirms the observed PID. Search by address, port, PID, process or port name. [Desktop monitor](network-sensor-design.md#desktop-monitor) |
 | Who is trying to log in to this server? | Open **Attacks** in the desktop monitor | Failed Remote Desktop, SMB and network logons from the last 24 hours, then live: totals, a timeline, one row per source address and a slide-in detail with the accounts tried and other attackers in the same network. **7 d** and **30 d** read the WPShield service's evidence store. Needs administrator rights, and says so instead of showing an empty board. [Attacks view](network-sensor-design.md#attacks) |
+| What did IIS record for each site and address? | Open **Attacks → Web** in the desktop monitor | Check coverage and remedies, then filter by period or site. Select an address to see rules, observations and cleaned paths. [Desktop Web tab](#desktop-web-tab) |
 | Who attacked this server last week? | `wpshield attacks --range 7d` | Totals and top source addresses from the evidence store, or one address's history with `--source`. Says when an answer comes from hourly aggregates and lists unrecorded time as "no data", never zero. Elevated prompt; `--json` for scripts. [Attack history](network-sensor-design.md#attack-history-from-the-command-line) |
 | What did the web logs show: who probed my sites, and did a PHP file answer that should not? | `wpshield web --range 24h` | Read from each site's IIS W3C log by `wpshield evidence collect`: coverage per site first (a site nobody could read says why, with the remedy), then requests per hour, the same path rules the gateway runs, and the observations `WEB-OBS-001` to `-003` (PHP answering outside the WordPress entry points, login and XML-RPC posts). Evidence only: nothing is decided from it. Never reads the query string, the referer or the user name. Elevated prompt; `--site`, `--source`, `--json`. [Web evidence](network-sensor-design.md#web-evidence-from-the-iis-logs) |
 | Which pools run as an administrator, which web sites run PHP, and which web roots are broadly writable or overlap FTP folders? | `wpshield audit` (elevated) | Lists which WordPress sites should keep PHP and warns when other web sites run it, including through site-level mappings. For pools that use a named account, move every pool off the account before changing its password. Apply the remedies by hand. [Audit](audit.md) |
@@ -27,6 +28,25 @@
 | Which record confirms a login? | `wpshield network-monitor --sql-instance MSSQLSERVER --json` | Read the local Application log for SQL. For RDP, add `--rdp-port` and its local port number to a flow capture that includes that port. [Login evidence](network-sensor-design.md#remote-desktop-logon-evidence) · [Export one audit reference](network-sensor-design.md#selected-audit-reference) |
 
 An instance-level SQL login can be verified even when its TCP flow attribution remains `unknown`. [Guía del operador en español](../es/diseno-sensor-red.md)
+
+### Desktop Web tab
+
+Run `wpshield evidence collect` elevated on the IIS host to populate the store. In the desktop
+monitor, open **Attacks → Web**, or launch the desktop executable with `--web`. The tab opens
+the evidence store read-only. If the store is from before schema 2, the current collector
+migrates it when it opens it for writing. Refresh the tab after that.
+
+Select **1 h**, **6 h**, **24 h**, **7 d** or **30 d** and choose **All sites** or a site by name.
+**Live** re-reads the store every 10 seconds while the tab is open. **Refresh** reads it on demand.
+Coverage lists sites whose logs were unavailable and their recorded remedies. Gaps show as **no
+data**. Request and address totals cover whole hours. The chart plots rule findings and
+`WEB-OBS-001` by time bucket, while login and XML-RPC POSTs are shown as hourly aggregates in the
+address table. The red `WEB-OBS-001` card counts 2xx PHP responses outside WordPress entry points,
+a signal of possible web shell activity.
+
+Select an address to see the stored time, site, method, normalized path, status and IDs.
+**Label…** and **Allow…** use the same elevated and audited settings editor as **Attacks**.
+Web evidence is for review only. It produces no decisions or blocks.
 
 ## Project status
 
@@ -76,7 +96,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 2,773 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 667 for the CLI, 238 for the desktop monitor, 492 for the gateway, 56 for the network sensor, 14 for the network filter, 97 for the security monitor, 175 for the evidence store, 59 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 2,781 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 667 for the CLI, 246 for the desktop monitor, 492 for the gateway, 56 for the network sensor, 14 for the network filter, 97 for the security monitor, 175 for the evidence store, 59 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine. The gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

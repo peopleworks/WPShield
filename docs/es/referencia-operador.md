@@ -10,6 +10,7 @@
 | ¿Qué puertos locales están en uso? | `wpshield network-monitor --listeners` | Usa `--protocol tcp --local-address 127.0.0.1` para sockets TCP en loopback IPv4. Añade `--port-hints` para nombres convencionales o `--owners` para el PID. [Inventario](diseno-sensor-red.md#inventario-de-puertos-locales) |
 | ¿Puedo ver los puertos en una ventana? | `dotnet run --project src/WPShield.Desktop -c Release` | Ventana para TCP y UDP con el nombre del proceso si su hora de inicio confirma el PID. Busca dirección, puerto, PID, proceso o nombre de puerto. [Monitor de escritorio](diseno-sensor-red.md#monitor-de-escritorio) |
 | ¿Quién intenta acceder al servidor? | Abre **Ataques** en el escritorio | Fallos de RDP, SMB y de red de las últimas 24 horas, con actualizaciones en vivo, totales, cronología y detalle por origen. **7 d** y **30 d** usan el almacén de evidencia. Requiere permisos de administrador y avisa si faltan. [Ataques](diseno-sensor-red.md#ataques) |
+| ¿Qué registró IIS por sitio y dirección? | Abre **Ataques → Web** en el escritorio | Revisa la cobertura y los remedios, y filtra por periodo o sitio. Selecciona una dirección para ver reglas, observaciones y rutas depuradas. [Pestaña Web del escritorio](#pestaña-web-del-escritorio) |
 | ¿Quién intentó acceder la semana pasada? | `wpshield attacks --range 7d` | Totales y orígenes principales desde el almacén, o historial de un origen con `--source`. Identifica agregados por hora y muestra periodos sin cobertura como «sin datos». Ejecuta con elevación y usa `--json` para scripts. [Historial](diseno-sensor-red.md#historial-de-ataques-desde-la-línea-de-comandos) |
 | ¿Qué mostraron los logs web: quién sondeó mis sitios, y respondió un PHP que no debía? | `wpshield web --range 24h` | Leído del log W3C de IIS de cada sitio por `wpshield evidence collect`: primero la cobertura por sitio (un sitio que nadie pudo leer dice por qué, con el remedio), después las peticiones por hora, las mismas reglas de ruta que ejecuta el gateway y las observaciones `WEB-OBS-001` a `-003` (PHP que responde fuera de los puntos de entrada de WordPress, POST de inicio de sesión y XML-RPC). Solo evidencia: no se decide nada con ella. Nunca lee la consulta, el referer ni el nombre de usuario. Ejecuta con elevación; `--site`, `--source`, `--json`. [Evidencia web](diseno-sensor-red.md#evidencia-web-desde-los-logs-de-iis) |
 | ¿Qué pools de aplicaciones se ejecutan como administrador, qué sitios web ejecutan PHP y qué raíces web tienen permisos amplios de escritura o se solapan con carpetas FTP? | `wpshield audit` (elevado) | Enumera los sitios WordPress que deben conservar PHP y advierte cuando otros sitios web lo ejecutan, incluso mediante asignaciones a nivel de sitio. Cambia la contraseña de una cuenta solo después de migrar todos los pools que la usan. Aplica los remedios a mano. [Auditoría](auditoria.md) |
@@ -26,6 +27,27 @@
 | ¿Qué registro confirma un acceso? | `wpshield network-monitor --sql-instance MSSQLSERVER --json` | Lee el registro Aplicación para SQL Server. Para RDP, añade `--rdp-port` y el puerto local a una captura que lo incluya. [Evidencia de acceso](diseno-sensor-red.md#evidencia-de-inicios-de-sesión-por-escritorio-remoto) |
 
 Un acceso SQL puede verificarse por instancia aunque el flujo TCP asociado permanezca `unknown`.
+
+### Pestaña Web del escritorio
+
+Ejecuta `wpshield evidence collect` con elevación en el servidor IIS para llenar el almacén.
+En el escritorio, abre **Ataques → Web** o inicia el ejecutable con `--web`. La pestaña abre
+el almacén de evidencia en modo de solo lectura. Si el almacén es anterior al esquema 2, el
+recolector actual lo migra al abrirlo para escritura. Después, actualiza la pestaña.
+
+Selecciona **1 h**, **6 h**, **24 h**, **7 d** o **30 d** y elige **Todos los sitios** o un sitio por
+nombre. **En vivo** vuelve a leer el almacén cada 10 segundos mientras la pestaña está abierta.
+**Actualizar** lo lee bajo demanda. La cobertura enumera los sitios cuyos logs no se pudieron leer
+y los remedios registrados. Los huecos aparecen como **sin datos**. Los totales de peticiones y
+direcciones abarcan horas completas. La gráfica muestra hallazgos de reglas y `WEB-OBS-001` por
+intervalo. La tabla por dirección muestra los POST de inicio de sesión y XML-RPC como agregados
+por hora. La tarjeta roja de `WEB-OBS-001` cuenta las respuestas 2xx de PHP fuera de los puntos de
+entrada de WordPress, una señal de posible actividad de un web shell.
+
+Selecciona una dirección para ver la hora, el sitio, el método, la ruta normalizada, el estado y
+los identificadores registrados. **Etiquetar…** y **Permitir…** usan el mismo editor de ajustes
+elevado y auditado que **Ataques**. La evidencia web sirve para revisión y no genera decisiones
+ni bloqueos.
 
 ## Estado del proyecto
 

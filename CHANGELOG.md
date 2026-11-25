@@ -14,6 +14,12 @@ must complete first.
 
 ### Added
 
+- The bilingual **Web** tab in the desktop's **Attacks** window reads IIS evidence by time range
+  and site through `WebEvidenceQueries`. It shows site coverage, remedies and time gaps before
+  totals, a timeline and an address table. A red `WEB-OBS-001` card flags 2xx PHP responses outside
+  WordPress entry points. Address details show cleaned paths and reuse the audited **Label…** and
+  **Allow…** actions. Web evidence produces no decisions or blocks.
+
 - `wpshield audit` reports web roots that share a path with an FTP root or virtual directory, or
   where either folder contains the other (`AUDIT-007`). The remedy is to separate the folders or
   verify FTP user isolation by hand.

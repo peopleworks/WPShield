@@ -90,10 +90,15 @@ public partial class ListenerWindow : Window
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         // "Reopen as administrator" in the attacks, settings and protection views relaunches with
-        // --attacks, --settings or --protection to land there again.
+        // --attacks, --web, --settings or --protection to land there again.
         var args = Environment.GetCommandLineArgs();
         if (args.Contains("--protection")) OpenProtection(this, e);
-        if (args.Contains("--attacks")) OpenAttacks(this, e);
+        if (args.Contains("--web"))
+        {
+            OpenAttacks(this, e);
+            attacksWindow?.OpenWebView();
+        }
+        else if (args.Contains("--attacks")) OpenAttacks(this, e);
         if (args.Contains("--settings")) OpenSettings(this, e);
         await RefreshAsync();
     }

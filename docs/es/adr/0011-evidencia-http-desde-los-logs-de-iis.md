@@ -234,6 +234,6 @@ nada. La primera semana medirá cuánto tráfico legítimo atrapa.
 - **Ningún registro web llega al motor de decisiones**, ni en vivo ni de la puesta al día, y una prueba
   lo comprueba. El indicador `live` de un hallazgo se conserva para la enmienda del ADR 0009 que algún
   día pueda usarlo.
-- **Las herramientas MCP y la pestaña del escritorio vienen después**, sobre la API de lectura que
-  esto añade (`WebEvidenceQueries`). Las herramientas MCP deben impedir que los nombres de sitio salgan
+- **La pestaña Web del escritorio** lee mediante `WebEvidenceQueries`.
+  Las herramientas MCP previstas deben impedir que los nombres de sitio salgan
   del servidor si el operador no lo permite.

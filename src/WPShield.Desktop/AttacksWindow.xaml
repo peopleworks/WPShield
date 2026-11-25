@@ -57,15 +57,24 @@
       <Setter Property="Foreground" Value="#476170"/>
       <Setter Property="TextWrapping" Value="Wrap"/>
     </Style>
+    <Style x:Key="EvidenceRows" TargetType="DataGrid">
+      <Setter Property="AutoGenerateColumns" Value="False"/>
+      <Setter Property="IsReadOnly" Value="True"/>
+      <Setter Property="CanUserReorderColumns" Value="False"/>
+      <Setter Property="SelectionMode" Value="Single"/>
+      <Setter Property="HeadersVisibility" Value="Column"/>
+      <Setter Property="GridLinesVisibility" Value="Horizontal"/>
+      <Setter Property="HorizontalGridLinesBrush" Value="#E6ECEF"/>
+      <Setter Property="BorderThickness" Value="0"/>
+      <Setter Property="Background" Value="White"/>
+      <Setter Property="AlternatingRowBackground" Value="#F6F9FA"/>
+      <Setter Property="RowHeight" Value="33"/>
+      <Setter Property="EnableRowVirtualization" Value="True"/>
+    </Style>
   </Window.Resources>
   <Grid>
-    <Grid Margin="22,16">
-      <Grid.RowDefinitions>
-        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
-        <RowDefinition Height="230"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/>
-      </Grid.RowDefinitions>
-
-      <DockPanel>
+    <DockPanel Margin="22,16">
+      <DockPanel DockPanel.Dock="Top">
         <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" VerticalAlignment="Center">
           <RadioButton x:Name="RangeHour" Style="{StaticResource Range}" GroupName="Range" Content="1 h" Checked="OnRange"/>
           <RadioButton x:Name="RangeSix" Style="{StaticResource Range}" GroupName="Range" Content="6 h" Checked="OnRange"/>
@@ -85,6 +94,13 @@
         </StackPanel>
       </DockPanel>
 
+      <TabControl x:Name="Views" Margin="0,10,0,0" BorderThickness="0" Background="Transparent" SelectionChanged="OnViewChanged">
+        <TabItem x:Name="AttackTab">
+      <Grid>
+      <Grid.RowDefinitions>
+        <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+        <RowDefinition Height="230"/><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/>
+      </Grid.RowDefinitions>
       <Border x:Name="Banner" Grid.Row="1" Margin="0,12,0,0" Background="#FFF4DF" BorderBrush="#E9C27A" BorderThickness="1"
               CornerRadius="8" Padding="14,10" Visibility="Collapsed">
         <DockPanel>
@@ -145,11 +161,7 @@
 
       <Border Grid.Row="5" BorderBrush="#CFDCE2" BorderThickness="1" Background="White" CornerRadius="6" ClipToBounds="True">
         <Grid>
-          <DataGrid x:Name="Rows" AutoGenerateColumns="False" IsReadOnly="True" CanUserReorderColumns="False"
-                    SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="Horizontal"
-                    HorizontalGridLinesBrush="#E6ECEF" BorderThickness="0" Background="White"
-                    AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True"
-                    SelectionChanged="OnRowSelected">
+          <DataGrid x:Name="Rows" Style="{StaticResource EvidenceRows}" SelectionChanged="OnRowSelected">
             <DataGrid.Columns>
               <DataGridTextColumn Binding="{Binding Address}" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Label}" Width="1.1*" MinWidth="130" ElementStyle="{StaticResource CellText}"/>
@@ -170,7 +182,91 @@
         </Grid>
       </Border>
       <TextBlock x:Name="Footer" Grid.Row="6" Margin="0,8,0,0" Style="{StaticResource Small}"/>
-    </Grid>
+      </Grid>
+        </TabItem>
+        <TabItem x:Name="WebTab">
+          <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
+              <RowDefinition Height="160"/><RowDefinition/><RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+            <StackPanel Orientation="Horizontal" Margin="0,8,0,4">
+              <Label x:Name="WebSiteLabel" Target="{Binding ElementName=WebSite}" Padding="0,5,8,5"/>
+              <ComboBox x:Name="WebSite" MinWidth="210" MaxWidth="480" DisplayMemberPath="Name"
+                        SelectedValuePath="Id" SelectionChanged="OnWebSiteChanged"/>
+            </StackPanel>
+            <Border Grid.Row="1" Margin="0,4,0,0" Background="#FFF4DF" BorderBrush="#E9C27A"
+                    BorderThickness="1" CornerRadius="8" Padding="14,8">
+              <DockPanel>
+                <Button x:Name="WebElevate" DockPanel.Dock="Right" Click="OnElevate" Padding="12,6" Margin="12,0,0,0"
+                        VerticalAlignment="Top" Background="#8A5A12" Foreground="White" BorderThickness="0" Visibility="Collapsed"/>
+                <TextBlock x:Name="WebCoverageTitle" DockPanel.Dock="Top" FontWeight="SemiBold" Foreground="#5E3F0B"/>
+                <ScrollViewer MaxHeight="88" VerticalScrollBarVisibility="Auto">
+                  <TextBlock x:Name="WebCoverage" TextWrapping="Wrap" Foreground="#5E3F0B"/>
+                </ScrollViewer>
+              </DockPanel>
+            </Border>
+            <ItemsControl x:Name="WebCards" Grid.Row="2" Margin="0,10,0,10">
+              <ItemsControl.ItemsPanel><ItemsPanelTemplate><UniformGrid Columns="6"/></ItemsPanelTemplate></ItemsControl.ItemsPanel>
+              <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                  <Border Margin="0,0,5,0">
+                    <Border.Style>
+                      <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                        <Setter Property="Padding" Value="10,8"/>
+                        <Style.Triggers>
+                          <DataTrigger Binding="{Binding Alert}" Value="True">
+                            <Setter Property="Background" Value="#FCE5E5"/>
+                            <Setter Property="BorderBrush" Value="#B33A3A"/>
+                            <Setter Property="TextElement.Foreground" Value="#8F2727"/>
+                          </DataTrigger>
+                        </Style.Triggers>
+                      </Style>
+                    </Border.Style>
+                    <StackPanel ToolTip="{Binding Note}">
+                      <TextBlock Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Value}" Style="{StaticResource Kpi}"/>
+                    </StackPanel>
+                  </Border>
+                </DataTemplate>
+              </ItemsControl.ItemTemplate>
+            </ItemsControl>
+            <Border Grid.Row="3" Style="{StaticResource Card}">
+              <Grid>
+                <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                <DockPanel>
+                  <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+                    <Border Width="11" Height="11" Background="#B33A3A" CornerRadius="2" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="WebLegendFindings" FontSize="12" Margin="0,0,14,0"/>
+                    <Border Width="11" Height="11" Background="#E0A23A" CornerRadius="2" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="WebLegendObservations" FontSize="12" Margin="0,0,14,0"/>
+                    <Border Width="11" Height="11" Background="#C9D3D8" CornerRadius="2" Margin="0,0,5,0"/>
+                    <TextBlock x:Name="WebLegendGap" FontSize="12"/>
+                  </StackPanel>
+                  <TextBlock x:Name="WebChartTitle" FontWeight="SemiBold"/>
+                </DockPanel>
+                <Grid Grid.Row="1" Margin="0,10,0,4">
+                  <Border Background="#E6ECEF" Height="1" VerticalAlignment="Top"/>
+                  <Border Background="#E6ECEF" Height="1" VerticalAlignment="Center"/>
+                  <Border Background="#C9D8DF" Height="1" VerticalAlignment="Bottom"/>
+                  <UniformGrid x:Name="WebPlot" Rows="1" SizeChanged="OnWebPlotResized"/>
+                </Grid>
+                <DockPanel Grid.Row="2"><TextBlock x:Name="WebChartEnd" DockPanel.Dock="Right" FontSize="12" Foreground="#486475"/>
+                  <TextBlock x:Name="WebChartStart" FontSize="12" Foreground="#486475"/></DockPanel>
+              </Grid>
+            </Border>
+            <Border Grid.Row="4" Margin="0,10,0,0" BorderBrush="#CFDCE2" BorderThickness="1" Background="White" CornerRadius="6" ClipToBounds="True">
+              <Grid>
+                <DataGrid x:Name="WebRows" Style="{StaticResource EvidenceRows}" SelectionChanged="OnWebRowSelected"/>
+                <TextBlock x:Name="WebEmpty" FontSize="16" HorizontalAlignment="Center" VerticalAlignment="Center"
+                           IsHitTestVisible="False" TextWrapping="Wrap" TextAlignment="Center" Margin="25"/>
+              </Grid>
+            </Border>
+            <TextBlock x:Name="WebFooter" Grid.Row="5" Margin="0,8,0,0" Style="{StaticResource Small}"/>
+          </Grid>
+        </TabItem>
+      </TabControl>
+    </DockPanel>
 
     <!-- Slides over the content instead of pushing it, so the table keeps its columns. -->
     <Border x:Name="Detail" Width="0" HorizontalAlignment="Right" Panel.ZIndex="1" Background="White"
@@ -220,6 +316,24 @@
               </StackPanel>
             </Border>
             <TextBlock x:Name="ActionStatus" TextWrapping="Wrap" FontSize="12" Margin="0,0,0,12" Visibility="Collapsed"/>
+            <StackPanel x:Name="WebDetailContent" Visibility="Collapsed">
+              <TextBlock x:Name="WebDetailRulesLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
+              <ItemsControl x:Name="WebDetailRules" ItemTemplate="{StaticResource Line}" Margin="0,0,0,14"/>
+              <TextBlock x:Name="WebDetailFindingsLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
+              <TextBlock x:Name="WebDetailStatus" TextWrapping="Wrap" Margin="0,0,0,8"/>
+              <ItemsControl x:Name="WebDetailFindings">
+                <ItemsControl.ItemTemplate>
+                  <DataTemplate>
+                    <StackPanel Margin="0,0,0,8">
+                      <TextBlock Text="{Binding Context}" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Path}" TextWrapping="Wrap"/>
+                      <TextBlock Text="{Binding Ids}" Style="{StaticResource Small}"/>
+                    </StackPanel>
+                  </DataTemplate>
+                </ItemsControl.ItemTemplate>
+              </ItemsControl>
+            </StackPanel>
+            <StackPanel x:Name="AttackDetailContent">
             <Border x:Name="DetailNoteBox" Background="#FFF4DF" BorderBrush="#E9C27A" BorderThickness="1" CornerRadius="6"
                     Padding="10,7" Margin="0,0,0,12" Visibility="Collapsed">
               <TextBlock x:Name="DetailNote" TextWrapping="Wrap" FontSize="12" Foreground="#5E3F0B"/>
@@ -244,6 +358,7 @@
             </ItemsControl>
             <TextBlock x:Name="DetailRecentLabel" FontWeight="SemiBold" Margin="0,0,0,6"/>
             <ItemsControl x:Name="DetailRecent" ItemTemplate="{StaticResource Line}"/>
+            </StackPanel>
           </StackPanel>
         </ScrollViewer>
       </DockPanel>
