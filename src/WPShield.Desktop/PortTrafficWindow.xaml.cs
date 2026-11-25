@@ -1,6 +1,5 @@
 using System.ComponentModel;
 using System.Globalization;
-using System.Net.NetworkInformation;
 using System.Windows;
 using System.Windows.Threading;
 using WPShield.Cli;
@@ -43,6 +42,8 @@ public partial class PortTrafficWindow : Window
         InitializeComponent();
         Heading.Text = L("Port traffic", "Tráfico por puertos");
         Title = "WPShield | " + Heading.Text;
+        Purpose.Text = L("Measures bytes per second on the ports you choose, on one adapter, as Npcap sees them. It shows how much traffic there is, not who is attacking: for that, use Attacks.",
+            "Mide los bytes por segundo en los puertos que elija, en un adaptador, tal como los ve Npcap. Muestra cuánto tráfico hay, no quién ataca: para eso está Ataques.");
         AdapterLabel.Content = L("_Adapter", "_Adaptador");
         Reload.Content = L("Refresh list", "Actualizar lista");
         PortLabel.Content = L("_TCP/UDP ports", "_Puertos TCP/UDP");
@@ -78,9 +79,23 @@ public partial class PortTrafficWindow : Window
         return [.. result];
     }
 
-    private static bool SourceError(Exception ex) => ex.GetBaseException() is DllNotFoundException or EntryPointNotFoundException or BadImageFormatException
-        || ex is InvalidOperationException or SharpPcap.PcapException or NetworkInformationException or UnauthorizedAccessException
-        or System.Security.SecurityException or PlatformNotSupportedException;
+    private static bool SourceError(Exception ex) => CaptureFailure.IsCaptureFailure(ex);
+
+    /// <summary>Why the adapters cannot be listed, in the operator's language. See <see cref="CaptureFailure"/>.</summary>
+    internal string AdapterFailure(Exception ex) => CaptureFailure.Classify(ex) switch
+    {
+        CaptureFailureReason.NpcapMissing => L(
+            "Npcap is not installed on this computer, so this window cannot capture. Npcap is needed only for traffic capture (this window and wpshield network-monitor); Attacks, evidence, decisions and the audit do not use it. Installing it is your decision: it adds a packet-capture driver, and its license terms for use on servers are worth checking first.",
+            "Npcap no está instalado en este equipo, así que esta ventana no puede capturar. Npcap solo hace falta para capturar tráfico (esta ventana y wpshield network-monitor); Ataques, la evidencia, las decisiones y la auditoría no lo usan. Instalarlo es decisión suya: añade un controlador de captura de paquetes, y conviene revisar antes sus condiciones de licencia para servidores."),
+        CaptureFailureReason.NpcapIncompatible => L(
+            "The Npcap installed here could not be loaded (an incompatible or outdated version, or the wrong architecture), so this window cannot capture. Npcap is needed only for traffic capture.",
+            "No se pudo cargar el Npcap instalado (una versión incompatible o antigua, o de otra arquitectura), así que esta ventana no puede capturar. Npcap solo hace falta para capturar tráfico."),
+        CaptureFailureReason.AccessDenied => L(
+            "Npcap refused access to the capture adapters. If it was installed to allow administrators only, open WPShield as administrator; otherwise check what is denying access.",
+            "Npcap negó el acceso a los adaptadores de captura. Si se instaló solo para administradores, abra WPShield como administrador; si no, compruebe qué está negando el acceso."),
+        _ => L($"Cannot list capture adapters ({CaptureFailure.TypeName(ex)}). Check the Npcap installation.",
+            $"No se pudo leer la lista de adaptadores ({CaptureFailure.TypeName(ex)}). Compruebe la instalación de Npcap.")
+    };
 
     private async void LoadAdapters(object sender, RoutedEventArgs e) => await ReadAdaptersAsync();
 
@@ -112,7 +127,7 @@ public partial class PortTrafficWindow : Window
         catch (Exception ex) when (SourceError(ex))
         {
             Adapters.ItemsSource = null;
-            Status.Text = L("Cannot list capture adapters. Check Npcap and access permissions.", "No se pudo leer la lista de adaptadores. Compruebe Npcap y los permisos.");
+            Status.Text = AdapterFailure(ex);
         }
         finally { listing = false; UpdateControls(); }
     }

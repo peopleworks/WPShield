@@ -8,7 +8,8 @@
     <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/>
       <RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
     <StackPanel><TextBlock Text="WPShield  /  Npcap" Foreground="#486475" FontSize="12"/>
-      <TextBlock x:Name="Heading" FontSize="30" FontWeight="SemiBold"/></StackPanel>
+      <TextBlock x:Name="Heading" FontSize="30" FontWeight="SemiBold"/>
+      <TextBlock x:Name="Purpose" Margin="0,2,0,0" Foreground="#486475" FontSize="13" TextWrapping="Wrap"/></StackPanel>
     <DockPanel Grid.Row="1" Margin="0,10,0,6">
       <Button x:Name="Reload" DockPanel.Dock="Right" Margin="8,0,0,0" Padding="10,4" Click="LoadAdapters"/>
       <Label x:Name="AdapterLabel" Target="{Binding ElementName=Adapters}"/>

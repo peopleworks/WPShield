@@ -706,6 +706,15 @@ esta ventana también detiene su captura. Los datos permanecen en memoria. Queda
 la captura en vivo en Windows Server con Npcap. Para ver los contadores de toda la interfaz sin
 Npcap, abra [Tráfico por adaptador](#tráfico-por-adaptador).
 
+La ventana dice bajo su título que mide cuánto tráfico hay, no quién ataca; eso lo responde la
+vista **Ataques**. Cuando no puede leer la lista de adaptadores, la línea de estado
+nombra la causa en lugar de un genérico "compruebe Npcap": Npcap no está instalado (no se encontró
+`wpcap.dll`; solo esta ventana y `wpshield network-monitor` lo necesitan, e instalar un
+controlador de captura de paquetes es decisión del operador, tras revisar las condiciones de
+licencia de Npcap para servidores), no se pudo cargar el Npcap instalado (versión incompatible o
+antigua, o de otra arquitectura), Npcap negó el acceso, u otro fallo, del que solo se muestra el
+nombre del tipo de excepción. `network-monitor --list-interfaces` informa las mismas causas.
+
 ### Evidencia de inicios de sesión por Escritorio Remoto
 
 Indique el puerto TCP local configurado para Escritorio Remoto en el servidor observado. La cuenta
