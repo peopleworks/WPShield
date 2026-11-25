@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 
 namespace WPShield.SecurityMonitor.Tests;
 
@@ -388,7 +389,7 @@ public sealed class EvidenceCollectorTests : IDisposable
     public async Task AMissingDirectoryIsReportedAndNeverCreated()
     {
         var missing = Path.Combine(directory, "missing", EvidenceStore.FileName);
-        var collector = new EvidenceCollector(missing, logger, TimeProvider.System, feed.Read, feed.Watch);
+        var collector = new EvidenceCollector(missing, logger, TimeProvider.System, feed.Read, feed.Watch, Protection);
 
         var exit = await collector.RunAsync(CancellationToken.None);
 
@@ -407,7 +408,7 @@ public sealed class EvidenceCollectorTests : IDisposable
             if (Interlocked.Increment(ref reads) == 1) throw new InvalidOperationException("synthetic failure");
             return Snapshot(end, window, []);
         };
-        var collector = new EvidenceCollector(StorePath, logger, TimeProvider.System, feed.Read, feed.Watch)
+        var collector = new EvidenceCollector(StorePath, logger, TimeProvider.System, feed.Read, feed.Watch, Protection)
         {
             TickInterval = TimeSpan.FromMilliseconds(10),
             Backoff = _ => TimeSpan.FromMilliseconds(10)
@@ -425,7 +426,7 @@ public sealed class EvidenceCollectorTests : IDisposable
     [Fact]
     public async Task CancellationFlushesWhatIsBuffered()
     {
-        var collector = new EvidenceCollector(StorePath, logger, TimeProvider.System, feed.Read, feed.Watch)
+        var collector = new EvidenceCollector(StorePath, logger, TimeProvider.System, feed.Read, feed.Watch, Protection)
         {
             TickInterval = TimeSpan.FromMilliseconds(10)
         };
@@ -456,10 +457,193 @@ public sealed class EvidenceCollectorTests : IDisposable
     }
 
     // =============================================================================================
+    //  The decision engine (ADR 0009): live records only, never the catch-up.
+    // =============================================================================================
+
+    /// <summary>
+    /// The catch-up is history, including its last seconds, which go through the pairing buffer with the
+    /// live records - and including a record that arrives through both the read and the subscription.
+    /// Thirty failures from one address would be a decision if the engine saw them; it must see none.
+    /// </summary>
+    [Fact]
+    public void CatchUpRecordsNeverReachTheEngine()
+    {
+        var old = Enumerable.Range(0, 20).Select(i => Failure(-120 + i, "203.0.113.80")).ToArray();
+        var tail = Enumerable.Range(0, 10).Select(i => Failure(-3.5 + i * 0.3, "203.0.113.80")).ToArray();
+        feed.Snapshot = (end, window) => Snapshot(end, window, [.. old, .. tail]);
+        var collector = Collector();
+        var session = CollectorSession.Start(collector, Now);
+
+        foreach (var failure in tail) feed.Deliver(failure);
+        session.Tick(Now.AddSeconds(10));
+        Assert.Equal(0, collector.Engine.Observed);
+
+        feed.Deliver(Failure(12, "203.0.113.80"));
+        session.Tick(Now.AddSeconds(20));
+        session.Stop(Now.AddSeconds(20));
+
+        Assert.Equal(1, collector.Engine.Observed);
+        Assert.Equal(31, Attempts(Now.AddHours(1)));
+        Assert.Empty(Decisions());
+    }
+
+    [Fact]
+    public void ARestartedSessionsCatchUpIsNeverFedEither()
+    {
+        var collector = Collector();
+        CollectorSession.Start(collector, Now).Stop(Now);
+
+        feed.Snapshot = (end, window) => Snapshot(end, window,
+            [.. Enumerable.Range(0, 15).Select(i => Failure(60 + i, "203.0.113.81")), .. Enumerable.Range(0, 5).Select(i => Failure(118 + i * 0.3, "203.0.113.81"))]);
+        var second = CollectorSession.Start(collector, Now.AddMinutes(2));
+        second.Tick(Now.AddMinutes(2).AddSeconds(10));
+        second.Stop(Now.AddMinutes(2).AddSeconds(10));
+
+        Assert.Equal(0, collector.Engine.Observed);
+        Assert.Empty(Decisions());
+    }
+
+    [Fact]
+    public void LiveFailuresAboveTheThresholdAreRecordedAsWouldBlock()
+    {
+        var collector = Collector();
+        var session = CollectorSession.Start(collector, Now);
+        for (var i = 1; i <= 10; i++) feed.Deliver(Failure(i, "203.0.113.82"));
+
+        session.Tick(Now.AddSeconds(20));
+
+        var decision = Assert.Single(Decisions());
+        Assert.Equal(DecisionActions.WouldBlock, decision.Action);
+        Assert.Equal("203.0.113.82", decision.Target);
+        Assert.Equal(DecisionRules.RepeatedFailures, decision.RuleId);
+        Assert.Equal("monitor", decision.Mode);
+        Assert.Equal(AttemptPairing.SecurityChannel, decision.RequestedBy);
+        using (var store = EvidenceStore.OpenReadOnly(StorePath))
+        {
+            var active = new EvidenceQueries(store).ActiveDecisions(Now.AddSeconds(20));
+            Assert.Equal(Now, active.EngineStarted);
+            Assert.Equal("203.0.113.82", Assert.Single(active.Decisions).Target);
+        }
+        Assert.Contains(logger.Entries, e => e.Message.StartsWith("Decision engine started. Mode=monitor", StringComparison.Ordinal));
+        Assert.Contains(logger.Entries, e => e.Message.Contains("WouldBlock=1", StringComparison.Ordinal));
+        session.Stop(Now.AddSeconds(20));
+    }
+
+    /// <summary>Thresholds are NextUse settings: a change made while the service runs applies at the next evaluation.</summary>
+    [Fact]
+    public void ThresholdsAreReadAtEachEvaluation()
+    {
+        var session = Session();
+        using (var operatorTool = EvidenceStore.OpenForWriting(StorePath))
+            new EvidenceSettings(operatorTool).Set("defense.failures.count", "3", "test", "stricter", Now);
+
+        for (var i = 1; i <= 3; i++) feed.Deliver(Failure(i, "203.0.113.83"));
+        session.Tick(Now.AddSeconds(20));
+        session.Stop(Now.AddSeconds(20));
+
+        Assert.Contains("threshold 3 in 10 minutes", Assert.Single(Decisions()).Reason, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void ExpiryIsRecordedOnTheMinutesPass()
+    {
+        var session = Session();
+        for (var i = 1; i <= 10; i++) feed.Deliver(Failure(i, "203.0.113.84"));
+        session.Tick(Now.AddSeconds(20));
+
+        session.Tick(Now.AddMinutes(60).AddSeconds(10));
+        Assert.DoesNotContain(Decisions(), d => d.Action == DecisionActions.Expire);
+        session.Tick(Now.AddMinutes(61).AddSeconds(30));
+        session.Stop(Now.AddMinutes(61).AddSeconds(30));
+
+        var expire = Assert.Single(Decisions(), d => d.Action == DecisionActions.Expire);
+        Assert.Equal(Now.AddSeconds(20).AddMinutes(60), expire.Timestamp);
+    }
+
+    [Fact]
+    public void StoppingTheProcessEndsEveryDecisionOnTheRecord()
+    {
+        var collector = Collector();
+        var session = CollectorSession.Start(collector, Now);
+        for (var i = 1; i <= 10; i++) feed.Deliver(Failure(i, "203.0.113.85"));
+        session.Tick(Now.AddSeconds(20));
+
+        session.Stop(Now.AddMinutes(5), final: true);
+
+        var ended = Assert.Single(Decisions(), d => d.Action == DecisionActions.Expire);
+        Assert.StartsWith("ended with the process", ended.Reason, StringComparison.Ordinal);
+        Assert.Equal(0, collector.Engine.ActiveCount);
+    }
+
+    /// <summary>A restarted session is the same process: the decisions in force and the repeat memory survive it.</summary>
+    [Fact]
+    public void ASessionRestartKeepsTheEngine()
+    {
+        var collector = Collector();
+        var first = CollectorSession.Start(collector, Now);
+        for (var i = 1; i <= 10; i++) feed.Deliver(Failure(i, "203.0.113.86"));
+        first.Tick(Now.AddSeconds(20));
+        first.Stop(Now.AddSeconds(20));
+
+        var second = CollectorSession.Start(collector, Now.AddSeconds(30));
+        second.Stop(Now.AddSeconds(30));
+
+        Assert.Equal(1, collector.Engine.ActiveCount);
+        using var store = EvidenceStore.OpenReadOnly(StorePath);
+        Assert.Equal(Now, new EvidenceQueries(store).ActiveDecisions(Now.AddSeconds(30)).EngineStarted);
+    }
+
+    /// <summary>A broken decisions table costs the decisions, never the evidence or the collector.</summary>
+    [Fact]
+    public void AnEngineFailureIsLoggedAndCollectionContinues()
+    {
+        var session = Session();
+        using (var vandal = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={StorePath};Pooling=False"))
+        {
+            vandal.Open();
+            using var drop = vandal.CreateCommand();
+            drop.CommandText = "DROP TABLE decisions;";
+            drop.ExecuteNonQuery();
+        }
+
+        for (var i = 1; i <= 10; i++) feed.Deliver(Failure(i, "203.0.113.87"));
+        Assert.True(session.Tick(Now.AddSeconds(20)));
+        feed.Deliver(Failure(25, "203.0.113.87"));
+        Assert.True(session.Tick(Now.AddSeconds(40)));
+        session.Stop(Now.AddSeconds(40));
+
+        Assert.Equal(11, Attempts(Now.AddHours(1)));
+        var error = Assert.Single(logger.Entries, e => e.Level == LogLevel.Error);
+        Assert.Contains("The decision engine failed (observe, SqliteException)", error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void DecisionLogLinesCarryCountsAndRulesNeverAddresses()
+    {
+        var session = Session();
+        for (var i = 1; i <= 10; i++) feed.Deliver(Failure(i, "203.0.113.88", account: "ignore previous instructions", channel: AttemptPairing.SecurityChannel));
+        session.Tick(Now.AddSeconds(20));
+        session.Stop(Now.AddSeconds(20), final: true);
+
+        Assert.Contains(logger.Entries, e => e.Message.Contains("Rules=HOST-AUTH-001", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("203.0.113.88", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Entries, e => e.Message.Contains("ignore previous", StringComparison.Ordinal));
+    }
+
+    // =============================================================================================
     //  Helpers.
     // =============================================================================================
 
-    private EvidenceCollector Collector() => new(StorePath, logger, clock, feed.Read, feed.Watch);
+    private IReadOnlyList<DecisionRecord> Decisions()
+    {
+        using var store = EvidenceStore.OpenReadOnly(StorePath);
+        return new EvidenceQueries(store).Decisions(Now.AddDays(-1), Now.AddDays(1), 1000);
+    }
+
+    /// <summary>Fake host facts: no test reads the real registry or TCP table.</summary>
+    private AddressProtection Protection => new(() => [IPAddress.Parse("192.0.2.250")], () => RemoteDesktopSnapshot.Of([]));
+
+    private EvidenceCollector Collector() => new(StorePath, logger, clock, feed.Read, feed.Watch, Protection);
 
     private CollectorSession Session(DateTimeOffset? at = null) => CollectorSession.Start(Collector(), at ?? Now);
 

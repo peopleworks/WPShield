@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using WPShield.Evidence;
+using WPShield.Evidence.Decisions;
 
 namespace WPShield.SecurityMonitor;
 
@@ -23,9 +24,13 @@ public enum EvidenceCollectorExit
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>It writes history and nothing else.</b> No part of it reads <c>decisions</c>, restores a block,
-/// or hands stored evidence to anything that decides; ADR 0006's guarantee that a block lives exactly
-/// as long as the process depends on that (ADR 0007, section 5).
+/// <b>It never hands history to anything that decides.</b> No part of it reads <c>decisions</c> or
+/// restores a block. The decision engine (ADR 0009) lives in this object for the life of the process and
+/// sees only live records, after pairing: never the catch-up read at start, which includes the records
+/// near the start that go through the pairing buffer with the live ones. ADR 0006's guarantee that a
+/// block lives exactly as long as the process depends on that (ADR 0007, section 5). The engine runs in
+/// Monitor: it records decisions and enforces nothing, and a failure in it is logged and never stops
+/// collection.
 /// </para>
 /// <para>
 /// <b>It never stops its host.</b> It runs inside the gateway, and a background service that throws
@@ -57,6 +62,9 @@ public sealed class EvidenceCollector
 
     public static readonly TimeSpan PruneInterval = TimeSpan.FromHours(1);
 
+    /// <summary>How often decisions past their expiry are ended and recorded.</summary>
+    public static readonly TimeSpan ExpireInterval = TimeSpan.FromMinutes(1);
+
     /// <summary>How often a session that cannot read the Security log tries again.</summary>
     public static readonly TimeSpan UnavailableRetryInterval = TimeSpan.FromMinutes(15);
 
@@ -67,13 +75,15 @@ public sealed class EvidenceCollector
     private string? lastUnavailableReason;
 
     public EvidenceCollector(string storePath, ILogger logger)
-        : this(storePath, logger, TimeProvider.System, (end, window) => AuthFailureFeed.ReadRecent(end, window), AuthFailureFeed.Watch)
+        : this(storePath, logger, TimeProvider.System, (end, window) => AuthFailureFeed.ReadRecent(end, window), AuthFailureFeed.Watch,
+            HostProbes.Protection())
     {
     }
 
     internal EvidenceCollector(string storePath, ILogger logger, TimeProvider time,
         Func<DateTimeOffset, TimeSpan, AuthFailureSnapshot> readRecent,
-        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch)
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, AddressProtection protection,
+        DecisionEngineLimits? limits = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
         StorePath = storePath;
@@ -81,6 +91,9 @@ public sealed class EvidenceCollector
         Time = time ?? throw new ArgumentNullException(nameof(time));
         ReadRecent = readRecent ?? throw new ArgumentNullException(nameof(readRecent));
         Watch = watch ?? throw new ArgumentNullException(nameof(watch));
+        // One engine for the life of the process, not of a session: a session restarted after a failed
+        // subscription must not forget the decisions in force or the repeat offenders.
+        Engine = new DecisionEngine(protection ?? throw new ArgumentNullException(nameof(protection)), limits);
     }
 
     public string StorePath { get; }
@@ -92,6 +105,12 @@ public sealed class EvidenceCollector
     internal Func<DateTimeOffset, TimeSpan, AuthFailureSnapshot> ReadRecent { get; }
     internal Func<Action<AuthFailure>, Action<string, string>, IDisposable> Watch { get; }
     internal ILogger Logger => logger;
+
+    /// <summary>The decision engine (ADR 0009). In-process only; nothing restores it.</summary>
+    internal DecisionEngine Engine { get; }
+
+    /// <summary>Whether this process has recorded its engine's start in the store yet.</summary>
+    internal bool EngineAnnounced { get; set; }
 
     /// <summary>The pause between ticks. Tests shorten it; the service uses <see cref="FlushInterval"/>.</summary>
     internal TimeSpan TickInterval { get; init; } = FlushInterval;
@@ -140,7 +159,7 @@ public sealed class EvidenceCollector
                 {
                 }
 
-                session.Stop(Time.GetUtcNow());
+                session.Stop(Time.GetUtcNow(), final: cancellationToken.IsCancellationRequested);
                 session = null;
                 if (cancellationToken.IsCancellationRequested) break;
                 // Asked to restart (a subscription failed, or the Security log is retried). A session
@@ -236,6 +255,13 @@ internal sealed class CollectorSession
     private readonly PairingBuffer buffer = new();
     private readonly object gate = new();
     private readonly HashSet<(string Channel, long RecordId)> boundary = [];
+
+    /// <summary>
+    /// The catch-up records that went through the pairing buffer. They are stored like live ones and
+    /// never handed to the decision engine: identity, not a time cut, so a clock that steps back cannot
+    /// turn history into live evidence. Bounded by the catch-up read's own bound.
+    /// </summary>
+    private readonly HashSet<(string Channel, long RecordId)> history = [];
     private readonly Dictionary<string, string> setupErrors = new(StringComparer.Ordinal);
     private readonly List<long> intervals = [];
     private readonly DateTimeOffset started;
@@ -246,6 +272,7 @@ internal sealed class CollectorSession
     private DateTimeOffset restartAt;
     private DateTimeOffset lastCoverage;
     private DateTimeOffset lastPrune;
+    private DateTimeOffset lastExpire;
     private DateTimeOffset lastTick;
     private long reportedDropped;
 
@@ -256,7 +283,7 @@ internal sealed class CollectorSession
         writer = new EvidenceWriter(store);
         settings = new EvidenceSettings(store);
         this.started = started;
-        lastCoverage = lastPrune = lastTick = started;
+        lastCoverage = lastPrune = lastTick = lastExpire = started;
     }
 
     public bool SecurityReadable { get; private set; }
@@ -305,10 +332,16 @@ internal sealed class CollectorSession
         // and its 140 delivered live are paired instead of counted twice.
         var cut = now - 2 * AttemptPairing.Window;
         Inserted += writer.Append(snapshot.Failures.Where(f => f.Timestamp < cut));
-        foreach (var failure in snapshot.Failures.Where(f => f.Timestamp >= cut)) OnFailure(failure);
+        foreach (var failure in snapshot.Failures.Where(f => f.Timestamp >= cut))
+        {
+            // Marked before it is buffered, so that its live copy - whichever arrives first - is history too.
+            history.Add((failure.Channel, failure.RecordId));
+            OnFailure(failure);
+        }
 
         RecordCatchUpCoverage(snapshot, now);
         Prune(now);
+        AnnounceEngine(now);
 
         owner.Logger.LogInformation(
             "Evidence collection started. Store={Store} CatchUpFrom={CatchUpFrom:O} CatchUpRead={CatchUpRead} Inserted={Inserted} " +
@@ -356,18 +389,28 @@ internal sealed class CollectorSession
 
         if (now - lastPrune >= EvidenceCollector.PruneInterval) Prune(now);
 
+        if (now - lastExpire >= EvidenceCollector.ExpireInterval)
+        {
+            lastExpire = now;
+            Decide("expire", () => owner.Engine.Expire(now));
+        }
+
         // An unreadable Security log rarely fixes itself (group membership reaches a service's token
         // at the next start), but a failed query can. Trying again is one failed read.
         return SecurityReadable || now - started < EvidenceCollector.UnavailableRetryInterval;
     }
 
-    /// <summary>Stops the subscription, writes everything still buffered and closes the intervals.</summary>
-    public void Stop(DateTimeOffset now)
+    /// <summary>
+    /// Stops the subscription, writes everything still buffered and closes the intervals. With
+    /// <paramref name="final"/>, the process is stopping: every decision in force ends with it, on the record.
+    /// </summary>
+    public void Stop(DateTimeOffset now, bool final = false)
     {
         subscription?.Dispose();
         subscription = null;
         Flush(now, flushAll: true);
         ReportDropped(now);
+        if (final) Decide("end", () => owner.Engine.EndAll(now));
         Extend(now);
         store.Dispose();
         owner.Logger.LogInformation("Evidence collection stopped. Inserted={Inserted}", Inserted);
@@ -491,8 +534,59 @@ internal sealed class CollectorSession
     private void Flush(DateTimeOffset now, bool flushAll)
     {
         var ready = buffer.TakeReady(now, flushAll);
-        if (ready.Count > 0) Inserted += writer.Append(ready);
+        if (ready.Count == 0) return;
+        Inserted += writer.Append(ready);
+
+        // Paired, stored, and live: only now does the engine see them.
+        var live = ready.Where(f => !history.Contains((f.Channel, f.RecordId))).ToArray();
+        if (live.Length > 0) Decide("observe", () => owner.Engine.Observe(live, DefenseOptions.Read(settings), now));
     }
+
+    /// <summary>
+    /// The engine's first run in this process is written down, so readers count only decisions this run
+    /// made as in force. <c>defense.mode</c> is a NextStart setting and read here, once; only monitor exists.
+    /// </summary>
+    private void AnnounceEngine(DateTimeOffset now)
+    {
+        if (owner.EngineAnnounced) return;
+        writer.RecordEngineStart(now);
+        owner.EngineAnnounced = true;
+        var mode = settings.Get(DefenseSettings.Mode) is System.Text.Json.Nodes.JsonValue value && value.TryGetValue<string>(out var text)
+            ? text : DecisionActions.MonitorMode;
+        owner.Logger.LogInformation(
+            "Decision engine started. Mode={Mode}: decisions are recorded as would-block and nothing is enforced. It sees live failed " +
+            "logons only and keeps its state in memory; nothing is restored from the store.",
+            mode == DecisionActions.MonitorMode ? mode : DecisionActions.MonitorMode);
+    }
+
+    /// <summary>
+    /// Runs one engine step and records what it decided. Nothing in it may stop collection: a failure is
+    /// logged with its type and collection continues; the attempts are already stored.
+    /// </summary>
+    private void Decide(string step, Func<IReadOnlyList<DecisionRecord>> run)
+    {
+        try
+        {
+            var decisions = run();
+            if (decisions.Count == 0) return;
+            foreach (var decision in decisions) writer.RecordDecision(decision);
+            // Counts and codes only: targets are addresses, which stay in the store.
+            owner.Logger.LogInformation(
+                "Decisions recorded ({Step}, monitor - nothing is enforced). WouldBlock={WouldBlock} Protected={Protected} " +
+                "Refused={Refused} Report={Report} Expire={Expire} Rules={Rules} Active={Active}",
+                step, Count(decisions, DecisionActions.WouldBlock), Count(decisions, DecisionActions.Protected),
+                Count(decisions, DecisionActions.Refused), Count(decisions, DecisionActions.Report), Count(decisions, DecisionActions.Expire),
+                string.Join(",", decisions.Select(d => d.RuleId).Distinct().Order(StringComparer.Ordinal)), owner.Engine.ActiveCount);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            owner.Logger.LogError(
+                "The decision engine failed ({Step}, {ErrorType}). Collection continues; the attempts are stored and nothing is enforced.",
+                step, exception.GetType().Name);
+        }
+    }
+
+    private static int Count(IReadOnlyList<DecisionRecord> decisions, string action) => decisions.Count(d => d.Action == action);
 
     private void ReportDropped(DateTimeOffset now)
     {
