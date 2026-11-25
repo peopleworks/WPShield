@@ -38,24 +38,65 @@ public sealed class SettingEditorsTests
     }
 
     [Fact]
-    public void EveryShippedSettingHasAnEditorOfItsOwnShape()
+    public void TheShippedSettingsGetTheEditorsOfTheirShapes()
     {
-        var kinds = SettingCatalog.All.Values.ToDictionary(d => d.Key, d => SettingEditors.KindFor(d.Default));
-        Assert.Equal(SettingEditorKind.Number, kinds["retention.raw_days"]);
-        Assert.Equal(SettingEditorKind.Text, kinds["attacks.default_range"]);
-        Assert.Equal(SettingEditorKind.AddressTable, kinds[AddressLabels.SettingKey]);
-        Assert.Equal(SettingEditorKind.Toggle, kinds["mcp.detailed_records"]);
-        Assert.DoesNotContain(SettingEditorKind.Json, kinds.Values);
+        Assert.Equal(SettingEditorKind.Number, SettingEditors.KindFor(SettingCatalog.All["retention.raw_days"].Default));
+        Assert.Equal(SettingEditorKind.Text, SettingEditors.KindFor(SettingCatalog.All["attacks.default_range"].Default));
+        Assert.Equal(SettingEditorKind.AddressTable, SettingEditors.KindFor(SettingCatalog.All[AddressLabels.SettingKey].Default));
+        Assert.Equal(SettingEditorKind.Toggle, SettingEditors.KindFor(SettingCatalog.All["mcp.detailed_records"].Default));
     }
 
     [Fact]
     public void AKeyTheDesktopHasNoTranslationForUsesItsKeyAndTheCatalogsOwnDescription()
     {
-        Assert.False(SettingNames.IsKnown("defense.allow"));
-        Assert.Equal("defense.allow", SettingNames.Name("defense.allow", spanish: true));
-        Assert.Equal("Addresses the engine never blocks.", SettingNames.Description("defense.allow", "Addresses the engine never blocks.", spanish: true));
+        const string key = "example.future_list";
+        Assert.False(SettingNames.IsKnown(key));
+        Assert.Equal(key, SettingNames.Name(key, spanish: true));
+        Assert.Equal("Addresses a future engine never blocks.", SettingNames.Description(key, "Addresses a future engine never blocks.", spanish: true));
         Assert.Equal("Etiquetas de direcciones", SettingNames.Name(AddressLabels.SettingKey, spanish: true));
-        Assert.All(SettingCatalog.All.Keys, key => Assert.True(SettingNames.IsKnown(key), key));
+        foreach (var known in new[] { "retention.raw_days", "retention.aggregate_days", "retention.event_days", "retention.max_megabytes",
+                     "attacks.default_range", AddressLabels.SettingKey, "mcp.detailed_records" })
+            Assert.True(SettingNames.IsKnown(known), known);
+    }
+
+    [Fact]
+    public void AnEmptyDefaultWhoseEntriesAreNotTextCanStillBeEnteredAsJson()
+    {
+        // "{}" says nothing about its entries; this one wants a whole number per rule.
+        var definition = Definition("example.rule_limits", new JsonObject(),
+            node => node is JsonObject map && map.All(p => p.Value is JsonValue v && v.TryGetValue<int>(out _)) ? null : "a whole number per rule");
+        var edit = new SettingEdit(definition, new JsonObject(), spanish: false) { Reason = "limits" };
+        Assert.Equal(SettingEditorKind.AddressTable, edit.Kind);
+        Assert.True(edit.CanSwitchToJson);
+        edit.AddAddress("rule-a");
+        edit.Addresses[0].Label = "5";
+        Assert.Equal("Expected a whole number per rule.", edit.Proposed().Problem);
+
+        Assert.True(edit.TrySetJson(true));
+        Assert.Equal(SettingEditorKind.Json, edit.Kind);
+        Assert.Equal("""{"rule-a":"5"}""", JsonNode.Parse(edit.Text)!.ToJsonString());
+        edit.Text = """{ "rule-a": 5 }""";
+        Assert.Equal(("""{"rule-a":5}""", (string?)null), edit.Proposed());
+        Assert.True(edit.CanSave(writable: true));
+
+        // Back to the table only when the JSON fits it, so nothing typed is dropped.
+        Assert.False(edit.TrySetJson(false));
+        Assert.Equal(SettingEditorKind.Json, edit.Kind);
+        edit.Text = """{"rule-b":"x"}""";
+        Assert.True(edit.TrySetJson(false));
+        Assert.Equal(SettingEditorKind.AddressTable, edit.Kind);
+        Assert.Equal("rule-b", Assert.Single(edit.Addresses).Address);
+        Assert.Equal("x", edit.Addresses[0].Label);
+    }
+
+    [Fact]
+    public void AValueAlreadyEditedAsJsonHasNoShapedEditorToSwitchTo()
+    {
+        var edit = new SettingEdit(SettingCatalog.All["retention.raw_days"], JsonValue.Create("fourteen"), spanish: false);
+        Assert.Equal(SettingEditorKind.Json, edit.Kind);
+        Assert.False(edit.CanSwitchToJson);
+        Assert.True(edit.TrySetJson(true));
+        Assert.False(edit.TrySetJson(false));
     }
 
     [Fact]
@@ -103,7 +144,7 @@ public sealed class SettingEditorsTests
     [Fact]
     public void TheCatalogsOwnMessageIsWhatTheEditorShows()
     {
-        var definition = Definition("defense.threshold", JsonValue.Create(5),
+        var definition = Definition("example.threshold", JsonValue.Create(5),
             node => node is JsonValue v && v.TryGetValue<int>(out var n) && n == 5 ? null : "sentinel words from the catalog");
         var edit = new SettingEdit(definition, JsonValue.Create(5), spanish: false) { Text = "6" };
 

@@ -1,7 +1,10 @@
 using System.IO;
 using System.Text.Json.Nodes;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
+using System.Windows.Controls.Primitives;
+using System.Windows.Media;
 using Microsoft.Data.Sqlite;
 using WPShield.Evidence;
 using Xunit;
@@ -376,7 +379,7 @@ public sealed class SettingsWindowTests
             {
                 window.Show();
                 await window.LoadAsync();
-                await window.Select("defense.allow");
+                await window.Select("example.future_list");
                 window.Edit!.AddItem("192.0.2.0/24");
                 window.ReasonBox.Text = "the lab";
 
@@ -400,8 +403,8 @@ public sealed class SettingsWindowTests
             {
                 window.Show();
                 await window.LoadAsync();
-                await window.Select("defense.allow");
-                Assert.Equal("defense.allow", window.DetailName.Text);
+                await window.Select("example.future_list");
+                Assert.Equal("example.future_list", window.DetailName.Text);
                 Assert.Equal(FakeStore.Description, window.DetailDescription.Text);
                 Assert.Equal(Visibility.Visible, window.ListEditor.Visibility);
                 Assert.Equal(Visibility.Collapsed, window.AddressEditor.Visibility);
@@ -412,9 +415,24 @@ public sealed class SettingsWindowTests
                 window.ReasonBox.Text = "mi conexión";
                 await window.SaveAsync();
 
-                Assert.Equal(("defense.allow", """["203.0.113.77"]""", "mi conexión"), fake.Saved);
+                Assert.Equal(("example.future_list", """["203.0.113.77"]""", "mi conexión"), fake.Saved);
                 Assert.Contains("Guardado", window.StatusText.Text, StringComparison.Ordinal);
                 Assert.Contains("no reinicia nada", window.StatusText.Text, StringComparison.Ordinal);
+
+                // Any shaped editor can be swapped for JSON and back.
+                Assert.Equal(Visibility.Visible, window.JsonSwitch.Visibility);
+                window.JsonSwitch.IsChecked = true;
+                Assert.Equal(Visibility.Visible, window.ValueEditor.Visibility);
+                Assert.Equal(Visibility.Collapsed, window.ListEditor.Visibility);
+                Assert.Contains("203.0.113.77", window.ValueEditor.Text, StringComparison.Ordinal);
+                window.ValueEditor.Text = "[\"203.0.113.77\", 5]";
+                window.JsonSwitch.IsChecked = false;
+                Assert.True(window.JsonSwitch.IsChecked);
+                Assert.Contains("JSON", window.StatusText.Text, StringComparison.Ordinal);
+                window.ValueEditor.Text = "[\"203.0.113.78\"]";
+                window.JsonSwitch.IsChecked = false;
+                Assert.Equal(Visibility.Visible, window.ListEditor.Visibility);
+                Assert.Equal("203.0.113.78", Assert.Single(window.Edit!.Items).Value);
             }
             finally { window.Close(); }
         });
@@ -451,15 +469,76 @@ public sealed class SettingsWindowTests
             }
         });
 
+    [Fact]
+    public Task TypingIntoTheRowsUpdatesTheValueAndEveryBoxIsLabelled() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = TempStore();
+            var labels = Window(path);
+            var list = new SettingsWindow(false, new FakeStore(), () => Console);
+            try
+            {
+                labels.Show();
+                await labels.LoadAsync();
+                await labels.Select(AddressLabels.SettingKey);
+                labels.AddRowButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                labels.UpdateLayout();
+                var boxes = Descendants<TextBox>(labels.AddressRows).ToArray();
+                Assert.Equal(2, boxes.Length);
+                boxes[0].Text = "192.0.2.15";
+                boxes[1].Text = "Lab";
+                Assert.Equal("192.0.2.15", labels.Edit!.Addresses[0].Address);
+                Assert.Equal("Lab", labels.Edit.Addresses[0].Label);
+                // A label for a screen reader that never resolved would fail silently; these must resolve.
+                Assert.Same(labels.AddressHeader, AutomationProperties.GetLabeledBy(boxes[0]));
+                Assert.Same(labels.LabelHeader, AutomationProperties.GetLabeledBy(boxes[1]));
+                var remove = Descendants<Button>(labels.AddressRows).Single();
+                Assert.Equal("Remove this row", AutomationProperties.GetName(remove));
+                labels.ReasonBox.Text = "the lab";
+                Assert.True(labels.SaveButton.IsEnabled);
+                boxes[0].Text = "192.0.2.";
+                Assert.False(labels.SaveButton.IsEnabled);
+                Assert.Contains("is not an IP address or network", labels.ValidationText.Text, StringComparison.Ordinal);
+                remove.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                Assert.Empty(labels.Edit.Addresses);
+
+                list.Show();
+                await list.LoadAsync();
+                await list.Select("example.future_list");
+                list.AddRowButton.RaiseEvent(new RoutedEventArgs(ButtonBase.ClickEvent));
+                list.UpdateLayout();
+                var entry = Descendants<TextBox>(list.ListRows).Single();
+                entry.Text = "198.51.100.0/24";
+                Assert.Equal("198.51.100.0/24", Assert.Single(list.Edit!.Items).Value);
+                Assert.Same(list.EditorLabel, AutomationProperties.GetLabeledBy(entry));
+            }
+            finally
+            {
+                labels.Close();
+                list.Close();
+                Remove(path);
+            }
+        });
+
+    private static IEnumerable<T> Descendants<T>(DependencyObject root) where T : DependencyObject
+    {
+        for (var i = 0; i < VisualTreeHelper.GetChildrenCount(root); i++)
+        {
+            var child = VisualTreeHelper.GetChild(root, i);
+            if (child is T match) yield return match;
+            foreach (var nested in Descendants<T>(child)) yield return nested;
+        }
+    }
+
     /// <summary>A store whose catalog has a key this build of the desktop has never seen.</summary>
     private sealed class FakeStore : ISettingsStore
     {
         internal const string Description = "Addresses and networks the decision engine never blocks.";
 
-        private static readonly SettingDefinition Allow = new("defense.allow", Description, new JsonArray(), SettingEffect.NextStart,
+        private static readonly SettingDefinition Allow = new("example.future_list", Description, new JsonArray(), SettingEffect.NextStart,
             node => node is JsonArray ? null : "a list of addresses");
 
-        private SettingValue value = new("defense.allow", new JsonArray(), true, 0, null, null, SettingEffect.NextStart, Description);
+        private SettingValue value = new("example.future_list", new JsonArray(), true, 0, null, null, SettingEffect.NextStart, Description);
 
         internal Exception? Fail { get; init; }
 

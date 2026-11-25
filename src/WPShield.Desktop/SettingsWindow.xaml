@@ -105,7 +105,11 @@
             </Grid>
 
             <StackPanel x:Name="EditArea">
-              <TextBlock x:Name="EditorLabel" FontWeight="SemiBold" Margin="0,4,0,6"/>
+              <DockPanel Margin="0,4,0,6">
+                <CheckBox x:Name="JsonSwitch" DockPanel.Dock="Right" FontSize="12" VerticalAlignment="Center" Checked="OnJsonSwitch"
+                          Unchecked="OnJsonSwitch"/>
+                <TextBlock x:Name="EditorLabel" FontWeight="SemiBold"/>
+              </DockPanel>
               <StackPanel x:Name="Editors">
                 <CheckBox x:Name="ToggleEditor" Visibility="Collapsed" Checked="OnToggle" Unchecked="OnToggle" VerticalContentAlignment="Center"/>
                 <TextBox x:Name="ValueEditor" Visibility="Collapsed" Padding="8,4" TextChanged="OnValueText" MaxLength="65536"

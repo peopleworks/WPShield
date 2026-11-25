@@ -133,9 +133,10 @@ nuevo, y el motivo.
 Cada ajuste se edita con un control acorde a su tipo: una casilla para activado o desactivado, un
 cuadro para un número o una palabra, una tabla de **Dirección o red** y **Etiqueta** para
 `labels.addresses` y una lista de entradas para una lista de direcciones. Cualquier otra forma se
-edita como JSON. Si un valor es aceptable lo decide la misma comprobación que usa
-`wpshield settings set`, y su respuesta aparece bajo el editor. **Guardar** sigue deshabilitado hasta
-que el valor es válido, distinto del actual y tiene un **motivo**. **Volver al valor por defecto**
+edita como JSON, y **Editar como JSON** cambia cualquier editor a texto JSON y de vuelta, para un
+valor que la tabla o la lista no pueden contener. Si un valor es aceptable lo decide la misma
+comprobación que usa `wpshield settings set`, y su respuesta aparece bajo el editor. **Guardar** sigue
+deshabilitado hasta que el valor es válido, distinto del actual y tiene un **motivo**. **Volver al valor por defecto**
 quita el valor guardado y también necesita un motivo. Cada cambio queda registrado con su usuario de
 Windows y el motivo, igual que lo registra la línea de comandos.
 

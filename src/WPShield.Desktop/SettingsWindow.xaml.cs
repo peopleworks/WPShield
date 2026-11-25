@@ -97,6 +97,9 @@ public partial class SettingsWindow : Window
         ResetButton.ToolTip = L("Removes the stored value so the default applies again. Needs a reason too.",
             "Quita el valor guardado para que vuelva a regir el valor por defecto. También necesita un motivo.");
         ConnectionButton.Content = L("My current connection", "Mi conexión actual");
+        JsonSwitch.Content = L("Edit as JSON", "Editar como JSON");
+        JsonSwitch.ToolTip = L("Edits the value as JSON text. The same check decides whether it can be saved.",
+            "Edita el valor como texto JSON. La misma comprobación decide si se puede guardar.");
         HistoryLabel.Text = L("History of this setting", "Historial de este ajuste");
         string[] headers = [L("When (UTC)", "Cuándo (UTC)"), L("Who", "Quién"), L("Old value", "Valor anterior"),
             L("New value", "Valor nuevo"), L("Reason", "Motivo")];
@@ -252,34 +255,68 @@ public partial class SettingsWindow : Window
             filling = true;
             try
             {
-                var kind = edit.Kind;
-                ToggleEditor.Visibility = kind == SettingEditorKind.Toggle ? Visibility.Visible : Visibility.Collapsed;
-                ValueEditor.Visibility = kind is SettingEditorKind.Number or SettingEditorKind.Text or SettingEditorKind.Json
-                    ? Visibility.Visible : Visibility.Collapsed;
-                AddressEditor.Visibility = kind == SettingEditorKind.AddressTable ? Visibility.Visible : Visibility.Collapsed;
-                ListEditor.Visibility = kind == SettingEditorKind.StringList ? Visibility.Visible : Visibility.Collapsed;
-                RowActions.Visibility = kind is SettingEditorKind.AddressTable or SettingEditorKind.StringList ? Visibility.Visible : Visibility.Collapsed;
-                var json = kind == SettingEditorKind.Json;
-                ValueEditor.AcceptsReturn = json;
-                ValueEditor.TextWrapping = json ? TextWrapping.Wrap : TextWrapping.NoWrap;
-                ValueEditor.MinHeight = json ? 120 : 0;
-                ValueEditor.VerticalScrollBarVisibility = json ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
-                ValueEditor.Text = edit.Text;
-                ToggleEditor.IsChecked = edit.Toggle;
-                AddressRows.ItemsSource = edit.Addresses;
-                ListRows.ItemsSource = edit.Items;
-                AddRowButton.Content = kind == SettingEditorKind.AddressTable ? L("Add a row", "Añadir una fila") : L("Add an entry", "Añadir una entrada");
-                EditorLabel.Text = kind == SettingEditorKind.Json ? L("New value (JSON)", "Valor nuevo (JSON)") : L("New value", "Valor nuevo");
                 ReasonBox.Text = "";
             }
             finally
             {
                 filling = false;
             }
+            ShowEditor();
             edit.Edited += OnEdited;
         }
         UpdateState();
         historyRead = LoadHistoryAsync(row);
+    }
+
+    /// <summary>Shows the editor the edit is using, filled with its value.</summary>
+    private void ShowEditor()
+    {
+        if (edit is null) return;
+        filling = true;
+        try
+        {
+            var kind = edit.Kind;
+            ToggleEditor.Visibility = kind == SettingEditorKind.Toggle ? Visibility.Visible : Visibility.Collapsed;
+            ValueEditor.Visibility = kind is SettingEditorKind.Number or SettingEditorKind.Text or SettingEditorKind.Json
+                ? Visibility.Visible : Visibility.Collapsed;
+            AddressEditor.Visibility = kind == SettingEditorKind.AddressTable ? Visibility.Visible : Visibility.Collapsed;
+            ListEditor.Visibility = kind == SettingEditorKind.StringList ? Visibility.Visible : Visibility.Collapsed;
+            RowActions.Visibility = kind is SettingEditorKind.AddressTable or SettingEditorKind.StringList ? Visibility.Visible : Visibility.Collapsed;
+            var json = kind == SettingEditorKind.Json;
+            ValueEditor.AcceptsReturn = json;
+            ValueEditor.TextWrapping = json ? TextWrapping.Wrap : TextWrapping.NoWrap;
+            ValueEditor.MinHeight = json ? 120 : 0;
+            ValueEditor.VerticalScrollBarVisibility = json ? ScrollBarVisibility.Auto : ScrollBarVisibility.Disabled;
+            ValueEditor.Text = edit.Text;
+            ToggleEditor.IsChecked = edit.Toggle;
+            AddressRows.ItemsSource = edit.Addresses;
+            ListRows.ItemsSource = edit.Items;
+            AddRowButton.Content = kind == SettingEditorKind.AddressTable ? L("Add a row", "Añadir una fila") : L("Add an entry", "Añadir una entrada");
+            EditorLabel.Text = kind == SettingEditorKind.Json ? L("New value (JSON)", "Valor nuevo (JSON)") : L("New value", "Valor nuevo");
+            JsonSwitch.Visibility = edit.CanSwitchToJson ? Visibility.Visible : Visibility.Collapsed;
+            JsonSwitch.IsChecked = edit.AsJson;
+        }
+        finally
+        {
+            filling = false;
+        }
+    }
+
+    private void OnJsonSwitch(object sender, RoutedEventArgs e)
+    {
+        if (filling || edit is null) return;
+        if (edit.TrySetJson(JsonSwitch.IsChecked == true))
+        {
+            ShowEditor();
+            return;
+        }
+        filling = true;
+        JsonSwitch.IsChecked = edit.AsJson;
+        filling = false;
+        StatusText.Text = edit.AsJson
+            ? L("This JSON does not have the form of the table or list editor, or is not valid JSON. Correct it, or keep editing it as JSON.",
+                "Este JSON no tiene la forma del editor de tabla o lista, o no es JSON válido. Corríjalo o siga editándolo como JSON.")
+            : L("Correct the value first.", "Corrija primero el valor.");
     }
 
     private void OnEdited(object? sender, EventArgs e) => UpdateState();
@@ -290,6 +327,7 @@ public partial class SettingsWindow : Window
         if (edit is null || shown?.Value is not { } value) return;
         var writable = Writable;
         Editors.IsEnabled = writable;
+        JsonSwitch.IsEnabled = writable;
         ReasonBox.IsEnabled = writable;
         var (_, problem) = edit.Proposed();
         ValidationText.Text = problem ?? "";

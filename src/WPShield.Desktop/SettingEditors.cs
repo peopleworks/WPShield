@@ -102,7 +102,7 @@ internal static class SettingEditors
         return current is null || Fits(kind, current) ? kind : SettingEditorKind.Json;
     }
 
-    private static bool Fits(SettingEditorKind kind, JsonNode node) => kind switch
+    internal static bool Fits(SettingEditorKind kind, JsonNode node) => kind switch
     {
         SettingEditorKind.Toggle => node is JsonValue v && v.GetValueKind() is JsonValueKind.True or JsonValueKind.False,
         SettingEditorKind.Number => node is JsonValue v && v.GetValueKind() == JsonValueKind.Number,
@@ -168,7 +168,10 @@ internal static class SettingEditors
 /// <summary>The edit of one setting: what the operator typed, the JSON it becomes, and whether it may be saved.</summary>
 internal sealed class SettingEdit
 {
+    private static readonly JsonSerializerOptions Indented = new() { WriteIndented = true };
     private readonly bool spanish;
+    private readonly SettingEditorKind shaped;
+    private bool asJson;
     private bool toggle;
     private string text = "";
     private string reason = "";
@@ -178,34 +181,12 @@ internal sealed class SettingEdit
         Definition = definition;
         this.spanish = spanish;
         Current = current;
-        Kind = SettingEditors.KindFor(definition.Default, current);
-        var value = current ?? definition.Default;
+        shaped = SettingEditors.KindFor(definition.Default, current);
         CurrentJson = current?.ToJsonString();
-        switch (Kind)
-        {
-            case SettingEditorKind.Toggle:
-                toggle = value.GetValue<bool>();
-                break;
-            case SettingEditorKind.Number:
-                text = value.ToJsonString();
-                break;
-            case SettingEditorKind.Text:
-                text = value.GetValue<string>();
-                break;
-            case SettingEditorKind.AddressTable:
-                foreach (var row in SettingEditors.Rows((JsonObject)value)) Addresses.Add(row);
-                break;
-            case SettingEditorKind.StringList:
-                foreach (var row in SettingEditors.Items((JsonArray)value)) Items.Add(row);
-                break;
-            default:
-                text = value.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-                break;
-        }
+        // Subscribed first, so every row Load adds - now or after a switch back from JSON - is watched once.
         Addresses.CollectionChanged += OnRowsChanged;
         Items.CollectionChanged += OnRowsChanged;
-        foreach (var row in Addresses) row.PropertyChanged += OnRowChanged;
-        foreach (var row in Items) row.PropertyChanged += OnRowChanged;
+        Load(current ?? definition.Default);
     }
 
     /// <summary>Raised on every change to the value or the reason, so the window can redraw the checks.</summary>
@@ -213,7 +194,17 @@ internal sealed class SettingEdit
 
     internal SettingDefinition Definition { get; }
 
-    internal SettingEditorKind Kind { get; }
+    /// <summary>The editor in use: the one the setting's shape chose, or JSON when the operator switched to it.</summary>
+    internal SettingEditorKind Kind => asJson ? SettingEditorKind.Json : shaped;
+
+    /// <summary>
+    /// Whether the shaped editor can be swapped for raw JSON. An empty default (<c>{}</c>, <c>[]</c>)
+    /// does not say what its entries are, so a later setting whose entries are not text - a number
+    /// per rule, say - would be impossible to enter in the table or the list without this.
+    /// </summary>
+    internal bool CanSwitchToJson => shaped != SettingEditorKind.Json;
+
+    internal bool AsJson => asJson;
 
     /// <summary>The value read from the store, or <see langword="null"/> when the store was not read.</summary>
     internal JsonNode? Current { get; }
@@ -301,10 +292,64 @@ internal sealed class SettingEdit
 
     internal bool CanReset(bool writable, bool isDefault) => writable && Current is not null && !isDefault && HasReason;
 
-    internal void AddAddress(string address = "")
+    internal void AddAddress(string address = "") => Addresses.Add(new AddressLabelRow(address));
+
+    /// <summary>
+    /// Switches between the shaped editor and raw JSON. Switching to JSON carries the value as it is
+    /// being edited; switching back succeeds only when the JSON has the shaped editor's form, so
+    /// nothing typed is silently dropped. Returns whether the switch happened.
+    /// </summary>
+    internal bool TrySetJson(bool json)
     {
-        var row = new AddressLabelRow(address);
-        Addresses.Add(row);
+        // A value that is already edited as JSON has no other editor to go to.
+        if (!CanSwitchToJson) return json;
+        if (json == asJson) return true;
+        if (json)
+        {
+            var (proposed, _) = Proposed();
+            if (proposed is null) return false;
+            text = JsonNode.Parse(proposed)!.ToJsonString(Indented);
+            asJson = true;
+        }
+        else
+        {
+            JsonNode? node;
+            try { node = JsonNode.Parse(text); }
+            catch (JsonException) { return false; }
+            if (node is null || !SettingEditors.Fits(shaped, node)) return false;
+            asJson = false;
+            Load(node);
+        }
+        OnEdited();
+        return true;
+    }
+
+    /// <summary>Fills the shaped editor with a value that has its shape.</summary>
+    private void Load(JsonNode value)
+    {
+        switch (Kind)
+        {
+            case SettingEditorKind.Toggle:
+                toggle = value.GetValue<bool>();
+                break;
+            case SettingEditorKind.Number:
+                text = value.ToJsonString();
+                break;
+            case SettingEditorKind.Text:
+                text = value.GetValue<string>();
+                break;
+            case SettingEditorKind.AddressTable:
+                Addresses.Clear();
+                foreach (var row in SettingEditors.Rows((JsonObject)value)) Addresses.Add(row);
+                break;
+            case SettingEditorKind.StringList:
+                Items.Clear();
+                foreach (var row in SettingEditors.Items((JsonArray)value)) Items.Add(row);
+                break;
+            default:
+                text = value.ToJsonString(Indented);
+                break;
+        }
     }
 
     internal void AddItem(string value = "") => Items.Add(new ListItemRow(value));

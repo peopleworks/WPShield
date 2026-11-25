@@ -121,7 +121,8 @@ it takes effect, and its history: when, who, the old and new value, and the reas
 
 Each setting is edited with a control that fits its type: a check box for on and off, a box for a
 number or a word, a table of **Address or network** and **Label** for `labels.addresses`, and a list
-of entries for a list of addresses. Any other shape is edited as JSON. Whether a value is acceptable
+of entries for a list of addresses. Any other shape is edited as JSON, and **Edit as JSON** switches any
+editor to JSON text and back, for a value the table or the list cannot hold. Whether a value is acceptable
 is decided by the same check `wpshield settings set` uses, and its answer appears under the editor.
 **Save** stays disabled until the value is valid, differs from the current one, and has a
 **reason**. **Reset to default** removes the stored value and needs a reason too. Every change is
