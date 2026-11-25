@@ -161,6 +161,66 @@ public sealed class HostFactAnalysisTests
     }
 
     // ---------------------------------------------------------------------------------------------
+    //  Patch level: facts, never a verdict
+    // ---------------------------------------------------------------------------------------------
+
+    private static readonly DateTimeOffset PatchNow = new(2026, 11, 25, 12, 0, 0, TimeSpan.Zero);
+
+    [Fact]
+    public void TheNewestSuccessfulCumulativeUpdateIsFoundWhateverElseWasInstalled()
+    {
+        var (title, at, failed) = PatchLevels.FromUpdateEvents(
+        [
+            new UpdateEvent(PatchNow.AddDays(-1), 19, "Security Intelligence Update for Microsoft Defender Antivirus - KB2267602 (Version 1.400.1.0)"),
+            new UpdateEvent(PatchNow.AddDays(-23), 19, "2026-11 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5090001)"),
+            new UpdateEvent(PatchNow.AddDays(-55), 19, "2026-10 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5080001)"),
+            new UpdateEvent(PatchNow.AddDays(-2), 20, "2026-11 Cumulative Update for .NET Framework (KB5090002)"),
+            new UpdateEvent(PatchNow.AddDays(-12), 20, "Some driver"),
+            new UpdateEvent(PatchNow.AddDays(-40), 20, "An old failure")
+        ], PatchNow);
+
+        Assert.Contains("KB5090001", title, StringComparison.Ordinal);
+        Assert.Equal(PatchNow.AddDays(-23), at);
+        Assert.Equal(2, failed);
+    }
+
+    [Fact]
+    public void NoCumulativeUpdateInTheLogIsNotFoundNotNoneAndAHostileTitleIsCleanedAndBounded()
+    {
+        var (title, at, failed) = PatchLevels.FromUpdateEvents([new UpdateEvent(PatchNow, 19, "Driver update")], PatchNow);
+        Assert.Null(title);
+        Assert.Null(at);
+        Assert.Equal(0, failed);
+
+        var hostile = "Cumulative Update \u001b[31m" + new string('x', 500);
+        var (cleaned, _, _) = PatchLevels.FromUpdateEvents([new UpdateEvent(PatchNow, 19, hostile)], PatchNow);
+        Assert.DoesNotContain('\u001b', cleaned!);
+        Assert.True(cleaned!.Length <= HostPatchLevel.MaxTitleLength);
+    }
+
+    [Theory]
+    [InlineData("20348", 2849, "10.0.20348.2849", false)]
+    [InlineData("20348", 4405, "10.0.20348.2849", true)]
+    [InlineData("26200", 9974, "10.0.26100.9974", false)]
+    [InlineData(null, null, "10.0.20348.2849", null)]
+    [InlineData("20348", 2849, null, null)]
+    public void TheKernelFileIsComparedWithTheRegistryByRevisionOnly(string? build, int? ubr, string? kernel, bool? differs)
+    {
+        var patch = new HostPatchLevel(build, ubr, "21H2", kernel, true, null, null, 0);
+        Assert.Equal(differs, patch.KernelDiffersFromRegistry);
+    }
+
+    [Fact]
+    public void TheBuildAndTheDaysSinceTheLastCumulativeUpdateAreFacts()
+    {
+        var patch = new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.2849", true, "2026-11 Cumulative Update (KB5090001)", PatchNow.AddDays(-23), 0);
+
+        Assert.Equal("20348.2849", patch.Build);
+        Assert.Equal(23, patch.DaysSinceCumulativeUpdate(PatchNow));
+        Assert.Null(new HostPatchLevel("20348", 2849, null, null, false, null, null, null).DaysSinceCumulativeUpdate(PatchNow));
+    }
+
+    // ---------------------------------------------------------------------------------------------
     //  Inventory changes and the full-name indicator
     // ---------------------------------------------------------------------------------------------
 

@@ -223,7 +223,7 @@ internal sealed class HostFactsSession
             IReadOnlyList<string>? attempted = null;
             try
             {
-                attempted = queries.AttemptedAccountNames(now - HostFacts.RestartWindow);
+                attempted = queries.AttemptedAccountNames(now - HostFacts.AttemptWindow);
             }
             catch (Exception exception) when (exception is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
             {

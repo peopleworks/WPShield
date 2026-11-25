@@ -100,6 +100,33 @@ public sealed class HostCommandTests : IDisposable
     }
 
     [Fact]
+    public void ThePatchLevelIsShownAsFactsWithTheDaysSinceTheLastCumulativeUpdate()
+    {
+        Recorded();
+
+        var (_, summary, _) = Run();
+        var (_, health, _) = Run("health");
+
+        Assert.Contains("build 20348.2849; last cumulative update: 2026-11-02 12:00 UTC, 22 days ago; failed installs in 30 days: 1", summary, StringComparison.Ordinal);
+        Assert.Contains("OS build          20348.2849 (21H2)", health, StringComparison.Ordinal);
+        Assert.Contains("Kernel file       10.0.20348.2849", health, StringComparison.Ordinal);
+        Assert.DoesNotContain("differs from the registry", health, StringComparison.Ordinal);
+        Assert.Contains("22 days ago: 2026-11 Cumulative Update", health, StringComparison.Ordinal);
+        Assert.Contains("never calls a host outdated", health, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void AnUnreadableUpdateLogIsUnknownNeverNone()
+    {
+        var (_, output, _) = Run(new Source { UpdateLogReadable = false }, "health", "--live");
+
+        Assert.Contains("Last cumulative   unknown (the Windows Update log could not be read)", output, StringComparison.Ordinal);
+        Assert.Contains("Failed installs   unknown", output, StringComparison.Ordinal);
+        Assert.Contains("its revision differs from the registry's UBR", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("none", output, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public void JsonCarriesTheSnapshotsTheirStatusAndTheRestarts()
     {
         Recorded();
@@ -171,9 +198,15 @@ public sealed class HostCommandTests : IDisposable
     {
         public bool Fail { get; init; }
 
+        public bool UpdateLogReadable { get; init; } = true;
+
         public HostFactReading ReadHealth(string? storePath, CancellationToken cancellationToken) =>
             HostFactReading.Of(HostFacts.Health, null, Now,
-                new HostHealth(Now.AddDays(-3), 3 * 86_400, 12.5, 32L << 30, 8L << 30, [new HostVolume(@"C:\", 500L << 30, 120L << 30, true)], 1 << 20));
+                new HostHealth(Now.AddDays(-3), 3 * 86_400, 12.5, 32L << 30, 8L << 30, [new HostVolume(@"C:\", 500L << 30, 120L << 30, true)], 1 << 20,
+                    UpdateLogReadable
+                        ? new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.2849", true,
+                            "2026-11 Cumulative Update for Microsoft server operating system version 21H2 for x64-based Systems (KB5090001)", Now.AddDays(-22), 1)
+                        : new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.4405", false, null, null, null)));
 
         public HostRestartReading ReadRestarts(DateTimeOffset since, CancellationToken cancellationToken) =>
             new(Now, HostFactStatus.Ok, null, null, []);

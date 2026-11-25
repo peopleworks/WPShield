@@ -53,6 +53,12 @@ public static class HostFacts
     /// <summary>How far back unexpected restarts are read at the first start, and what the gauge counts.</summary>
     public static readonly TimeSpan RestartWindow = TimeSpan.FromDays(30);
 
+    /// <summary>
+    /// How far back the full-name indicator looks for attempted account names. It reads the detailed attempts, which
+    /// are kept <c>retention.raw_days</c> - 14 by default - so in practice the window is that, 30 days at most.
+    /// </summary>
+    public static readonly TimeSpan AttemptWindow = TimeSpan.FromDays(30);
+
     /// <summary>How far back the RDP logons of <see cref="Sessions"/> reach.</summary>
     public static readonly TimeSpan SessionWindow = TimeSpan.FromDays(7);
 
@@ -139,6 +145,7 @@ public sealed record HostFactReading(string Fact, string? Kind, DateTimeOffset T
 // =================================================================================================
 
 /// <summary><c>host_health</c>: how the machine is doing. Restarts are events, counted by a query.</summary>
+/// <param name="Patch">What the operating system reports about its own patch level; <see langword="null"/> when not read.</param>
 public sealed record HostHealth(
     DateTimeOffset LastBoot,
     long UptimeSeconds,
@@ -146,7 +153,99 @@ public sealed record HostHealth(
     long? MemoryTotalBytes,
     long? MemoryAvailableBytes,
     IReadOnlyList<HostVolume> Volumes,
-    long? StoreBytes);
+    long? StoreBytes,
+    HostPatchLevel? Patch = null);
+
+/// <summary>
+/// The patch level as Windows reports it, in three places that can disagree: the registry's build, the kernel
+/// file's version and the Windows Update log. Facts only - WPShield has no offline source of the latest build, so
+/// it never judges a host "outdated".
+/// </summary>
+/// <param name="CurrentBuild"><c>CurrentBuild</c> from <c>HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion</c>.</param>
+/// <param name="Ubr">The update build revision (<c>UBR</c>) from the same key.</param>
+/// <param name="DisplayVersion"><c>DisplayVersion</c>, such as <c>21H2</c>; absent on some versions.</param>
+/// <param name="KernelVersion">The ProductVersion of <c>%SystemRoot%\System32\ntoskrnl.exe</c>.</param>
+/// <param name="UpdateLogReadable">
+/// Whether <c>Microsoft-Windows-WindowsUpdateClient/Operational</c> could be read. When it could not, the three
+/// update fields below are <see langword="null"/> and mean "unknown", never "none".
+/// </param>
+/// <param name="LastCumulativeUpdate">The title of the newest successful install (event 19) whose title names a cumulative update, cleaned and bounded at 200 characters.</param>
+/// <param name="LastCumulativeUpdateAt">When that install succeeded.</param>
+/// <param name="FailedInstalls30Days">Install failures (event 20) in the last 30 days.</param>
+/// <param name="UpdateLogStartsAt">The oldest record the update log still holds: "not found" means "not since then".</param>
+public sealed record HostPatchLevel(
+    string? CurrentBuild,
+    int? Ubr,
+    string? DisplayVersion,
+    string? KernelVersion,
+    bool UpdateLogReadable,
+    string? LastCumulativeUpdate,
+    DateTimeOffset? LastCumulativeUpdateAt,
+    int? FailedInstalls30Days,
+    DateTimeOffset? UpdateLogStartsAt = null)
+{
+    public const int MaxTitleLength = 200;
+
+    /// <summary>The window of <see cref="FailedInstalls30Days"/>.</summary>
+    public static readonly TimeSpan FailureWindow = TimeSpan.FromDays(30);
+
+    /// <summary><c>20348.2849</c>, or <see langword="null"/> when the registry did not say.</summary>
+    public string? Build => CurrentBuild is null ? null : Ubr is { } ubr ? $"{CurrentBuild}.{ubr}" : CurrentBuild;
+
+    /// <summary>Whole days since the last successful cumulative update, or <see langword="null"/> when none is known.</summary>
+    public int? DaysSinceCumulativeUpdate(DateTimeOffset now) =>
+        LastCumulativeUpdateAt is { } at ? Math.Max(0, (int)(now - at).TotalDays) : null;
+
+    /// <summary>
+    /// Whether the kernel file's revision (the last part of its version) differs from the registry's <c>UBR</c> -
+    /// stated as a fact, for example while a restart is pending; <see langword="null"/> when either is unknown.
+    /// Only the revision is compared: an enablement package raises <c>CurrentBuild</c> (26100 to 26200) while the
+    /// kernel file keeps the base build.
+    /// </summary>
+    public bool? KernelDiffersFromRegistry
+    {
+        get
+        {
+            if (Ubr is not { } ubr || KernelVersion is not { } kernel) return null;
+            var dot = kernel.LastIndexOf('.');
+            return dot < 0 || !int.TryParse(kernel.AsSpan(dot + 1), System.Globalization.NumberStyles.None,
+                System.Globalization.CultureInfo.InvariantCulture, out var revision) ? null : revision != ubr;
+        }
+    }
+}
+
+/// <summary>One Windows Update client record: 19 install succeeded, 20 install failed.</summary>
+public sealed record UpdateEvent(DateTimeOffset At, int EventId, string? Title);
+
+/// <summary>Reads the patch-level facts out of Windows Update client records, newest first or in any order.</summary>
+public static class PatchLevels
+{
+    public const int InstallSucceeded = 19;
+    public const int InstallFailed = 20;
+
+    /// <summary>The most records one reading looks at.</summary>
+    public const int MaxEvents = 5000;
+
+    /// <summary>
+    /// The newest successful install whose title names a cumulative update, and the failures of the last 30 days.
+    /// </summary>
+    public static (string? Title, DateTimeOffset? At, int Failed) FromUpdateEvents(IEnumerable<UpdateEvent> events, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        UpdateEvent? newest = null;
+        var failed = 0;
+        foreach (var record in events.Take(MaxEvents))
+        {
+            if (record.EventId == InstallFailed && record.At > now - HostPatchLevel.FailureWindow && record.At <= now) failed++;
+            if (record.EventId == InstallSucceeded && IsCumulative(record.Title) && (newest is null || record.At > newest.At)) newest = record;
+        }
+        return (newest is null ? null : EvidenceText.Clean(newest.Title, HostPatchLevel.MaxTitleLength), newest?.At, failed);
+    }
+
+    /// <summary>"Cumulative Update" in the title, whatever the product or language of the rest.</summary>
+    public static bool IsCumulative(string? title) =>
+        title is not null && title.Contains("Cumulative Update", StringComparison.OrdinalIgnoreCase);
+}
 
 /// <param name="HoldsIisLogs">Whether the IIS log folder lives on this volume, or <see langword="null"/> when unknown.</param>
 public sealed record HostVolume(string Name, long TotalBytes, long FreeBytes, bool? HoldsIisLogs);

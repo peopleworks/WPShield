@@ -145,6 +145,24 @@ public sealed class HostFactsStoreTests : IDisposable
     }
 
     [Fact]
+    public void ThePatchLevelTravelsWithTheHealthSnapshot()
+    {
+        using var store = EvidenceStore.OpenForWriting(DbPath);
+        var patch = new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.2849", true, "2026-11 Cumulative Update (KB5090001)", Now.AddDays(-23), 1,
+            Now.AddDays(-90));
+        var health = new HostHealth(Now.AddDays(-1), 86_400, 5, 1000, 500, [], 10, patch);
+
+        new HostFactsWriter(store).Write(HostFactReading.Of(HostFacts.Health, null, Now, health));
+
+        var read = new HostFactsQueries(store).Latest(HostFacts.Health)!.Value<HostHealth>()!.Patch!;
+        Assert.Equal("20348.2849", read.Build);
+        Assert.Equal(Now.AddDays(-23), read.LastCumulativeUpdateAt);
+        Assert.Equal(1, read.FailedInstalls30Days);
+        Assert.True(read.UpdateLogReadable);
+        Assert.Equal(Now.AddDays(-90), read.UpdateLogStartsAt);
+    }
+
+    [Fact]
     public void AFactThatIsNotOkMustSayWhyAndWhatToDo()
     {
         using var store = EvidenceStore.OpenForWriting(DbPath);

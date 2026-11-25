@@ -20,6 +20,7 @@ siguiente fase solo leerán fotos guardadas.
 | Dato | Qué contiene | Se lee de | Cadencia | Necesita elevación |
 | --- | --- | --- | --- | --- |
 | `host_health` | Tiempo encendido, CPU, memoria, espacio libre por volumen fijo (marcando el de los logs de IIS), tamaño del almacén | `GetTickCount64`, `GetSystemTimes`, `GlobalMemoryStatusEx`, `DriveInfo` | 5 minutos | No |
+| Nivel de parches (en `host_health`) | `CurrentBuild`, `UBR` y `DisplayVersion`; la versión del archivo del kernel; la última actualización acumulativa correcta con su fecha y los días transcurridos; instalaciones fallidas en 30 días | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, ProductVersion de `ntoskrnl.exe`, eventos 19 y 20 de `WindowsUpdateClient/Operational` | 5 minutos | No |
 | Reinicios inesperados | Cada caída una vez, con su código (`0x133 DPC_WATCHDOG_VIOLATION`) | Log de Sistema 41, 6008 y 1001, agrupados por caída | Al arrancar y cada 15 minutos | No |
 | `iis_sites` | ID, nombre, estado, bindings, grupo y **tipo** de identidad del grupo | El lector de IIS de solo lectura que usa `wpshield audit` | 15 minutos | Sí |
 | `iis_posture` | Los ID, severidades y recuentos del audit, y "grupos como administrador: N de M" | Las propias comprobaciones del audit, de solo lectura | Al arrancar, cada 6 horas y tras cada `wpshield audit` manual | Sí |
@@ -31,6 +32,16 @@ siguiente fase solo leerán fotos guardadas.
 
 Las conexiones salientes de los procesos web (`w3wp.exe`, `php-cgi.exe`) **todavía no se miden**: una foto
 no ve una llamada de dos segundos. Tendrán su propio ADR y su propio sensor.
+
+### Nivel de parches: hechos, nunca un veredicto
+
+La compilación del registro, la versión del archivo del kernel y el log de Windows Update pueden no
+coincidir: un volcado de memoria puede mostrar un kernel más antiguo que las actualizaciones que lista el
+historial. `wpshield host health` muestra los tres juntos, dice cuándo la revisión del archivo del kernel
+difiere del `UBR` del registro y cuenta los días desde la última actualización acumulativa correcta. Un log
+de Windows Update ilegible dice `unknown`, nunca "ninguno"; "not found in the Windows Update log" dice
+hasta cuándo llega el log. WPShield no tiene una fuente sin conexión de la última compilación, así que
+nunca califica un servidor de desactualizado.
 
 ## Honesto con lo que no pudo leer
 
@@ -74,7 +85,9 @@ necesitan, no salen en rojo. El remedio es restringir la regla a mano, nunca esc
 ### ¿Conocen los atacantes los nombres de tus cuentas?
 
 En cada foto de cuentas, el recolector compara en memoria los nombres probados en los inicios de sesión
-fallidos con los **nombres completos** de las cuentas locales. Solo guarda si alguno coincidió y cuántos:
+fallidos (los intentos de los últimos 30 días que aún se guardan en detalle, que son 14 días con el
+`retention.raw_days` por defecto) con los **nombres completos** de las cuentas locales, sin distinguir
+mayúsculas, acentos ni espacios. Solo guarda si alguno coincidió y cuántos:
 "attackers try a real account's full name: YES (2)". Los nombres completos nunca se guardan, ni se registran,
 ni se muestran. Una coincidencia significa que los nombres salieron de este servidor, por su pantalla de
 inicio de sesión o por una intrusión.

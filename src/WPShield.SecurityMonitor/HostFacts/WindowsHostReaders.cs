@@ -81,12 +81,100 @@ public static class WindowsHostReaders
             }
         }
 
-        var health = new HostHealth(now - uptime, (long)uptime.TotalSeconds, cpu, total, available, volumes, storeBytes);
+        var patch = ReadPatchLevel(now, cancellationToken, problems);
+        var health = new HostHealth(now - uptime, (long)uptime.TotalSeconds, cpu, total, available, volumes, storeBytes, patch);
         return problems.Count == 0
             ? HostFactReading.Of(HostFacts.Health, null, now, health)
             : HostFactReading.Of(HostFacts.Health, null, now, health, HostFactStatus.Partial, "not-read: " + string.Join(", ", problems.Distinct()),
                 "The values that could not be read are left empty; they are read again in five minutes.");
     }
+
+    internal const string UpdateLog = "Microsoft-Windows-WindowsUpdateClient/Operational";
+
+    /// <summary>
+    /// The patch level as Windows reports it: the registry's build, the kernel file's version and the Windows Update
+    /// log. Read-only and bounded. Facts, never a verdict: there is no offline source of the latest build.
+    /// </summary>
+    internal static HostPatchLevel ReadPatchLevel(DateTimeOffset now, CancellationToken cancellationToken, List<string> problems)
+    {
+        string? build = null, display = null, kernel = null;
+        int? ubr = null;
+        try
+        {
+            using var key = Microsoft.Win32.Registry.LocalMachine.OpenSubKey(@"SOFTWARE\Microsoft\Windows NT\CurrentVersion");
+            build = Bounded(key?.GetValue("CurrentBuild") as string, 16);
+            ubr = key?.GetValue("UBR") as int?;
+            display = Bounded(key?.GetValue("DisplayVersion") as string, 16);
+            if (key is null) problems.Add("os-version");
+        }
+        catch (Exception exception) when (exception is SecurityException or UnauthorizedAccessException or IOException)
+        {
+            problems.Add("os-version");
+        }
+        try
+        {
+            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "ntoskrnl.exe");
+            kernel = File.Exists(path) ? Bounded(System.Diagnostics.FileVersionInfo.GetVersionInfo(path).ProductVersion, 32) : null;
+            if (kernel is null) problems.Add("kernel-version");
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
+        {
+            problems.Add("kernel-version");
+        }
+
+        var events = new List<UpdateEvent>();
+        var readable = true;
+        var foundCumulative = false;
+        try
+        {
+            const string filter = "*[System[(EventID=19 or EventID=20)]]";
+            using var reader = new EventLogReader(new EventLogQuery(UpdateLog, PathType.LogName, filter) { ReverseDirection = true }) { BatchSize = 64 };
+            for (var i = 0; i < PatchLevels.MaxEvents; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using var record = reader.ReadEvent();
+                if (record is null || record.TimeCreated is not DateTime created) break;
+                var at = new DateTimeOffset(created.ToUniversalTime(), TimeSpan.Zero);
+                var title = record.Properties.Count > 0 ? record.Properties[0].Value as string : null;
+                events.Add(new UpdateEvent(at, record.Id, title is null ? null : EvidenceText.Clean(title, HostPatchLevel.MaxTitleLength)));
+                foundCumulative |= record.Id == PatchLevels.InstallSucceeded && PatchLevels.IsCumulative(title);
+                // Newest first: once a cumulative update is found and the failure window is behind, nothing older matters.
+                if (foundCumulative && at < now - HostPatchLevel.FailureWindow) break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            readable = false;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or SecurityException or EventLogException)
+        {
+            readable = false;
+        }
+        if (!readable)
+        {
+            problems.Add("update-log");
+            return new HostPatchLevel(build, ubr, display, kernel, false, null, null, null);
+        }
+        var (lastTitle, lastAt, failed) = PatchLevels.FromUpdateEvents(events, now);
+        return new HostPatchLevel(build, ubr, display, kernel, true, lastTitle, lastAt, failed, OldestRecord(UpdateLog));
+    }
+
+    /// <summary>The time of the oldest record a log still holds, so "not found" can say "since when".</summary>
+    private static DateTimeOffset? OldestRecord(string log)
+    {
+        try
+        {
+            using var reader = new EventLogReader(new EventLogQuery(log, PathType.LogName, "*")) { BatchSize = 1 };
+            using var record = reader.ReadEvent();
+            return record?.TimeCreated is DateTime created ? new DateTimeOffset(created.ToUniversalTime(), TimeSpan.Zero) : null;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or SecurityException or EventLogException)
+        {
+            return null;
+        }
+    }
+
+    private static string? Bounded(string? text, int max) => string.IsNullOrWhiteSpace(text) ? null : EvidenceText.Clean(text.Trim(), max);
 
     private static double? ReadCpu(CancellationToken cancellationToken, List<string> problems)
     {

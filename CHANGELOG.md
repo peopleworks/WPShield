@@ -27,7 +27,10 @@ must complete first.
   The web tools take the ranges `wpshield web` takes (`1h` to `30d`) and a site by its ID. Site names, request paths, user agents and site remedies leave the host only with `mcp.detailed_records`, wrapped as untrusted; without it an answer carries site IDs, counts and rule and observation IDs. Web evidence stays evidence only: nothing is decided or blocked from it.
 - Host facts (ADR 0013), **read-only**: nothing on the server is changed, and every remedy is text.
   - `wpshield evidence collect` takes bounded snapshots of the host on fixed cadences and stores them in the evidence store:
-    health every 5 minutes (uptime, CPU, memory, free space per volume, store size); unexpected restarts at start and every 15
+    health every 5 minutes (uptime, CPU, memory, free space per volume, store size, and the patch level: `CurrentBuild`, `UBR`
+    and `DisplayVersion` from the registry, the `ntoskrnl.exe` version, the newest successful cumulative update from the Windows
+    Update log with its date, and failed installs in 30 days - facts only, never an "outdated" verdict, and `unknown` when the
+    log is unreadable); unexpected restarts at start and every 15
     minutes, from System log events 41, 6008 and 1001, each crash recorded once with its bugcheck code and kept even if the log is
     cleared (`host.unexpected-restart`); IIS sites, listening ports and RDP sessions every 15 minutes; the audit's posture and the
     inventory of non-Microsoft accounts, services and tasks at start and every 6 hours. Reads run in the background, one at a time,
@@ -38,8 +41,10 @@ must complete first.
     `user-writable-path`). Microsoft-signed items are left out unless they run a script host or carry one of those flags.
     Authenticode (embedded and catalog) is checked without revocation, cached, at most 300 per snapshot. Changes between
     snapshots are recorded as `host.inventory-change`, at most 500 a day per kind, the overflow counted.
-  - The full-name indicator: attempted account names are compared in memory with the local accounts' full names, and only
-    whether any matched, and how many, is stored. The full names are never stored, logged or shown.
+  - The full-name indicator: attempted account names (the detailed attempts still kept, 14 days by default, 30 at most) are
+    compared in memory with the local accounts' full names, ignoring case, accents and spacing, and only whether any matched,
+    and how many, is stored. The full names are never stored, logged or shown.
+  - ADR 0013 records what was built differently in an "As built" section (en/es).
   - RDP sessions take their source address from LocalSessionManager 21 and 25, never from the client-reported address.
   - `wpshield host [health|sites|posture|ports|sessions|inventory <kind>] [--live] [--json]` shows them, each with its age and
     status; a stale snapshot is marked, a fact never read says so, and `--live` reads now and writes nothing.

@@ -19,6 +19,7 @@ stored snapshots only.
 | Fact | What it holds | Read from | Cadence | Needs elevation |
 | --- | --- | --- | --- | --- |
 | `host_health` | Uptime, CPU, memory, free space per fixed volume (the IIS log volume marked), store size | `GetTickCount64`, `GetSystemTimes`, `GlobalMemoryStatusEx`, `DriveInfo` | 5 minutes | No |
+| Patch level (in `host_health`) | `CurrentBuild`, `UBR` and `DisplayVersion`; the kernel file's version; the newest successful cumulative update with its date and the days since; failed installs in 30 days | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, `ntoskrnl.exe` ProductVersion, `WindowsUpdateClient/Operational` events 19 and 20 | 5 minutes | No |
 | Unexpected restarts | Each crash once, with its bugcheck code (`0x133 DPC_WATCHDOG_VIOLATION`) | System log 41, 6008 and 1001, grouped per crash | At start and every 15 minutes | No |
 | `iis_sites` | ID, name, state, bindings, pool and pool identity **type** | The read-only IIS reader `wpshield audit` uses | 15 minutes | Yes |
 | `iis_posture` | The audit's finding IDs, severities and counts, and "pools as an administrator: N of M" | The audit's own checks, read-only | At start and every 6 hours, and after every manual `wpshield audit` | Yes |
@@ -30,6 +31,15 @@ stored snapshots only.
 
 Outbound connections from web worker processes (`w3wp.exe`, `php-cgi.exe`) are **not measured yet**: a
 snapshot misses a two-second callback. They get their own ADR and sensor.
+
+### Patch level: facts, never a verdict
+
+The registry's build, the kernel file's version and the Windows Update log can disagree: a crash dump
+can show an older kernel than the updates the update history lists. `wpshield host health` shows all
+three side by side, says when the kernel file's revision differs from the registry's `UBR`, and counts
+the days since the last successful cumulative update. An unreadable update log reads `unknown`, never
+"none"; "not found in the Windows Update log" says how far back the log reaches. WPShield has no
+offline source of the latest build, so it never calls a host outdated.
 
 ## Honest about what it could not read
 
@@ -71,8 +81,10 @@ red. The remedy is to restrict the rule by hand, never to hide the finding.
 
 ### Do attackers know your account names?
 
-At every accounts snapshot the collector compares the account names attempted in failed logons with the
-**full names** of the local accounts, in memory. It stores only whether any matched and how many:
+At every accounts snapshot the collector compares the account names attempted in failed logons - the
+attempts of the last 30 days still stored in detail, which is 14 days with the default
+`retention.raw_days` - with the **full names** of the local accounts, in memory, ignoring case, accents
+and spacing. It stores only whether any matched and how many:
 "attackers try a real account's full name: YES (2)". The full names are never stored, logged or shown. A
 match means the names leaked from this server, through its login screen or an intrusion.
 

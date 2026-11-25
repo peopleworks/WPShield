@@ -236,7 +236,7 @@ internal static class HostCommand
         try
         {
             using var store = EvidenceAccess.OpenReadOnly(path, elevated);
-            return new HostFactsQueries(store).AttemptedAccountNames(at - HostFacts.RestartWindow);
+            return new HostFactsQueries(store).AttemptedAccountNames(at - HostFacts.AttemptWindow);
         }
         catch (Exception exception) when (exception is EvidenceAccessException or SqliteException)
         {
@@ -276,7 +276,7 @@ internal static class HostCommand
                     output.WriteLine($"  {label} no snapshot yet - the collector has not read it. Start 'wpshield evidence collect' elevated, or use --live.");
                     continue;
                 }
-                output.WriteLine($"  {label} {Status(snapshot, at, live)}  {Summary(snapshot, restarts)}");
+                output.WriteLine($"  {label} {Status(snapshot, at, live)}  {Summary(snapshot, restarts, at)}");
                 if (snapshot.Status != HostFactStatus.Ok) output.WriteLine($"  {"",-16} {Problem(snapshot)}");
             }
             output.WriteLine();
@@ -297,7 +297,7 @@ internal static class HostCommand
         switch (section)
         {
             case "health":
-                Health(output, reading.Value<HostHealth>(), restarts);
+                Health(output, reading.Value<HostHealth>(), restarts, at);
                 break;
             case "sites":
                 Sites(output, reading.Value<HostSites>());
@@ -337,7 +337,7 @@ internal static class HostCommand
     private static string Problem(HostFactReading snapshot) =>
         $"{Text(snapshot.Reason ?? "no reason recorded")}. {Text(snapshot.Remedy ?? "")}".Trim();
 
-    internal static string Summary(HostFactReading snapshot, IReadOnlyList<HostRestart> restarts)
+    internal static string Summary(HostFactReading snapshot, IReadOnlyList<HostRestart> restarts, DateTimeOffset now)
     {
         switch (snapshot.Fact)
         {
@@ -346,7 +346,9 @@ internal static class HostCommand
                 return $"up {Age(TimeSpan.FromSeconds(h.UptimeSeconds))}; unexpected restarts in 30 days: {restarts.Count}" +
                        (codes.Length > 0 ? $" ({string.Join(", ", codes)})" : "") +
                        $"; CPU {(h.CpuPercent is { } cpu ? cpu.ToString("0", CultureInfo.InvariantCulture) + "%" : "unknown")}" +
-                       $"; memory {Bytes(h.MemoryAvailableBytes)} free of {Bytes(h.MemoryTotalBytes)}";
+                       $"; memory {Bytes(h.MemoryAvailableBytes)} free of {Bytes(h.MemoryTotalBytes)}" +
+                       $"; build {Text(h.Patch?.Build ?? "unknown")}; last cumulative update: {LastCumulative(h.Patch, now, withTitle: false)}" +
+                       $"; failed installs in 30 days: {(h.Patch is { UpdateLogReadable: true, FailedInstalls30Days: { } failed } ? failed.ToString(CultureInfo.InvariantCulture) : "unknown")}";
             case HostFacts.Sites when snapshot.Value<HostSites>() is { } s:
                 var admin = s.Sites.Count(x => x.IdentityIsAdministrator == true);
                 return $"{s.Sites.Count} sites, {s.Sites.Count(x => x.State.Equals("Started", StringComparison.OrdinalIgnoreCase))} started; " +
@@ -379,10 +381,17 @@ internal static class HostCommand
         }
     }
 
-    private static void Health(TextWriter output, HostHealth? health, IReadOnlyList<HostRestart> restarts)
+    private static void Health(TextWriter output, HostHealth? health, IReadOnlyList<HostRestart> restarts, DateTimeOffset now)
     {
         if (health is not null)
         {
+            var patch = health.Patch;
+            output.WriteLine($"  OS build          {Text(patch?.Build ?? "unknown")}{(patch?.DisplayVersion is { } display ? $" ({Text(display)})" : "")}   (registry: CurrentBuild.UBR)");
+            output.WriteLine($"  Kernel file       {Text(patch?.KernelVersion ?? "unknown")}   (ntoskrnl.exe ProductVersion)" +
+                             (patch?.KernelDiffersFromRegistry == true ? "  - its revision differs from the registry's UBR" : ""));
+            output.WriteLine($"  Last cumulative   {LastCumulative(patch, now, withTitle: true)}");
+            output.WriteLine($"  Failed installs   {(patch is { UpdateLogReadable: true, FailedInstalls30Days: { } failed } ? $"{failed} in the last 30 days" : "unknown (the Windows Update log could not be read)")}");
+            output.WriteLine("                    Facts as Windows reports them. WPShield has no offline source of the latest build and never calls a host outdated.");
             output.WriteLine($"  Up since          {Time(health.LastBoot)} ({Age(TimeSpan.FromSeconds(health.UptimeSeconds))})");
             output.WriteLine($"  CPU               {(health.CpuPercent is { } cpu ? cpu.ToString("0.0", CultureInfo.InvariantCulture) + "%" : "unknown")}");
             output.WriteLine($"  Memory            {Bytes(health.MemoryAvailableBytes)} free of {Bytes(health.MemoryTotalBytes)}");
@@ -392,6 +401,16 @@ internal static class HostCommand
             output.WriteLine();
         }
         Restarts(output, restarts);
+    }
+
+    /// <summary>The newest successful cumulative update, or why it is not known. "Unknown" is never "none".</summary>
+    private static string LastCumulative(HostPatchLevel? patch, DateTimeOffset now, bool withTitle)
+    {
+        if (patch is null || !patch.UpdateLogReadable) return "unknown (the Windows Update log could not be read)";
+        if (patch.LastCumulativeUpdateAt is not { } at)
+            return "not found in the Windows Update log" + (patch.UpdateLogStartsAt is { } from ? $" (it reaches back to {Time(from)})" : "");
+        var days = patch.DaysSinceCumulativeUpdate(now) ?? 0;
+        return $"{Time(at)}, {days} day{(days == 1 ? "" : "s")} ago" + (withTitle && patch.LastCumulativeUpdate is { } title ? $": {Text(title)}" : "");
     }
 
     private static void Restarts(TextWriter output, IReadOnlyList<HostRestart> restarts)
