@@ -1,5 +1,6 @@
 using System.Net;
 using System.Windows;
+using System.Windows.Controls;
 using WPShield.Evidence;
 using WPShield.SecurityMonitor;
 using Xunit;
@@ -64,5 +65,177 @@ public sealed class AttacksWindowTests
                 Assert.Equal("1", window.AttemptsValue.Text);
             }
             finally { window.Close(); }
+        });
+
+    private static string TempStore(Action<EvidenceStore>? fill)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "wpshield-desktop-window-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        var path = Path.Combine(directory, EvidenceStore.FileName);
+        if (fill is not null)
+        {
+            using var store = EvidenceStore.OpenForWriting(path);
+            fill(store);
+        }
+        return path;
+    }
+
+    private static void Remove(string path)
+    {
+        try { Directory.Delete(Path.GetDirectoryName(path)!, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
+
+    private static AuthFailure Failure(DateTimeOffset at, string ip, string account, long id) =>
+        new(at, AttemptPairing.SecurityChannel, IPAddress.Parse(ip), null, account, "bad-password", 3, id);
+
+    [Theory]
+    [InlineData(true, "almacén de evidencia")]
+    [InlineData(false, "evidence store")]
+    public Task WithoutAStoreTheLongRangesAreDisabledAndSayWhy(bool spanish, string words) =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var window = new AttacksWindow(spanish, end => Snapshot(end, "read", null), (_, _) => new NoWatch());
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                Assert.False(window.RangeWeek.IsEnabled);
+                Assert.False(window.RangeMonth.IsEnabled);
+                Assert.Contains(words, (string)window.RangeWeek.ToolTip, StringComparison.Ordinal);
+                // WPF shows no tooltip on a disabled control unless asked, and the chip must look disabled.
+                Assert.True(ToolTipService.GetShowOnDisabled(window.RangeWeek));
+                Assert.Contains(window.RangeWeek.Template.Triggers.OfType<Trigger>(),
+                    t => t.Property == UIElement.IsEnabledProperty && Equals(t.Value, false));
+                Assert.True(window.RangeDay.IsChecked);
+            }
+            finally { window.Close(); }
+        });
+
+    [Fact]
+    public Task WithoutElevationTheLongRangesSayRunAsAdministrator() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = TempStore(null);
+            var window = new AttacksWindow(false, end => Snapshot(end, "unavailable", "access-denied"), (_, _) => new NoWatch(),
+                new EvidenceAttackStore(path, () => false));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                Assert.False(window.RangeWeek.IsEnabled);
+                Assert.Contains("run as administrator", (string)window.RangeMonth.ToolTip, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
+    public Task TheWeekComesFromTheStoreWithLabelsAndTheShortRangesStayLive() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var path = TempStore(store =>
+            {
+                var writer = new EvidenceWriter(store);
+                writer.BeginCoverage(EvidenceWriter.RawSource, now.AddDays(-8), now);
+                writer.Append([Failure(now.AddDays(-3), "203.0.113.10", "admin", 1), Failure(now.AddDays(-2), "203.0.113.10", "sa", 2),
+                    Failure(now.AddDays(-2), "203.0.113.11", "admin", 3), Failure(now.AddHours(-30), "198.51.100.7", "pedro", 4)]);
+                new EvidenceSettings(store).Set(AddressLabels.SettingKey, """{"203.0.113.0/24":"Scanner network"}""", "test", "names");
+            });
+            var window = new AttacksWindow(false, end => Snapshot(end, "read", null), (_, _) => new NoWatch(),
+                new EvidenceAttackStore(path, () => true));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                Assert.True(window.RangeWeek.IsEnabled);
+                Assert.Equal("0", window.AttemptsValue.Text);
+
+                window.RangeWeek.IsChecked = true;
+                await window.LoadStoredAsync();
+                Assert.Equal("4", window.AttemptsValue.Text);
+                Assert.Equal("3", window.SourcesValue.Text);
+                var top = Assert.IsType<AttackSource>(window.Rows.Items[0]);
+                Assert.Equal("Scanner network", top.Label);
+
+                window.Rows.SelectedItem = top;
+                await window.LoadStoredDetailAsync(top.Address);
+                Assert.Equal("Scanner network", window.DetailLabel.Text);
+                Assert.Equal(Visibility.Collapsed, window.DetailNoteBox.Visibility);
+                Assert.Contains("admin", string.Join("|", window.DetailAccounts.ItemsSource.Cast<string>()), StringComparison.Ordinal);
+
+                // 24 h is still the Security log, not the store.
+                window.RangeDay.IsChecked = true;
+                Assert.Equal("0", window.AttemptsValue.Text);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
+    public Task AMonthFromAggregatesSaysNamesAreGoneAndOpensWithTheSettingsRange() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var path = TempStore(store =>
+            {
+                var writer = new EvidenceWriter(store);
+                writer.BeginCoverage(EvidenceWriter.RawSource, now.AddDays(-31), now);
+                writer.Append([Failure(now.AddDays(-20), "203.0.113.10", "admin", 1), Failure(now.AddDays(-20).AddMinutes(1), "203.0.113.10", "sa", 2)]);
+                writer.Prune(now, new EvidenceLimits());
+                new EvidenceSettings(store).Set("attacks.default_range", "\"30d\"", "test", "a month");
+            });
+            var window = new AttacksWindow(true, end => Snapshot(end, "read", null), (_, _) => new NoWatch(),
+                new EvidenceAttackStore(path, () => true));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                Assert.True(window.RangeMonth.IsChecked);
+                await window.LoadStoredAsync();
+                Assert.Equal("2", window.AttemptsValue.Text);
+                var row = Assert.IsType<AttackSource>(window.Rows.Items[0]);
+                Assert.Null(row.Accounts);
+
+                window.Rows.SelectedItem = row;
+                await window.LoadStoredDetailAsync(row.Address);
+                Assert.Equal(Visibility.Visible, window.DetailNoteBox.Visibility);
+                Assert.Contains("ya no se guardan", window.DetailNote.Text, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
+    public Task AStoreThatRecordedNothingShowsADashNotZero() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = TempStore(_ => { });
+            var window = new AttacksWindow(false, end => Snapshot(end, "read", null), (_, _) => new NoWatch(),
+                new EvidenceAttackStore(path, () => true));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                window.RangeWeek.IsChecked = true;
+                await window.LoadStoredAsync();
+                Assert.Equal("—", window.AttemptsValue.Text);
+                Assert.Equal("—", window.SourcesValue.Text);
+                Assert.Contains("No data", window.Empty.Text, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
         });
 }

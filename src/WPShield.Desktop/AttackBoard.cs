@@ -6,7 +6,11 @@ using WPShield.SecurityMonitor;
 
 namespace WPShield.Desktop;
 
-internal enum AttackRange { Hour, SixHours, Day }
+/// <summary>
+/// The view's ranges. The first three read the Security log directly; <see cref="Week"/> and
+/// <see cref="Month"/> read the evidence store, because the Security log rarely reaches that far.
+/// </summary>
+internal enum AttackRange { Hour, SixHours, Day, Week, Month }
 
 /// <summary>One bar of the timeline. <c>Covered</c> is false where the log could not be read.</summary>
 internal sealed record AttackBucket(DateTimeOffset Start, DateTimeOffset End, int UnknownAccount, int Other, bool Covered)
@@ -14,21 +18,29 @@ internal sealed record AttackBucket(DateTimeOffset Start, DateTimeOffset End, in
     internal int Total => UnknownAccount + Other;
 }
 
+/// <param name="Accounts">Distinct accounts tried, or <see langword="null"/> where the store no longer keeps names.</param>
+/// <param name="Label">The operator's label for this address or its network, cleaned; empty when none.</param>
 internal sealed record AttackSource(string Address, int Attempts, DateTimeOffset First, DateTimeOffset Last,
-    int Accounts, string TopAccounts, double UnknownShare, string LogonTypes, string Network, int Neighbors)
+    int? Accounts, string TopAccounts, double UnknownShare, string LogonTypes, string Network, int Neighbors, string Label = "")
 {
     internal bool Matches(string query) => query.Length == 0 ||
         Address.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         TopAccounts.Contains(query, StringComparison.OrdinalIgnoreCase) ||
-        Network.StartsWith(query, StringComparison.OrdinalIgnoreCase);
+        Network.StartsWith(query, StringComparison.OrdinalIgnoreCase) ||
+        Label.Contains(query, StringComparison.OrdinalIgnoreCase);
 }
 
+/// <param name="Detailed">False when the answer comes from hourly aggregates: counts exact, names gone.</param>
+/// <param name="NoData">Nothing was recorded for the range, so the numbers are not zeros but unknown.</param>
 internal sealed record AttackView(int Attempts, int Sources, int WithoutAddress, double UnknownShare, int LastHour,
     string TopAccount, IReadOnlyList<AttackBucket> Buckets, IReadOnlyList<AttackSource> Rows, int MatchingRows,
-    DateTimeOffset? CoveredFrom);
+    DateTimeOffset? CoveredFrom, bool Detailed = true, bool NoData = false);
 
+/// <param name="Detailed">False when account names and single attempts are no longer kept for the period.</param>
+/// <param name="FirstSeen">The first attempt anywhere in the evidence store, when the store answered.</param>
 internal sealed record AttackDetail(AttackSource Source, IReadOnlyList<(string Account, int Count)> Accounts,
-    IReadOnlyList<AttackBucket> Timeline, IReadOnlyList<AuthFailure> Recent, IReadOnlyList<(string Address, int Attempts)> Neighbors);
+    IReadOnlyList<AttackBucket> Timeline, IReadOnlyList<AuthFailure> Recent, IReadOnlyList<(string Address, int Attempts)> Neighbors,
+    bool Detailed = true, DateTimeOffset? FirstSeen = null, int DaysSeen = 0);
 
 /// <summary>
 /// Turns failed logons into what the attacks view shows: totals, a timeline, one row per source and
@@ -112,7 +124,7 @@ internal sealed class AttackBoard
         _ => (96, TimeSpan.FromMinutes(15))
     };
 
-    internal AttackView View(DateTimeOffset now, AttackRange range, string query, int maxRows = 500)
+    internal AttackView View(DateTimeOffset now, AttackRange range, string query, int maxRows = 500, AddressLabels? labels = null)
     {
         var (count, size) = Layout(range);
         var start = now - size * count;
@@ -120,7 +132,7 @@ internal sealed class AttackBoard
         var sourced = inRange.Where(f => f.Address is not null).ToArray();
         var networks = NetworkCounts(sourced);
         var rows = sourced.GroupBy(f => f.Address!.ToString())
-            .Select(g => Source(g.Key, g.ToArray(), networks))
+            .Select(g => Source(g.Key, g.ToArray(), networks) with { Label = LabelFor(labels, g.Key) })
             .OrderByDescending(s => s.Attempts).ThenByDescending(s => s.Last).ToArray();
         var matching = rows.Where(r => r.Matches(query)).ToArray();
         var unknown = inRange.Count(f => f.Reason == "unknown-account");
@@ -131,7 +143,7 @@ internal sealed class AttackBoard
             Buckets(inRange, start, size, count), matching.Take(maxRows).ToArray(), matching.Length, coveredFrom);
     }
 
-    internal AttackDetail? Detail(string address, DateTimeOffset now, AttackRange range)
+    internal AttackDetail? Detail(string address, DateTimeOffset now, AttackRange range, AddressLabels? labels = null)
     {
         var (count, size) = Layout(range);
         var start = now - size * count;
@@ -139,7 +151,7 @@ internal sealed class AttackBoard
         var mine = inRange.Where(f => f.Address?.ToString() == address).ToArray();
         if (mine.Length == 0) return null;
         var sourced = inRange.Where(f => f.Address is not null).ToArray();
-        var source = Source(address, mine, NetworkCounts(sourced));
+        var source = Source(address, mine, NetworkCounts(sourced)) with { Label = LabelFor(labels, address) };
         var accounts = mine.Where(f => f.Account.Length > 0).GroupBy(f => f.Account, StringComparer.OrdinalIgnoreCase)
             .Select(g => (g.Key, g.Count())).OrderByDescending(a => a.Item2).Take(15).ToArray();
         var network = Network(mine[0].Address!);
@@ -188,6 +200,10 @@ internal sealed class AttackBoard
             string.Join(", ", accounts.Take(3)), (double)events.Count(f => f.Reason == "unknown-account") / events.Count,
             string.Join(", ", types), network, Math.Max(0, networks.GetValueOrDefault(network) - 1));
     }
+
+    /// <summary>The operator's label for an address, cleaned for the window; empty when there is none.</summary>
+    internal static string LabelFor(AddressLabels? labels, string address) =>
+        labels is null ? "" : DisplayText.Clean(labels.For(address), 64);
 
     private static Dictionary<string, int> NetworkCounts(IEnumerable<AuthFailure> sourced) =>
         sourced.Select(f => f.Address!).Distinct().GroupBy(Network).ToDictionary(g => g.Key, g => g.Count());
