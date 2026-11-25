@@ -305,7 +305,7 @@ internal static class AttacksCommand
         output.WriteLine();
     }
 
-    private static string Why(CoverageGap gap) => gap.Status is null ? ""
+    internal static string Why(CoverageGap gap) => gap.Status is null ? ""
         : "  (" + NetworkMonitorCommand.ConsoleLabel(gap.Status) + (gap.Reason is null ? "" : ": " + NetworkMonitorCommand.ConsoleLabel(gap.Reason)) + ")";
 
     /// <summary>
@@ -336,7 +336,7 @@ internal static class AttacksCommand
         }
     }
 
-    private static void WriteTable(TextWriter output, string[] headers, string[][] rows, int[] rightAligned)
+    internal static void WriteTable(TextWriter output, string[] headers, string[][] rows, int[] rightAligned)
     {
         var widths = headers.Select((h, c) => Math.Max(h.Length, rows.Max(r => r[c].Length))).ToArray();
         string Line(string[] cells) => string.Join("  ", cells.Select((cell, c) =>
@@ -347,14 +347,14 @@ internal static class AttacksCommand
 
     private static string Label(string? label) => label is null ? "" : NetworkMonitorCommand.ConsoleLabel(label);
 
-    private static string Number(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+    internal static string Number(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
 
     private static double? Share(long part, long whole) => whole == 0 ? null : (double)part / whole;
 
     private static string Percent(long part, long whole) =>
         whole == 0 ? "-" : Math.Round(100.0 * part / whole).ToString("0", CultureInfo.InvariantCulture) + "%";
 
-    private static string Minute(DateTimeOffset time) => time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+    internal static string Minute(DateTimeOffset time) => time.ToUniversalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
 
     private static CoverageDto Coverage(CoverageReport report) =>
         new(report.State, report.Gaps.Select(g => new GapDto(g.From, g.To, g.Status, g.Reason)).ToArray(), report.Omitted);

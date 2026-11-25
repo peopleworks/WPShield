@@ -296,13 +296,13 @@ internal sealed partial class EvidenceTools
                         ["rule_id"] = Code(d.RuleId),
                         ["mode"] = Code(d.Mode),
                         ["reason"] = Untrusted(d.Reason, 200),
-                        ["requested_by"] = OperatorName(d.RequestedBy),
+                        ["requested_by"] = Requester(d.RequestedBy),
                         ["expires"] = d.ExpiresAt is { } expires ? Iso(expires) : null
                     }).ToArray()),
                     ["truncated"] = decisions.Count > limit
                 };
                 notes.Add("This is an audit trail, not the current state. A 'block' here is not necessarily in force: blocks live only as long as the process that made them, and WPShield never restores one from this history (ADR 0007, section 5).");
-                if (!access.DetailedRecords && decisions.Any(d => d.RequestedBy is not null)) notes.Add(OperatorNamesWithheld);
+                if (!access.DetailedRecords && decisions.Any(d => d.RequestedBy is not null && !IsChannel(d.RequestedBy))) notes.Add(OperatorNamesWithheld);
             });
         });
 
@@ -731,6 +731,15 @@ internal sealed partial class EvidenceTools
     /// leaves the host like any other answer, so it follows <c>mcp.detailed_records</c>. The plain string
     /// <c>withheld</c> cannot be mistaken for a stored value, which always arrives wrapped.
     /// </summary>
+    /// <summary>
+    /// Who asked for a decision. The decision engine (ADR 0009) names the evidence channel whose record
+    /// completed the rule - a fixed code that names nobody - so those two pass through as codes; anything
+    /// else may be an operator's account and follows <c>mcp.detailed_records</c>.
+    /// </summary>
+    private JsonNode? Requester(string? requestedBy) => IsChannel(requestedBy) ? JsonValue.Create(requestedBy) : OperatorName(requestedBy);
+
+    private static bool IsChannel(string? value) => value is AttemptPairing.SecurityChannel or AttemptPairing.RdpChannel;
+
     private JsonNode? OperatorName(string? name) =>
         name is null ? null : access.DetailedRecords ? Untrusted(name, 64) : JsonValue.Create("withheld");
 

@@ -78,6 +78,7 @@ internal static class ProgramMain
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
                 "evidence" => EvidenceCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? string.Empty),
                 "attacks" => AttacksCommand.Run(options, Console.Out, Console.Error),
+                "decisions" => DecisionsCommand.Run(options, Console.Out, Console.Error),
                 "settings" => SettingsCommand.Run(rest, Console.Out, Console.Error),
                 "mcp" => McpCommand.Run(options),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
@@ -191,6 +192,10 @@ internal static class ProgramMain
                 Console.WriteLine(AttacksCommand.Help);
                 return 0;
 
+            case "decisions":
+                Console.WriteLine(DecisionsCommand.Help);
+                return 0;
+
             case "settings":
                 Console.WriteLine(SettingsCommand.Help);
                 return 0;
@@ -296,6 +301,10 @@ internal static class ProgramMain
                           sources with their labels, or one address's history. Reads only;
                           needs an elevated prompt. Says "no data" where nothing was recorded.
                           [--range 1h|6h|24h|7d|30d] [--top N] [--source <ip>] [--store <path>] [--json]
+
+              decisions   What the decision engine decided (Monitor: nothing is blocked), or what is
+                          in force now. Reads only; needs an elevated prompt.
+                          [--range 1h|6h|24h|7d|30d] [--active] [--target <ip>] [--store <path>] [--json]
 
               settings    The evidence store's settings: retention, labels, the attacks range.
                           list | get <key> | history [<key>] read only; set <key> <value> and

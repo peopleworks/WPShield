@@ -215,6 +215,24 @@ public sealed partial class EvidenceToolsTests : IDisposable
         Assert.Equal("target", (string)Error(tools.Decisions("24h", target: "203.0.113.5/24"))["parameter"]!);
     }
 
+    /// <summary>
+    /// The decision engine names the evidence channel that asked, a code that names nobody. It is returned
+    /// as is, and the operator-names note appears only when an operator's name was actually withheld.
+    /// </summary>
+    [Fact]
+    public void AnEngineDecisionsChannelIsACodeNotAnOperatorName()
+    {
+        Seed(extra: store => new EvidenceWriter(store).RecordDecision(new DecisionRecord(Now.AddMinutes(-30), "protected", "198.51.100.30",
+            "HOST-AUTH-001", "monitor", "10 failed logons in 4 minutes (threshold 10 in 10 minutes); protected: holds a Remote Desktop session",
+            AttemptPairing.SecurityChannel, Now.AddMinutes(30))));
+
+        var answer = Ok(Tools().Decisions("24h", target: "198.51.100.30"));
+
+        var decision = Assert.Single(answer["result"]!["decisions"]!.AsArray())!;
+        Assert.Equal("protected", (string)decision["action"]!);
+        Assert.Equal("security-4625", (string)decision["requested_by"]!);
+        Assert.DoesNotContain(Notes(answer), n => n.Contains("withheld", StringComparison.Ordinal));
+    }
     [Fact]
     public void EventsAreCountedButNotListedByDefault()
     {

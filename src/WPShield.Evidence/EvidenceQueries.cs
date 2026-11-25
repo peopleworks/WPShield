@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Net;
 using System.Net.Sockets;
+using WPShield.Evidence.Decisions;
 
 namespace WPShield.Evidence;
 
@@ -18,6 +19,22 @@ public sealed record EvidenceSourceHistory(string Address, DateTimeOffset? First
 
 public sealed record EvidenceCoverage(string Source, DateTimeOffset From, DateTimeOffset To, string Status, string? Reason);
 
+/// <summary>The decisions in force at <paramref name="At"/>, and what that answer rests on.</summary>
+/// <param name="EngineStarted">When a decision engine last started on this store; none means it never ran.</param>
+/// <param name="CollectedUntil">How far the collector's recorded coverage reaches.</param>
+/// <param name="CollectorCurrent">Whether the collector is recording now. If not, nothing is in force.</param>
+/// <param name="Truncated">More rows than a reader scans: the list may be missing older decisions.</param>
+public sealed record ActiveDecisions(DateTimeOffset At, DateTimeOffset? EngineStarted, DateTimeOffset? CollectedUntil,
+    bool CollectorCurrent, IReadOnlyList<DecisionRecord> Decisions, bool Truncated)
+{
+    /// <summary>The decision in force about an address: its own, or its /24 or /64's.</summary>
+    public DecisionRecord? For(string address)
+    {
+        var network = EvidenceQueries.Network(address);
+        return Decisions.FirstOrDefault(d => d.Target == address) ?? Decisions.FirstOrDefault(d => d.Target == network);
+    }
+}
+
 /// <summary>
 /// Every question a reader may ask the store. Fixed, parameterised SQL with bounded results: no
 /// reader - the desktop, the CLI or an MCP server - can send its own SQL (ADR 0007, section 6).
@@ -33,6 +50,11 @@ public sealed class EvidenceQueries
     public const int MaxRecent = 500;
     public const int MaxBuckets = 2000;
     private const int MaxNetworkScan = 200_000;
+
+    /// <summary>Rows <see cref="ActiveDecisions"/> reads at most.</summary>
+    public const int MaxDecisionScan = 100_000;
+
+    internal const string EngineStartedKey = "decision_engine_started";
 
     /// <summary>How far behind 'now' a collected interval may end and still vouch for the present.</summary>
     public static readonly TimeSpan CurrentAllowance = TimeSpan.FromMinutes(2);
@@ -197,6 +219,11 @@ public sealed class EvidenceQueries
             SELECT ts, action, target, rule_id, mode, reason, requested_by, expires_ts FROM decisions
             WHERE ts >= $f AND ts < $t{(target is null ? "" : " AND target = $target")} ORDER BY ts DESC LIMIT $n;
             """, null, ("$f", f), ("$t", t), ("$n", Math.Clamp(limit, 1, MaxSources)), ("$target", target));
+        return ReadDecisions(command);
+    }
+
+    private static List<DecisionRecord> ReadDecisions(Microsoft.Data.Sqlite.SqliteCommand command)
+    {
         using var reader = command.ExecuteReader();
         var result = new List<DecisionRecord>();
         while (reader.Read())
@@ -204,6 +231,64 @@ public sealed class EvidenceQueries
                 reader.GetString(4), reader.GetString(5), reader.IsDBNull(6) ? null : reader.GetString(6),
                 reader.IsDBNull(7) ? null : EvidenceStore.FromMs(reader.GetInt64(7))));
         return result;
+    }
+
+    /// <summary>
+    /// Decisions about one address and about its /24 or /64 - a network decision covers the address too -
+    /// newest first.
+    /// </summary>
+    public IReadOnlyList<DecisionRecord> DecisionsAbout(string address, DateTimeOffset from, DateTimeOffset to, int limit = 100)
+    {
+        address = Canonical(address) ?? throw new ArgumentException("Not an IP address.", nameof(address));
+        var (f, t) = Range(from, to);
+        using var command = store.Command("""
+            SELECT ts, action, target, rule_id, mode, reason, requested_by, expires_ts FROM decisions
+            WHERE ts >= $f AND ts < $t AND target IN ($a, $n) ORDER BY ts DESC, id DESC LIMIT $limit;
+            """, null, ("$f", f), ("$t", t), ("$a", address), ("$n", Network(address)), ("$limit", Math.Clamp(limit, 1, MaxSources)));
+        return ReadDecisions(command);
+    }
+
+    /// <summary>
+    /// The decisions in force now, as the audit trail shows them: the newest <c>would-block</c> or
+    /// <c>protected</c> record of each target, unexpired, with no later <c>expire</c>, made by the engine
+    /// run that started last, while the collector is still recording.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A decision lives only as long as the process that made it, and a process that stops or crashes
+    /// writes no <c>expire</c> for what it forgot. So a record counts only if it is newer than the last
+    /// engine start, and nothing counts while the collector has not extended its coverage within
+    /// <see cref="CurrentAllowance"/>: a service that is not running has nothing in force.
+    /// </para>
+    /// <para>
+    /// No decision lasts more than seven days, so only the last seven days are read, at most
+    /// <see cref="MaxDecisionScan"/> rows of them.
+    /// </para>
+    /// </remarks>
+    public ActiveDecisions ActiveDecisions(DateTimeOffset now)
+    {
+        var engine = store.Scalar<string?>("SELECT value FROM meta WHERE key = $k;", null, ("$k", EngineStartedKey));
+        DateTimeOffset? started = long.TryParse(engine, NumberStyles.Integer, CultureInfo.InvariantCulture, out var ms) ? EvidenceStore.FromMs(ms) : null;
+        var collectedUntil = store.Scalar<long?>("SELECT MAX(to_ts) FROM coverage WHERE source = $s AND status = 'collected';", null,
+            ("$s", EvidenceWriter.RawSource));
+        DateTimeOffset? until = collectedUntil is null ? null : EvidenceStore.FromMs(collectedUntil.Value);
+        var current = until is not null && until >= now - CurrentAllowance;
+        if (started is null || !current) return new(now, started, until, current, [], false);
+
+        var since = started.Value > now - DecisionEngine.MaxDuration ? started.Value : now - DecisionEngine.MaxDuration;
+        using var command = store.Command("""
+            SELECT ts, action, target, rule_id, mode, reason, requested_by, expires_ts FROM decisions
+            WHERE ts >= $f AND ts <= $t AND action IN ('would-block', 'protected', 'expire') ORDER BY ts DESC, id DESC LIMIT $n;
+            """, null, ("$f", EvidenceStore.ToMs(since)), ("$t", EvidenceStore.ToMs(now)), ("$n", MaxDecisionScan + 1));
+        var rows = ReadDecisions(command);
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        var active = new List<DecisionRecord>();
+        foreach (var row in rows.Take(MaxDecisionScan))
+        {
+            if (!seen.Add(row.Target)) continue;
+            if (row.Action != DecisionActions.Expire && row.ExpiresAt > now) active.Add(row);
+        }
+        return new(now, started, until, current, active, rows.Count > MaxDecisionScan);
     }
 
     /// <summary>The /24 of an IPv4 address or the /64 of an IPv6 one, as text.</summary>

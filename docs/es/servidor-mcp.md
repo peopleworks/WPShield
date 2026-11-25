@@ -65,7 +65,7 @@ ni puertos.
 | Ajuste `mcp.detailed_records` | Se envía al proveedor del modelo del asistente |
 | --- | --- |
 | `false` (por defecto) | Conteos, direcciones de origen y sus redes, líneas de tiempo, cobertura, decisiones de bloqueo, ajustes, etiquetas de direcciones |
-| `true` | Todo lo anterior, más los nombres de cuenta probados, los intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste (con `false` aparecen como `"withheld"`, porque suelen ser nombres de cuentas propias) |
+| `true` | Todo lo anterior, más los nombres de cuenta probados, los intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste (con `false` aparecen como `"withheld"`, porque suelen ser nombres de cuentas propias; una decisión del motor nombra su canal de evidencia, `security-4625` o `rdpcorets-140`, que no identifica a nadie y siempre se muestra) |
 
 Entre los nombres de cuenta probados hay **cuentas reales de este servidor**, bien o mal escritas.
 Active `mcp.detailed_records` solo si acepta eso. Es un ajuste del almacén

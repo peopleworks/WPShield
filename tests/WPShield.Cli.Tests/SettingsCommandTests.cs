@@ -46,6 +46,39 @@ public sealed class SettingsCommandTests : IDisposable
         Assert.Contains("next start", Assert.Single(output.Split(Environment.NewLine), l => l.StartsWith("mcp.detailed_records", StringComparison.Ordinal)), StringComparison.Ordinal);
     }
 
+    /// <summary>The allow-list is the first array setting: set from a file, refused when too wide, listed as a count.</summary>
+    [Fact]
+    public void TheAllowList_IsSetFromAFileRefusedWhenTooWideAndListedAsACount()
+    {
+        store.Write(_ => { });
+        var file = Path.Combine(store.DirectoryPath, "allow.json");
+        File.WriteAllText(file, """["198.51.100.7", "203.0.113.0/24"]""");
+
+        var (exit, output, _) = Run("set", "defense.allow", "--value-file", file, "--reason", "the office");
+        Assert.Equal(0, exit);
+        Assert.Contains("""defense.allow is now ["198.51.100.7","203.0.113.0/24"]""", output, StringComparison.Ordinal);
+        Assert.Contains("next use", output, StringComparison.Ordinal);
+
+        Assert.Contains("[2 entries]", Assert.Single(Run("list").Output.Split(Environment.NewLine),
+            l => l.StartsWith("defense.allow", StringComparison.Ordinal)), StringComparison.Ordinal);
+
+        File.WriteAllText(file, """["10.0.0.0/8"]""");
+        var refused = Assert.Throws<CliArgumentException>(() => Run("set", "defense.allow", "--value-file", file, "--reason", "too wide"));
+        Assert.Contains("no wider than /16", refused.Message, StringComparison.Ordinal);
+        Assert.Single(History(), h => h.Key == "defense.allow");
+    }
+
+    [Fact]
+    public void TheDefenseMode_RefusesBlockAndSaysItTakesEffectAtTheNextStart()
+    {
+        store.Write(_ => { });
+
+        Assert.Throws<CliArgumentException>(() => Run("set", "defense.mode", "block", "--reason", "try"));
+        var (exit, output, _) = Run("set", "defense.mode", "monitor", "--reason", "explicit");
+
+        Assert.Equal(0, exit);
+        Assert.Contains("next time the process that reads it starts", output, StringComparison.Ordinal);
+    }
     /// <summary>"Could not read the store" must never print the catalog defaults as if they were the settings.</summary>
     [Theory]
     [InlineData(true, 3)]

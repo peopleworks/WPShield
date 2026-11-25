@@ -20,8 +20,13 @@ internal sealed record AttackBucket(DateTimeOffset Start, DateTimeOffset End, in
 
 /// <param name="Accounts">Distinct accounts tried, or <see langword="null"/> where the store no longer keeps names.</param>
 /// <param name="Label">The operator's label for this address or its network, cleaned; empty when none.</param>
+/// <param name="Decision">
+/// The decision in force about this address or its network, in words (<see cref="AttackDecisions"/>):
+/// empty when none, "—" when the store could not be read.
+/// </param>
 internal sealed record AttackSource(string Address, int Attempts, DateTimeOffset First, DateTimeOffset Last,
-    int? Accounts, string TopAccounts, double UnknownShare, string LogonTypes, string Network, int Neighbors, string Label = "")
+    int? Accounts, string TopAccounts, double UnknownShare, string LogonTypes, string Network, int Neighbors, string Label = "",
+    string Decision = "")
 {
     internal bool Matches(string query) => query.Length == 0 ||
         Address.Contains(query, StringComparison.OrdinalIgnoreCase) ||

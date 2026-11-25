@@ -117,3 +117,31 @@ already reads the table, and the future Protection panel counts them.
 - After one week of Monitor on the incident host: compare `would block` and `protected` records with
   what the operator expected, and adjust defaults in a dated amendment.
 - When the enforcer of ADR 0006 passes its validation: allow `defense.mode = block`, in its own change.
+
+## Amendment - as built (2026-11-25)
+
+The engine shipped in Monitor with these departures from the text above. Each one closes a gap the
+text left open; none widens what the engine may decide against.
+
+- **A repeat is measured from the end of the previous decision**, not its start. Measured from the
+  start, an address released after a 7-day decision and re-offending at once would fall back to 60
+  minutes.
+- **While a decision is in force, the target's failures are ignored**, exactly as an enforced block
+  would have dropped them. One record per decision, not one per attempt.
+- **A protected target is not reconsidered for the rule's duration, and a refused one for one window.**
+  A fact that stays unreadable produces one `refused` record per window.
+- **An unreadable list of the host's own addresses also refuses a decision**, like an unreadable
+  Remote Desktop table.
+- **`HOST-AUTH-004` names no account.** Its target is the address that completed the pattern. The MCP
+  `decisions` tool returns targets and reasons whatever `mcp.detailed_records` says, so an account
+  name in a reason would leave the host through a door that is otherwise closed.
+- **A second bound:** 1,000,000 items inside each map, besides 100,000 entries, because an entry count
+  alone does not bound memory. The count settings top out at 100, 50, 64 and 100.
+- **A clean stop ends every decision on the record** (`expire`), because that is when an enforced
+  block would end. "In force" means made since the engine's start in this process, unexpired, and
+  only while the collector is recording.
+- **Known edge:** when the catch-up read holds a 4625 and its paired 140 arrives live, the engine sees
+  that single attempt.
+
+The settings, the action vocabulary and `wpshield decisions` are documented in
+[the network sensor design](../network-sensor-design.md).

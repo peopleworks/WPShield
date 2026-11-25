@@ -127,3 +127,32 @@ la herramienta MCP `decisions` ya lee la tabla, y el futuro panel de Protección
   fechada.
 - Cuando el mecanismo del ADR 0006 supere su validación: permitir `defense.mode = block`, en su propio
   cambio.
+
+## Enmienda - como se construyó (2026-11-25)
+
+El motor se entregó en Monitor con estas diferencias respecto al texto anterior. Cada una cierra un
+hueco que el texto dejaba abierto; ninguna amplía contra qué puede decidir el motor.
+
+- **Una reincidencia se mide desde el final de la decisión anterior**, no desde su inicio. Medida
+  desde el inicio, una dirección liberada tras una decisión de 7 días que reincidiera enseguida volvería
+  a 60 minutos.
+- **Mientras una decisión está vigente, los fallos del objetivo se ignoran**, igual que un bloqueo
+  aplicado los habría descartado. Un registro por decisión, no uno por intento.
+- **Un objetivo protegido no se reconsidera durante la duración de la regla, y uno rechazado durante
+  una ventana.** Un dato que sigue sin poder leerse produce un registro `refused` por ventana.
+- **Si no se pueden leer las direcciones del propio servidor, la decisión también se rechaza**, igual
+  que con la tabla de Escritorio remoto.
+- **`HOST-AUTH-004` no nombra ninguna cuenta.** Su objetivo es la dirección que completó el patrón. La
+  herramienta MCP `decisions` devuelve objetivos y motivos sea cual sea `mcp.detailed_records`, así
+  que un nombre de cuenta en un motivo saldría del servidor por una puerta que de otro modo está cerrada.
+- **Un segundo límite:** 1 000 000 elementos dentro de cada mapa, además de las 100 000 entradas,
+  porque contar entradas no acota la memoria. Los ajustes de recuento llegan como mucho a 100, 50, 64 y
+  100.
+- **Una parada limpia termina todas las decisiones y lo registra** (`expire`), porque es cuando
+  terminaría un bloqueo aplicado. "Vigente" significa tomada desde el arranque del motor en este
+  proceso, sin expirar, y solo mientras el recolector está registrando.
+- **Caso límite conocido:** cuando la lectura inicial contiene un 4625 y su 140 emparejado llega en
+  vivo, el motor ve ese único intento.
+
+Los ajustes, el vocabulario de acciones y `wpshield decisions` están documentados en
+[el diseño del sensor de red](../diseno-sensor-red.md).

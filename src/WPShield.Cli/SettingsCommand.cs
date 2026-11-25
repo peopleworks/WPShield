@@ -325,6 +325,8 @@ internal static class SettingsCommand
     {
         if (node is JsonObject map)
             return map.Count == 1 ? "{1 entry}" : $"{{{map.Count.ToString(CultureInfo.InvariantCulture)} entries}}";
+        if (node is JsonArray list && list.Count > 1)
+            return $"[{list.Count.ToString(CultureInfo.InvariantCulture)} entries]";
         var text = Show(node);
         return text.Length <= 40 ? text : text[..37] + "...";
     }

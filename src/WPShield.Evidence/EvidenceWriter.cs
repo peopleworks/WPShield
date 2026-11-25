@@ -1,9 +1,14 @@
 namespace WPShield.Evidence;
 
-/// <summary>A block decision, as the audit trail records it (ADR 0006 and 0007).</summary>
-/// <param name="Action"><c>would-block</c>, <c>block</c>, <c>expire</c>, <c>unblock</c>, <c>allow</c>.</param>
+/// <summary>A block decision, as the audit trail records it (ADR 0006, 0007 and 0009).</summary>
+/// <param name="Action">
+/// What the decision engine writes (<see cref="Decisions.DecisionActions"/>): <c>would-block</c>,
+/// <c>protected</c>, <c>report</c>, <c>expire</c> and <c>refused</c>. Reserved for the enforcer of ADR 0006:
+/// <c>block</c>, <c>unblock</c>, <c>allow</c>.
+/// </param>
 /// <param name="Target">The canonical address or range the decision is about.</param>
 /// <param name="Mode"><c>monitor</c> or <c>block</c>.</param>
+/// <param name="RequestedBy">The evidence channel whose record completed the rule, such as <c>security-4625</c>.</param>
 public sealed record DecisionRecord(DateTimeOffset Timestamp, string Action, string Target, string RuleId, string Mode,
     string Reason, string? RequestedBy, DateTimeOffset? ExpiresAt);
 
@@ -117,6 +122,15 @@ public sealed class EvidenceWriter
             ("$m", EvidenceText.Clean(decision.Mode, 16)), ("$r", EvidenceText.Clean(decision.Reason, 200)),
             ("$by", decision.RequestedBy is null ? null : EvidenceText.Clean(decision.RequestedBy, 64)),
             ("$exp", decision.ExpiresAt is null ? null : EvidenceStore.ToMs(decision.ExpiresAt.Value)));
+
+    /// <summary>
+    /// Records that a decision engine started in this process. Readers count a decision as in force only
+    /// if this run made it: a decision never outlives the process that made it, and a restart writes no
+    /// <c>expire</c> row for the decisions it forgot. The engine itself never reads it back.
+    /// </summary>
+    public void RecordEngineStart(DateTimeOffset at) =>
+        store.Execute("INSERT INTO meta(key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = excluded.value;", null,
+            ("$k", EvidenceQueries.EngineStartedKey), ("$v", EvidenceStore.ToMs(at).ToString(System.Globalization.CultureInfo.InvariantCulture)));
 
     /// <summary>
     /// Applies every bound in <paramref name="limits"/>: age, row count and file size. Detailed rows go
