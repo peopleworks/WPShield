@@ -70,7 +70,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,986 tests across twelve projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 517 for the CLI, 101 for the desktop monitor, 475 for the gateway, 41 for the network sensor, 14 for the network filter, 73 for the security monitor, 28 for the evidence store and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 2,139 tests across twelve projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 543 for the CLI, 107 for the desktop monitor, 475 for the gateway, 41 for the network sensor, 14 for the network filter, 95 for the security monitor, 127 for the evidence store and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

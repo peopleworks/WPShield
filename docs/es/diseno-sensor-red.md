@@ -87,6 +87,16 @@ a una red, y un prefijo más largo a uno más corto. Las etiquetas se definen co
 [`wpshield settings`](#historial-de-ataques-desde-la-línea-de-comandos). **Una etiqueta describe
 una dirección; nunca la permite ni la bloquea.**
 
+**Decisiones.** Si el almacén se puede leer, la columna **Decisión** marca cada origen con la
+[decisión](#decisiones-monitor) vigente sobre él o sobre su /24 o /64: **bloquearía** o **protegida**.
+Lo hace en todos los rangos, también en los cortos. La celda queda vacía si no hay nada vigente, y
+muestra `—` si no se pudo leer el almacén: nadie pudo mirar, que no es lo mismo que no haber
+decisión. El pie dice cuál de los casos es: cuántas decisiones hay vigentes, que el motor nunca se
+ejecutó, o que el servicio no está registrando, y entonces no hay nada vigente. El panel de un origen
+enumera las decisiones sobre él y sobre su red de los últimos 30 días, con la regla, el vencimiento
+y el motivo que escribió el motor. **Solo Monitor: no se bloquea nada.** La vista nunca dice
+"bloqueada".
+
 Lo que la vista no hace:
 
 - **Mostrar un tablero vacío como si nadie atacara.** Leer el registro de seguridad requiere permisos
@@ -103,9 +113,10 @@ Lo que la vista no hace:
   igual.
 - **Presentar agregados como detalle.** Un periodo respondido con agregados por hora lo dice: los
   recuentos son exactos y los nombres ya no están.
-- **Decidir ni bloquear nada.** Lee y muestra. Los registros en vivo se aplican una vez por segundo y
-  la memoria guarda como máximo 100 000 registros: descarta los más antiguos y mueve con ellos la
-  línea de **sin datos**.
+- **Decidir ni bloquear nada.** Lee y muestra. Las decisiones las toma el motor del servicio, en
+  Monitor, y la vista solo las lee. Los registros en vivo se aplican una vez por segundo y la memoria
+  guarda como máximo 100 000 registros: descarta los más antiguos y mueve con ellos la línea de
+  **sin datos**.
 
 ### Tráfico por adaptador
 
@@ -201,6 +212,10 @@ wpshield settings history
 | `attacks.default_range` | `"24h"` | próximo uso | Rango con el que se abren `wpshield attacks` y la vista Ataques |
 | `labels.addresses` | `{}` | próximo uso | Nombres para direcciones y redes; nunca permiten ni bloquean |
 | `mcp.detailed_records` | `false` | próximo arranque | Si un futuro servidor MCP podrá devolver intentos individuales; aún no existe |
+| `defense.mode` | `"monitor"` | próximo arranque | El modo del motor de decisiones; solo se acepta `monitor` |
+| `defense.allow` | `[]` | próximo uso | Direcciones y redes contra las que el motor nunca decide |
+| `defense.include_private` | `false` | próximo uso | Si se puede decidir contra rangos privados |
+| `defense.<regla>.*` | ver [Decisiones](#decisiones-monitor) | próximo uso | El recuento, la ventana y la duración de cada regla |
 
 `list`, `get` y `history` abren el almacén en solo lectura y, si no pueden abrirlo, fallan en lugar
 de mostrar los valores por defecto. `set` y `reset` necesitan una consola elevada y un `--reason`.
@@ -219,6 +234,132 @@ objeto como las etiquetas se da en un archivo (64 KB como máximo):
 ```json
 { "198.51.100.7": "Mi oficina", "203.0.113.0/24": "Red de escaneo" }
 ```
+
+## Decisiones (Monitor)
+
+El servicio WPShield ejecuta un motor de decisiones
+([ADR 0009](adr/0009-decidir-que-bloquear.md), propuesta) dentro de su recolector de evidencia.
+Convierte los inicios de sesión fallidos en decisiones con una regla, un motivo y un vencimiento, y
+escribe cada una en la tabla `decisions` del almacén de evidencia. **Esta versión funciona solo en
+Monitor. No se aplica nada en ninguna parte:** cada decisión es un registro de lo que habría hecho el
+modo Block. El modo Block necesita el aplicador de la ADR 0006 (en el PR #86), que todavía no existe;
+hasta entonces `defense.mode` solo acepta `monitor`.
+
+**Qué ve.** Solo inicios de sesión fallidos en vivo, después de emparejar el 4625 y el 140 de un
+mismo intento, y solo los que llegaron después de arrancar el servicio. La lectura de puesta al día
+del arranque se guarda y nunca se entrega al motor. Eso incluye sus últimos segundos, que pasan por el
+búfer de emparejamiento junto con los registros en vivo; por eso se marcan por canal e identificador
+de registro y no con un corte de tiempo. El motor nunca lee la tabla `decisions`. Su estado vive en
+memoria y termina con el proceso: un reinicio lo olvida todo, lo que cuesta como mucho una ventana más
+de intentos.
+
+**Las reglas.** Los identificadores de regla son estables y no se traducen. Cada umbral es un ajuste:
+
+| Regla | Se activa cuando | Decisión | Por defecto | Ajustes (límites) |
+| --- | --- | --- | --- | --- |
+| `HOST-AUTH-001` | Una dirección falla N veces en W | bloquearía la dirección durante D | 10 en 10 min, 60 min | `defense.failures.count` (3-100), `.window_minutes` (1-1440), `.block_minutes` (1-10080) |
+| `HOST-AUTH-002` | Una dirección prueba M nombres de cuenta que **no existen** en W | bloquearía la dirección durante D | 4 en 10 min, 6 h | `defense.unknown_accounts.count` (2-50), `.window_minutes`, `.block_minutes` |
+| `HOST-AUTH-003` | K direcciones distintas de una /24 o /64 fallan en W | bloquearía la red durante D | 8 en 10 min, 60 min | `defense.network.count` (2-64), `.window_minutes`, `.block_minutes` |
+| `HOST-AUTH-004` | Una cuenta **existente** falla desde A direcciones distintas en W | solo informe | 10 en 10 min | `defense.shared_account.addresses` (2-100), `.window_minutes` |
+
+"No existe" significa que Windows lo dijo (`unknown-account`), y los nombres se comparan sin
+distinguir mayúsculas. "Existente" significa un motivo que Windows solo da para una cuenta real:
+contraseña incorrecta, cuenta bloqueada o deshabilitada, contraseña caducada y similares. El
+"usuario o contraseña incorrectos" de Escritorio remoto, ambiguo, no cuenta como ninguno de los dos.
+Un registro sin dirección de origen no cuenta para nada.
+
+**Reincidentes.** Un destino que vuelve a activar una regla en los 7 días siguientes al fin de su
+decisión anterior recibe el doble de aquella duración, hasta un máximo de 7 días, y el motivo lo dice.
+Esta memoria también vive solo en el proceso.
+
+**Contra qué nunca decide.** El motor lo comprueba al tomar la decisión, y registra la decisión
+detenida como `protected`, con el motivo, hasta cuando habría terminado el bloqueo:
+
+- la lista de permitidas `defense.allow`: direcciones y redes canónicas, ninguna más amplia que /16
+  (IPv4) o /48 (IPv6), sin direcciones de loopback, multidifusión ni no especificadas, y como máximo
+  1000 entradas;
+- toda dirección asignada al propio servidor, y las de loopback, de enlace local y no especificadas;
+- los rangos privados (RFC 1918, ULA `fc00::/7`, CGNAT `100.64.0.0/10`), salvo que
+  `defense.include_private` sea `true`;
+- una dirección que tiene en ese momento una sesión de Escritorio remoto: una conexión TCP
+  establecida al puerto de
+  `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\PortNumber`, que nunca
+  se supone que sea 3389.
+
+Una decisión sobre una red se detiene si se detendría para cualquiera de sus direcciones. Si no se
+puede leer la tabla de conexiones, el puerto o las direcciones del servidor, la decisión se registra
+como `refused` (rechazada) y no se toma: "nadie pudo mirar" no es "nadie está conectado".
+
+**Acotado.** El estado por dirección, por red y por cuenta guarda como máximo 100 000 entradas cada
+uno, con 1 000 000 de elementos dentro, y desaloja lo visto hace más tiempo. Como mucho hay 10 000
+decisiones vigentes; a partir de ahí una nueva se rechaza (`refused`) y el rechazo queda registrado.
+Mientras una decisión está vigente, el motor ignora los intentos de su destino, como los habría
+descartado un bloqueo aplicado, así que hay un registro por decisión y no uno por intento. Un destino
+rechazado se vuelve a considerar pasada una ventana.
+
+**Qué escribe.** Cada registro lleva la regla, el destino (una dirección, o una /24 o /64), el modo
+`monitor`, el motivo con los recuentos que la activaron, el canal cuyo registro completó la regla y el
+vencimiento. Acciones:
+
+| Acción | Significado |
+| --- | --- |
+| `would-block` | Se activó una regla; el destino se bloquearía hasta el vencimiento |
+| `protected` | Se activó una regla sobre un destino contra el que el motor nunca decide; el vencimiento es cuándo habría terminado ese bloqueo |
+| `refused` | Se activó una regla y el motor no pudo comprobar lo que debe, o ya había 10 000 decisiones vigentes |
+| `report` | Se activó `HOST-AUTH-004`. Nunca bloquea. El destino es la dirección que completó el patrón, y la cuenta no se nombra, porque el servidor MCP devuelve destinos y motivos diga lo que diga `mcp.detailed_records` |
+| `expire` | Terminó un `would-block`, al vencer (se comprueba cada minuto) o al detenerse el servicio |
+
+Las líneas de registro llevan solo recuentos e identificadores de regla, nunca una dirección ni una
+cuenta. Un fallo dentro del motor se registra con su tipo y la recolección continúa: los intentos se
+guardan igualmente.
+
+**Vigente.** Una decisión está vigente si es el registro más reciente sobre su destino, no ha
+vencido, la tomó el motor desde su último arranque, y el recolector sigue registrando. Una decisión
+nunca sobrevive al proceso que la tomó, y un cierre inesperado no escribe ningún `expire`. La CLI, el
+escritorio y un futuro panel de Protección usan esta única definición
+(`EvidenceQueries.ActiveDecisions`).
+
+### `wpshield decisions`
+
+```powershell
+wpshield decisions
+wpshield decisions --range 7d --target 203.0.113.45
+wpshield decisions --active
+wpshield decisions --active --json
+```
+
+Es de solo lectura y abre el almacén igual que `wpshield attacks`, con los mismos códigos de salida
+(3 sin almacén, 1 sin elevación o acceso denegado, 2 otro esquema o nada registrado) y la misma
+limpieza del texto guardado. Sin `--active`, enumera las decisiones de un rango (`--range`, 24 horas
+por defecto; como mucho 200, de la más reciente a la más antigua), con el recuento por acción y la
+cobertura del recolector, porque el motor solo decide mientras el recolector funciona. Un rango que
+nadie registró es `no data`, nunca "ninguna decisión". `--target` acepta una dirección, y entonces
+muestra sus decisiones y las de su /24 o /64, o una red escrita exactamente como la nombra una
+decisión. `--active` muestra lo vigente ahora y, cuando nada puede estarlo, dice por qué: el motor
+nunca se ejecutó, o el servicio no está registrando. La salida está en inglés, como el resto de la CLI:
+
+```text
+Evidence store   C:\ProgramData\WPShield\evidence\wpshield-evidence.db (read-only)
+At               2026-11-24 12:00 UTC
+Mode             monitor - nothing is blocked; these are what Block mode would be enforcing now
+Engine           started 2026-11-24 09:00 UTC; only decisions made since then can be in force
+Collector        recording (coverage reaches 2026-11-24 12:00 UTC)
+
+In force now     2  (would-block 1, protected 1)
+
+TARGET          ACTION       RULE           SINCE (UTC)       UNTIL (UTC)       REASON
+203.0.113.0/24  would-block  HOST-AUTH-003  2026-11-24 11:30  2026-11-24 12:30  8 different addresses of this network failed in 3 minutes (threshold 8 in 10 minutes)
+198.51.100.7    protected    HOST-AUTH-001  2026-11-24 11:20  2026-11-24 12:20  10 failed logons in 2 minutes (threshold 10 in 10 minutes); protected: on the allow-list (198.51.100.7)
+```
+
+La herramienta MCP `decisions` lee la misma tabla y la presenta como un registro de auditoría, no
+como el estado actual.
+
+**Al principio los umbrales estarán mal.** Para eso existe Monitor. Tras una semana en un servidor
+real, compare los registros `would-block` y `protected` con lo que esperaba, ajuste los `defense.*`
+con `wpshield settings set`, y el cambio se aplica en la siguiente evaluación. Hueco conocido: una
+botnet que envía un intento por dirección no activa ninguna regla por dirección, y `HOST-AUTH-003`
+solo la detecta si sus direcciones comparten una /24 o /64.
 
 ## Inventario de puertos locales
 

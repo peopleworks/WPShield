@@ -80,6 +80,15 @@ wins over a network, and a longer prefix over a shorter one. Labels are set with
 [`wpshield settings`](#attack-history-from-the-command-line). **A label describes an address; it
 never allows or blocks one.**
 
+**Decisions.** When the store can be read, the **Decision** column marks each source with the
+[decision](#decisions-monitor) in force about it or about its /24 or /64: **would block** or
+**protected**. In every range, the short ones included. The cell is empty when nothing is in force,
+and `—` when the store could not be read: nobody could look, which is not the same as no decision.
+The footer says which: how many decisions are in force, that the engine has never run, or that the
+service is not recording, in which case nothing is in force. A source's detail lists the decisions
+about it and its network over the last 30 days, with rule, expiry and the reason the engine wrote.
+**Monitor only: nothing is blocked.** The view never says "blocked".
+
 What the view will not do:
 
 - **Show an empty board as a quiet host.** Reading the Security log needs administrator rights.
@@ -95,8 +104,9 @@ What the view will not do:
   same way.
 - **Present aggregates as detail.** A period answered from hourly aggregates says so; the counts
   are exact and the names are gone.
-- **Decide or block anything.** It reads and shows. Live records are applied once a second and
-  memory holds at most 100,000 records, dropping the oldest and moving the "no data" line with them.
+- **Decide or block anything.** It reads and shows. Decisions are made by the service's engine, in
+  Monitor, and the view only reads them. Live records are applied once a second and memory holds at
+  most 100,000 records, dropping the oldest and moving the "no data" line with them.
 
 ### Adapter traffic
 
@@ -186,6 +196,10 @@ wpshield settings history
 | `attacks.default_range` | `"24h"` | next use | Range `wpshield attacks` and the desktop's Attacks view open with |
 | `labels.addresses` | `{}` | next use | Names for addresses and networks; they never allow or block |
 | `mcp.detailed_records` | `false` | next start | Whether a future MCP server may return single attempts; none exists yet |
+| `defense.mode` | `"monitor"` | next start | The decision engine's mode; only `monitor` is accepted |
+| `defense.allow` | `[]` | next use | Addresses and networks the engine never decides against |
+| `defense.include_private` | `false` | next use | Whether private ranges may be decided against |
+| `defense.<rule>.*` | see [Decisions](#decisions-monitor) | next use | Each rule's count, window and duration |
 
 `list`, `get` and `history` open the store read-only and fail, rather than print the defaults, when
 it cannot be opened. `set` and `reset` need an elevated prompt and a `--reason`. They refuse a key
@@ -204,6 +218,122 @@ quotes inside an argument on its way to a program, so give an object such as the
 ```json
 { "198.51.100.7": "My office", "203.0.113.0/24": "Scanner network" }
 ```
+
+## Decisions (Monitor)
+
+The WPShield service runs a decision engine
+([ADR 0009](adr/0009-deciding-what-to-block.md), proposed) inside its evidence collector. It turns
+failed logons into decisions with a rule, a reason and an expiry, and writes each one to the evidence
+store's `decisions` table. **This version runs in Monitor only. Nothing is enforced anywhere:** every
+decision is a record of what Block mode would have done. Block mode needs the enforcer of ADR 0006 (in
+PR #86), which does not exist yet; `defense.mode` accepts only `monitor` until it does.
+
+**What it sees.** Only live failed logons, after a 4625 and a 140 of the same attempt have been
+paired, and only records that arrived after the service started. The catch-up read at start is stored
+and never handed to the engine. That includes its last seconds, which go through the pairing buffer
+with the live records, so they are marked by channel and record ID rather than by a time cut. The
+engine never reads the `decisions` table. Its state lives in memory and ends with the process: a
+restart forgets everything, which costs at most one more window of attempts.
+
+**The rules.** Rule IDs are stable and untranslated. Every threshold is a setting:
+
+| Rule | Fires when | Decision | Default | Settings (bounds) |
+| --- | --- | --- | --- | --- |
+| `HOST-AUTH-001` | One address fails N times within W | would block the address for D | 10 in 10 min, 60 min | `defense.failures.count` (3-100), `.window_minutes` (1-1440), `.block_minutes` (1-10080) |
+| `HOST-AUTH-002` | One address tries M account names that do not exist within W | would block the address for D | 4 in 10 min, 6 h | `defense.unknown_accounts.count` (2-50), `.window_minutes`, `.block_minutes` |
+| `HOST-AUTH-003` | K different addresses of one /24 or /64 fail within W | would block the network for D | 8 in 10 min, 60 min | `defense.network.count` (2-64), `.window_minutes`, `.block_minutes` |
+| `HOST-AUTH-004` | One existing account fails from A different addresses within W | report only | 10 in 10 min | `defense.shared_account.addresses` (2-100), `.window_minutes` |
+
+"Does not exist" means Windows said so (`unknown-account`), and names are compared without case. "Existing"
+means a reason Windows gives only for a real account, such as a wrong password, a locked or disabled
+account or an expired password. Remote Desktop's ambiguous "wrong user name or password" counts as
+neither. A record without a source address counts for nothing.
+
+**Repeat offenders.** A target that triggers again within 7 days of the end of its previous decision
+gets twice that decision's duration, up to 7 days, and the reason says so. This memory is in-process
+too.
+
+**Never decided against.** The engine checks these when it makes a decision and records a stopped
+decision as `protected`, with the reason, until the would-be block would have ended:
+
+- the allow-list `defense.allow`: canonical addresses and networks, none wider than /16 (IPv4) or
+  /48 (IPv6), and no loopback, multicast or unspecified address, at most 1,000 entries;
+- every address bound on the host itself, and loopback, link-local and unspecified addresses;
+- private ranges (RFC 1918, ULA `fc00::/7`, CGNAT `100.64.0.0/10`) unless `defense.include_private`
+  is `true`;
+- an address holding a Remote Desktop session right now: an established TCP connection to the port
+  in `HKLM\SYSTEM\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp\PortNumber`, which is
+  never assumed to be 3389.
+
+A network decision is stopped when any address in it would be. When the connection table, the port
+or the host's addresses cannot be read, the decision is `refused`, not made: "nobody could look" is
+not "nobody is connected".
+
+**Bounded.** Per-address, per-network and per-account state each hold at most 100,000 entries and
+1,000,000 items inside them, and evict the least recently seen. At most 10,000 decisions are in force.
+Past that a new one is `refused` and the refusal is recorded. While a decision is in force the
+engine ignores its target's attempts, as an enforced block would have dropped them, so there is one
+record per decision and not one per attempt. A refused target is reconsidered after one window.
+
+**What it writes.** Every record carries the rule, the target (an address, or a /24 or /64), mode
+`monitor`, the reason with the counts that fired it, the channel whose record completed the rule,
+and the expiry. Actions:
+
+| Action | Meaning |
+| --- | --- |
+| `would-block` | A rule fired; the target would be blocked until the expiry |
+| `protected` | A rule fired on a target the engine never decides against; the expiry is when that block would have ended |
+| `refused` | A rule fired and the engine could not check what it must, or 10,000 decisions were in force |
+| `report` | `HOST-AUTH-004` fired. Never blocks. The target is the address that completed the pattern, and the account is not named, because the MCP server returns targets and reasons whatever `mcp.detailed_records` says |
+| `expire` | A `would-block` ended, at its expiry (checked every minute) or when the service stopped |
+
+Log lines carry counts and rule IDs only, never an address or an account. A failure inside the engine
+is logged with its type, and collection continues. The attempts are stored either way.
+
+**In force.** A decision counts as in force when it is the newest record about its target, is
+unexpired, was made since the engine last started, and the collector is still recording. A decision
+never outlives the process that made it, and a crash writes no `expire`. The CLI, the desktop and any
+later Protection panel all use this one definition (`EvidenceQueries.ActiveDecisions`).
+
+### `wpshield decisions`
+
+```powershell
+wpshield decisions
+wpshield decisions --range 7d --target 203.0.113.45
+wpshield decisions --active
+wpshield decisions --active --json
+```
+
+It is read-only and opens the store exactly as `wpshield attacks` does, with the same exit codes
+(3 no store, 1 not elevated or access denied, 2 another schema or nothing recorded) and the same
+cleaning of stored text. Without `--active` it lists the decisions of a range (`--range`, 24 hours by
+default; at most 200, newest first), with a count per action and the collector's coverage, because
+the engine decides only while the collector runs. A range nobody recorded is `no data`, never "no
+decisions". `--target` takes an address, which shows its own decisions and its /24's or /64's, or a
+network exactly as a decision names it. `--active` shows what is in force now, and when nothing can
+be, it says why: the engine never ran, or the service is not recording.
+
+```text
+Evidence store   C:\ProgramData\WPShield\evidence\wpshield-evidence.db (read-only)
+At               2026-11-24 12:00 UTC
+Mode             monitor - nothing is blocked; these are what Block mode would be enforcing now
+Engine           started 2026-11-24 09:00 UTC; only decisions made since then can be in force
+Collector        recording (coverage reaches 2026-11-24 12:00 UTC)
+
+In force now     2  (would-block 1, protected 1)
+
+TARGET          ACTION       RULE           SINCE (UTC)       UNTIL (UTC)       REASON
+203.0.113.0/24  would-block  HOST-AUTH-003  2026-11-24 11:30  2026-11-24 12:30  8 different addresses of this network failed in 3 minutes (threshold 8 in 10 minutes)
+198.51.100.7    protected    HOST-AUTH-001  2026-11-24 11:20  2026-11-24 12:20  10 failed logons in 2 minutes (threshold 10 in 10 minutes); protected: on the allow-list (198.51.100.7)
+```
+
+The MCP `decisions` tool reads the same table and calls it an audit trail, not the current state.
+
+**Thresholds will be wrong at first.** That is what Monitor is for. After a week on a real host,
+compare the `would-block` and `protected` records with what you expected, adjust the `defense.*`
+settings with `wpshield settings set`, and they apply at the next evaluation. Known gap: a botnet
+that sends one attempt per address triggers no per-address rule, and `HOST-AUTH-003` catches it only
+when its addresses share a /24 or /64.
 
 ## Local listener inventory
 
