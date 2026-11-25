@@ -26,9 +26,6 @@ public sealed class HostFactsSensorTests : IDisposable
 
     private HostFactsSensor Sensor(FakeHostFactSource source) => new(source, logger) { RunInBackground = work => Task.FromResult(work()) };
 
-    private static int Snapshots(EvidenceStore store, string fact) =>
-        (int)new HostFactsQueries(store).LatestAll().Count(s => s.Fact == fact);
-
     [Fact]
     public void EveryFactIsReadAtStartThenEachOnItsOwnCadence()
     {

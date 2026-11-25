@@ -77,7 +77,7 @@ public sealed class HostIisFactsTests : IDisposable
     public void TheAuditRecordsItsSummaryInWPShieldsStoreAndSaysSo()
     {
         store.Write(_ => { });
-        var output = new StringWriter();
+        using var output = new StringWriter();
 
         var exit = AuditCommand.Run(CliOptions.Parse([]), output, () => Facts(),
             (report, facts, path) => AuditCommand.RecordPosture(report, facts, path, elevated: true), store.Path);
@@ -93,7 +93,7 @@ public sealed class HostIisFactsTests : IDisposable
     [Fact]
     public void AnAuditThatCannotRecordStillRunsAndSaysWhyNot()
     {
-        var output = new StringWriter();
+        using var output = new StringWriter();
 
         var exit = AuditCommand.Run(CliOptions.Parse([]), output, () => Facts(),
             (report, facts, path) => AuditCommand.RecordPosture(report, facts, path, elevated: true), Path.Combine(store.DirectoryPath, "none.db"));

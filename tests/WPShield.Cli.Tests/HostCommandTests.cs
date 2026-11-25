@@ -20,8 +20,8 @@ public sealed class HostCommandTests : IDisposable
 
     private (int Exit, string Output, string Error) Run(IHostFactSource source, params string[] args)
     {
-        var output = new StringWriter();
-        var error = new StringWriter();
+        using var output = new StringWriter();
+        using var error = new StringWriter();
         var exit = HostCommand.Run(args, output, error, store.Path, () => true, () => Now, () => source);
         return (exit, output.ToString(), error.ToString());
     }
@@ -175,7 +175,9 @@ public sealed class HostCommandTests : IDisposable
         Assert.Equal(2, exit);
         Assert.Contains("no snapshot yet", output, StringComparison.Ordinal);
 
-        var missing = HostCommand.Run([], new StringWriter(), new StringWriter(), Path.Combine(store.DirectoryPath, "none.db"), () => true, () => Now,
+        using var missingOutput = new StringWriter();
+        using var missingError = new StringWriter();
+        var missing = HostCommand.Run([], missingOutput, missingError, Path.Combine(store.DirectoryPath, "none.db"), () => true, () => Now,
             () => new Source());
         Assert.Equal(3, missing);
     }

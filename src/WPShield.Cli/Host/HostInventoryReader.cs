@@ -221,14 +221,14 @@ internal sealed class HostInventoryReader(Authenticode signatures)
         var partial = false;
         try
         {
-            var type = Type.GetTypeFromProgID("Schedule.Service");
-            if (type is null)
+            var scheduler = ComLateBound.Create("Schedule.Service");
+            if (scheduler is null)
                 return HostFactReading.Failed(HostFacts.Inventory, HostFacts.Tasks, now, HostFactStatus.Unreadable, "task-scheduler-missing",
                     "The Task Scheduler service could not be reached. Check that it is running.");
-            dynamic scheduler = Activator.CreateInstance(type)!;
-            scheduler.Connect();
-            var folders = new Queue<dynamic>();
-            folders.Enqueue(scheduler.GetFolder("\\"));
+            ComLateBound.Invoke(scheduler, "Connect");
+            var folders = new Queue<object>();
+            folders.Enqueue(ComLateBound.Invoke(scheduler, "GetFolder", "\\")
+                ?? throw new InvalidCastException("The Task Scheduler returned no root folder."));
             var visited = 0;
             while (folders.Count > 0 && visited < MaxTaskFolders)
             {
@@ -237,8 +237,8 @@ internal sealed class HostInventoryReader(Authenticode signatures)
                 visited++;
                 try
                 {
-                    foreach (dynamic sub in folder.GetFolders(0)) folders.Enqueue(sub);
-                    foreach (dynamic task in folder.GetTasks(1 /* include hidden */))
+                    foreach (var sub in ComLateBound.Items(ComLateBound.Invoke(folder, "GetFolders", 0))) folders.Enqueue(sub);
+                    foreach (var task in ComLateBound.Items(ComLateBound.Invoke(folder, "GetTasks", 1 /* include hidden */)))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         if (tasks.Count >= HostFacts.MaxInventoryItems)
@@ -268,6 +268,11 @@ internal sealed class HostInventoryReader(Authenticode signatures)
             return HostFactReading.Failed(HostFacts.Inventory, HostFacts.Tasks, now, HostFactStatus.NeedsElevation, "access-denied",
                 "Run the collector elevated; tasks are read through the Task Scheduler.");
         }
+        catch (Exception exception) when (exception is InvalidCastException or MissingMethodException or MissingMemberException)
+        {
+            return HostFactReading.Failed(HostFacts.Inventory, HostFacts.Tasks, now, HostFactStatus.Unreadable,
+                "task-scheduler: " + exception.GetType().Name, "The Task Scheduler answered in an unexpected shape; run 'wpshield host inventory tasks --live' elevated.");
+        }
 
         var value = new HostTasks(tasks, budget.NotChecked);
         return partial || budget.NotChecked > 0
@@ -277,29 +282,31 @@ internal sealed class HostInventoryReader(Authenticode signatures)
             : HostFactReading.Of(HostFacts.Inventory, HostFacts.Tasks, now, value);
     }
 
-    private HostTask? ReadTask(dynamic task, Authenticode.Budget budget)
+    private HostTask? ReadTask(object task, Authenticode.Budget budget)
     {
-        string path = task.Path as string ?? "";
-        dynamic definition = task.Definition;
+        var path = ComLateBound.GetString(task, "Path") ?? "";
+        var definition = ComLateBound.GetObject(task, "Definition");
         string? executable = null;
         IReadOnlyList<string> flags = [];
-        foreach (dynamic action in definition.Actions)
+        foreach (var action in ComLateBound.Items(ComLateBound.Get(definition, "Actions")))
         {
             // The first program action decides; a task's other actions are rare and counted in its flags.
-            if ((int)action.Type != 0) continue;
-            (executable, flags) = CommandFlags.Inspect(QuoteIfNeeded(action.Path as string), action.Arguments as string, IsUserWritable);
+            if (ComLateBound.GetInt(action, "Type") != 0) continue;
+            (executable, flags) = CommandFlags.Inspect(QuoteIfNeeded(ComLateBound.GetString(action, "Path")),
+                ComLateBound.GetString(action, "Arguments"), IsUserWritable);
             break;
         }
         var signature = executable is null ? SignatureResult.NotChecked : signatures.Check(executable, budget);
         var underMicrosoft = path.StartsWith(@"\Microsoft\", StringComparison.OrdinalIgnoreCase);
         if (underMicrosoft && (executable is null || IsQuietMicrosoft(signature, executable, flags))) return null;
-        string principal = definition.Principal.UserId as string ?? definition.Principal.GroupId as string ?? "";
+        var principal = ComLateBound.GetObject(definition, "Principal");
+        var runsAs = ComLateBound.GetString(principal, "UserId") ?? ComLateBound.GetString(principal, "GroupId") ?? "";
         return new HostTask(
             HostFacts.Clean(path),
-            TaskState((int)task.State),
-            HostFacts.Clean(principal),
-            Time((object?)task.LastRunTime),
-            Time((object?)task.NextRunTime),
+            TaskState(ComLateBound.GetInt(task, "State")),
+            HostFacts.Clean(runsAs),
+            Time(ComLateBound.GetDate(task, "LastRunTime")),
+            Time(ComLateBound.GetDate(task, "NextRunTime")),
             executable,
             signature.Status,
             signature.Signer,
@@ -318,8 +325,8 @@ internal sealed class HostInventoryReader(Authenticode signatures)
         _ => "unknown"
     };
 
-    private static DateTimeOffset? Time(object? value) =>
-        value is DateTime time && time.Year > 1900 ? new DateTimeOffset(time.ToUniversalTime(), TimeSpan.Zero) : null;
+    private static DateTimeOffset? Time(DateTime? value) =>
+        value is { } time && time.Year > 1900 ? new DateTimeOffset(time.ToUniversalTime(), TimeSpan.Zero) : null;
 
     // ---------------------------------------------------------------------------------------------
     //  Shared

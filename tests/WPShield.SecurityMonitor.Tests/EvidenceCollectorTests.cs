@@ -727,7 +727,7 @@ public sealed class EvidenceCollectorTests : IDisposable
         var session = CollectorSession.Start(collector, Now);
         for (var i = 1; i <= 10; i++)
         {
-            clock.Now = Now.AddSeconds(2 * i);
+            clock.Now = Now.AddSeconds(2.0 * i);
             session.Tick(clock.Now);
         }
         session.Stop(clock.Now);

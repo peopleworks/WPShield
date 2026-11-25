@@ -64,29 +64,29 @@ internal static class HostPortsReader
     {
         try
         {
-            var type = Type.GetTypeFromProgID("HNetCfg.FwPolicy2");
-            if (type is null) return (null, "firewall-unavailable");
-            dynamic policy = Activator.CreateInstance(type)!;
-            int active = policy.CurrentProfileTypes;
+            var policy = ComLateBound.Create("HNetCfg.FwPolicy2");
+            if (policy is null) return (null, "firewall-unavailable");
+            var active = ComLateBound.GetInt(policy, "CurrentProfileTypes");
             int disabled = 0, allow = 0;
             foreach (var profile in new[] { 1, 2, 4 })
             {
-                if (!(bool)policy.FirewallEnabled[profile]) disabled |= profile;
-                if ((int)policy.DefaultInboundAction[profile] == 1) allow |= profile;
+                if (!ComLateBound.GetBool(policy, "FirewallEnabled", profile)) disabled |= profile;
+                if (ComLateBound.GetInt(policy, "DefaultInboundAction", profile) == 1) allow |= profile;
             }
             var rules = new List<FirewallRule>();
-            foreach (dynamic rule in policy.Rules)
+            foreach (var rule in ComLateBound.Items(ComLateBound.Get(policy, "Rules")))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 if (rules.Count >= MaxRules) return (new FirewallPolicy(active, disabled, allow, rules), "firewall-rule-bound");
-                if ((int)rule.Direction != 1) continue;
-                rules.Add(new FirewallRule((bool)rule.Enabled, true, (int)rule.Action == 1, (int)rule.Protocol,
-                    rule.LocalPorts as string, rule.RemoteAddresses as string, (int)rule.Profiles, rule.ApplicationName as string));
+                if (ComLateBound.GetInt(rule, "Direction") != 1) continue;
+                rules.Add(new FirewallRule(ComLateBound.GetBool(rule, "Enabled"), true, ComLateBound.GetInt(rule, "Action") == 1,
+                    ComLateBound.GetInt(rule, "Protocol"), ComLateBound.GetString(rule, "LocalPorts"), ComLateBound.GetString(rule, "RemoteAddresses"),
+                    ComLateBound.GetInt(rule, "Profiles"), ComLateBound.GetString(rule, "ApplicationName")));
             }
             return (new FirewallPolicy(active, disabled, allow, rules), null);
         }
         catch (Exception exception) when (exception is COMException or UnauthorizedAccessException or InvalidCastException
-            or Microsoft.CSharp.RuntimeBinder.RuntimeBinderException)
+            or MissingMethodException or MissingMemberException or FormatException or OverflowException)
         {
             return (null, "firewall-unreadable: " + exception.GetType().Name);
         }

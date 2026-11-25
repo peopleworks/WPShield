@@ -113,7 +113,7 @@ public static class WindowsHostReaders
         }
         try
         {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "ntoskrnl.exe");
+            var path = Path.Join(Environment.GetFolderPath(Environment.SpecialFolder.System), "ntoskrnl.exe");
             kernel = File.Exists(path) ? Bounded(System.Diagnostics.FileVersionInfo.GetVersionInfo(path).ProductVersion, 32) : null;
             if (kernel is null) problems.Add("kernel-version");
         }
