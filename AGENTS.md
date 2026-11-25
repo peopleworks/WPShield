@@ -153,8 +153,10 @@ Before modifying code:
 ([docs/en/adr/0007-local-evidence-store.md](docs/en/adr/0007-local-evidence-store.md)). It is what the
 desktop, the CLI and a future MCP server answer from, so these rules protect every answer.
 
-- **One writer for evidence: the WPShield service.** Readers open the store read-only. Settings are
-  the one exception: an elevated operator tool may write them through `EvidenceSettings`, never a reader.
+- **One writer for evidence at a time: the WPShield service.** `wpshield evidence collect` runs the
+  same collector in the foreground for validation, and refuses unless the service is stopped. Readers
+  open the store read-only. Settings are the one exception: an elevated operator tool may write them
+  through `EvidenceSettings`, never a reader.
 - **The writer never creates the directory.** `wpshield install` creates it with replaced permissions
   (SYSTEM, Administrators, the service SID, by SID); a directory created by the writer would inherit
   `ProgramData`, which every local user can read.
