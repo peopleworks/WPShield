@@ -47,6 +47,8 @@ to what it originally claimed.</sub>
 | Who is trying to log in to this server? | Open **Attacks** in the desktop monitor | Failed Remote Desktop, SMB and network logons from the last 24 hours, then live: totals, a timeline, one row per source address and a slide-in detail with the accounts tried and other attackers in the same network. **7 d** and **30 d** read the WPShield service's evidence store. Needs administrator rights, and says so instead of showing an empty board. [Attacks view](docs/en/network-sensor-design.md#attacks) |
 | Who attacked this server last week? | `wpshield attacks --range 7d` | Totals and top source addresses from the evidence store, or one address's history with `--source`. Says when an answer comes from hourly aggregates and lists unrecorded time as "no data", never zero. Elevated prompt; `--json` for scripts. [Attack history](docs/en/network-sensor-design.md#attack-history-from-the-command-line) |
 | How do I name my office's address? | `wpshield settings set labels.addresses --value-file labels.json --reason "..."` | Labels appear next to matching addresses in `wpshield attacks` and the Attacks view; they never allow or block. Every change is recorded with who and why, and says when it takes effect. [Settings](docs/en/network-sensor-design.md#settings) |
+| Who is trying to log in to this server? | Open **Attacks** in the desktop monitor | Failed Remote Desktop, SMB and network logons from the last 24 hours, then live: totals, a timeline, one row per source address and a slide-in detail with the accounts tried and other attackers in the same network. Needs administrator rights to read the Security log, and says so instead of showing an empty board. [Attacks view](docs/en/network-sensor-design.md#attacks) |
+| Can I ask an assistant who attacked this server? | `wpshield mcp`, started by Claude Desktop or Claude Code | A read-only MCP server over the evidence store: totals, top sources, one address's history, a timeline, coverage and block decisions. Opens no port and changes nothing. The assistant must run elevated on the server, and its answers go to its model provider; account names only if you allow them. [MCP server](docs/en/mcp-server.md) |
 | How busy is one network adapter? | Open **Adapter traffic** in the desktop monitor | Compare received and sent bytes per second for one Windows interface. Works without Npcap. [Adapter traffic](docs/en/network-sensor-design.md#adapter-traffic) |
 | How much traffic involves selected TCP or UDP ports? | Open **Port traffic** in the desktop monitor | Type ports or add them from the port list, then select a capture adapter. The chart shows observed IP bytes per second and coverage for each interval. Requires Npcap and administrator privileges. [Traffic history](docs/en/network-sensor-design.md#traffic-history) |
 | How do I copy one record from a saved audit? | Open **Audit references** in the desktop monitor | Open one WPShield JSON snapshot, select the row with the arrow keys and press Ctrl+C to copy its reference. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference) |
@@ -196,7 +198,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,950 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,986 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -435,7 +437,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,950 tests across twelve projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 481 for the CLI, 101 for the desktop monitor, 475 for the gateway, 41 for the network sensor, 14 for the network filter, 73 for the security monitor, 28 for the evidence store and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,986 tests across twelve projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 517 for the CLI, 101 for the desktop monitor, 475 for the gateway, 41 for the network sensor, 14 for the network filter, 73 for the security monitor, 28 for the evidence store and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -624,7 +626,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,950 tests
+|-- tests/                            xUnit test projects, 1,986 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/
@@ -705,6 +707,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | Windows service protection | [RdpGuard comparison and benchmark plan](docs/en/host-protection-benchmark.md) | [Comparación con RdpGuard y plan de evaluación](docs/es/evaluacion-proteccion-servidor.md) |
 | Offline IIS login evidence | [Read a W3C log by site](docs/en/iis-login-evidence.md) | [Verificar accesos IIS por sitio](docs/es/evidencia-accesos-iis.md) |
 | Offline policy preview | [Policy preview](docs/en/policy-preview.md) | [Vista previa de políticas](docs/es/vista-previa-politicas.md) |
+| MCP server | [Ask an assistant about the evidence](docs/en/mcp-server.md) | [Preguntarle a un asistente por la evidencia](docs/es/servidor-mcp.md) |
 | TelltaleDNS evaluation (proposal) | [Evaluation](docs/en/telltaledns-evaluation.md) | [Evaluación](docs/es/evaluacion-telltaledns.md) |
 | Reader-1 evaluation plan (proposal) | [Evaluation plan](docs/en/reader-1-evaluation-plan.md) | [Plan de evaluación](docs/es/plan-evaluacion-reader-1.md) |
 | ADR 0001 — production traffic path | [Production traffic path](docs/en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](docs/es/adr/0001-ruta-de-trafico-en-produccion.md) |
@@ -713,6 +716,7 @@ Operational and architectural documentation is maintained in English and Spanish
 | ADR 0004 — name and scope | [What WPShield stands for](docs/en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](docs/es/adr/0004-que-significa-wpshield.md) |
 | ADR 0005 — putting it in the path | [Putting WPShield in the path](docs/en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](docs/es/adr/0005-poner-wpshield-en-la-ruta.md) |
 | ADR 0007 — evidence store | [A local evidence store, and who may read it](docs/en/adr/0007-local-evidence-store.md) | [Un almacén local de evidencia, y quién puede leerlo](docs/es/adr/0007-almacen-local-de-evidencia.md) |
+| ADR 0008 — read-only MCP server | [A read-only MCP server over the evidence store](docs/en/adr/0008-read-only-mcp-server.md) | [Un servidor MCP de solo lectura sobre el almacén de evidencia](docs/es/adr/0008-servidor-mcp-de-solo-lectura.md) |
 
 The [documentation index](docs/README.md) carries the same list, so a reader who opens the folder and a reader who arrives from here see the same set.
 

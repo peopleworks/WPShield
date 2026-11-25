@@ -29,6 +29,7 @@ the same set.
 | Deployment · Despliegue | [Deployment](en/deployment.md) | [Despliegue](es/despliegue.md) |
 | Request evidence · Evidencia de solicitudes | [Traceability and completeness](en/request-evidence.md) | [Trazabilidad y completitud](es/evidencia-solicitudes.md) |
 | Offline policy preview · Vista previa offline | [Policy preview](en/policy-preview.md) | [Vista previa de políticas](es/vista-previa-politicas.md) |
+| MCP server · Servidor MCP | [Ask an assistant about the evidence](en/mcp-server.md) | [Preguntarle a un asistente por la evidencia](es/servidor-mcp.md) |
 | TelltaleDNS evaluation (proposal) · Evaluación (propuesta) | [Evaluation](en/telltaledns-evaluation.md) | [Evaluación](es/evaluacion-telltaledns.md) |
 | Reader-1 evaluation plan (proposal) · Plan de evaluación (propuesta) | [Evaluation plan](en/reader-1-evaluation-plan.md) | [Plan de evaluación](es/plan-evaluacion-reader-1.md) |
 | ADR 0001 — production traffic path · Ruta de tráfico en producción | [Production traffic path](en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](es/adr/0001-ruta-de-trafico-en-produccion.md) |
@@ -37,6 +38,7 @@ the same set.
 | ADR 0004 — name and scope · Nombre y alcance | [What WPShield stands for](en/adr/0004-what-wpshield-stands-for.md) | [Qué significa WPShield](es/adr/0004-que-significa-wpshield.md) |
 | ADR 0005 — putting it in the path · Poner en la ruta | [Putting WPShield in the path](en/adr/0005-putting-wpshield-in-the-path.md) | [Poner WPShield en la ruta](es/adr/0005-poner-wpshield-en-la-ruta.md) |
 | ADR 0007 — evidence store · Almacén de evidencia | [A local evidence store, and who may read it](en/adr/0007-local-evidence-store.md) | [Un almacén local de evidencia, y quién puede leerlo](es/adr/0007-almacen-local-de-evidencia.md) |
+| ADR 0008 — read-only MCP server · Servidor MCP de solo lectura | [A read-only MCP server over the evidence store](en/adr/0008-read-only-mcp-server.md) | [Un servidor MCP de solo lectura sobre el almacén de evidencia](es/adr/0008-servidor-mcp-de-solo-lectura.md) |
 
 The threat model's English original sits at the repository root, because `README.md`, `SECURITY.md`
 and `AGENTS.md` all point readers there; its Spanish translation lives here with the other pairs.
