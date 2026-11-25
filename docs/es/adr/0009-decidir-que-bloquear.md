@@ -3,7 +3,7 @@
 - **Estado:** Aceptada el 2026-11-25, con la enmienda de cómo se construyó, abajo
 - **Deciden:** Pedro Hernández (mantenedor)
 - **Afecta a:** `WPShield.Evidence`, el recolector de evidencia, el catálogo de ajustes, `wpshield`, la
-  vista Ataques del escritorio y un futuro panel de Protección, y la herramienta MCP `decisions`
+  vista Ataques y la ventana Protección del escritorio, y la herramienta MCP `decisions`
 
 ## Contexto
 
@@ -99,7 +99,7 @@ Cambiar un umbral se aplica en la siguiente evaluación (`NextUse`) y lo dice.
 Cada decisión va a la tabla `decisions` del almacén con su regla, su objetivo, su motivo (los recuentos
 que la activaron), el canal de evidencia que la pidió, el modo y la expiración. La CLI gana una vista
 de decisiones activas y recientes, la vista Ataques del escritorio muestra "bloquearía" por dirección,
-la herramienta MCP `decisions` ya lee la tabla, y el futuro panel de Protección las cuenta.
+la herramienta MCP `decisions` ya lee la tabla, y la ventana Protección las cuenta.
 
 ## Consecuencias
 

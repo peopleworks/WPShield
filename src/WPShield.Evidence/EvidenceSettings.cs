@@ -84,8 +84,8 @@ public static class SettingCatalog
 /// <summary>
 /// Reads and changes settings. Every change is validated against the catalog, versioned, and recorded
 /// in <c>settings_history</c> with who made it and why. Writing needs a store opened for writing, so
-/// an elevated operator tool or the service. The desktop writes settings only from its elevated
-/// Settings window; the MCP server only reads.
+/// an elevated operator tool or the service. The desktop writes settings only when elevated, from its
+/// Settings window and the Attacks view's Label and Allow actions; the MCP server only reads.
 /// </summary>
 public sealed class EvidenceSettings
 {
