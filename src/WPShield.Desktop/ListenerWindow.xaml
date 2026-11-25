@@ -64,6 +64,8 @@
                 BorderThickness="0" Click="OpenPortTraffic"/>
         <Button x:Name="AuditButton" Margin="0,6,0,0" Padding="8,8" Background="#294858" Foreground="White"
                 BorderThickness="0" Click="OpenAudit"/>
+        <Button x:Name="SettingsButton" Margin="0,18,0,0" Padding="8,8" Background="#294858" Foreground="White"
+                BorderThickness="0" Click="OpenSettings"/>
       </StackPanel>
     </DockPanel>
     <Grid Grid.Column="1" Margin="22,18">

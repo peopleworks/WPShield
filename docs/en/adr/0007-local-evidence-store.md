@@ -155,7 +155,9 @@ Rules this adds:
 
 - **Settings are written by an elevated operator tool or by the service, never by a reader.** The
   desktop and an MCP server read them. An MCP tool that changes a setting is an action, and falls
-  under section 6.
+  under section 6. (Note, 2026-11-24: the desktop's **Settings** window, when elevated, is an
+  operator tool in this sense and writes through `EvidenceSettings`; the desktop's other views only
+  read.)
 - **A label describes; it never allows or blocks.** The allow-list and block thresholds become
   settings only through the decision engine's own ADR, with their own validation.
 - **Settings that only apply at start say so** when they are changed, the configuration rule

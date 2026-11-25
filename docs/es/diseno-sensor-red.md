@@ -83,7 +83,8 @@ emergente explica por qué; los rangos cortos funcionan como antes.
 **Etiquetas.** El ajuste `labels.addresses` pone nombre a direcciones y redes conocidas: su oficina,
 su propia conexión, una red de escaneo que ya denunció. La etiqueta aparece junto a la dirección que
 coincide en la tabla, en el panel y entre las vecinas, en todos los rangos. Una dirección exacta gana
-a una red, y un prefijo más largo a uno más corto. Las etiquetas se definen con
+a una red, y un prefijo más largo a uno más corto. Las etiquetas se definen en la
+[ventana de ajustes](#ventana-de-ajustes) o con
 [`wpshield settings`](#historial-de-ataques-desde-la-línea-de-comandos). **Una etiqueta describe
 una dirección; nunca la permite ni la bloquea.**
 
@@ -119,6 +120,63 @@ Lo que la vista no hace:
   Monitor, y la vista solo las lee. Los registros en vivo se aplican una vez por segundo y la memoria
   guarda como máximo 100 000 registros: descarta los más antiguos y mueve con ellos la línea de
   **sin datos**.
+
+### Ventana de ajustes
+
+Abra **Ajustes** para leer y cambiar los [ajustes](#ajustes) del almacén de evidencia sin un archivo
+JSON ni una ruta en el servidor. La lista es el catálogo que conoce esta versión de WPShield (todos
+los ajustes, también los que se añadan después de escribir esta página) con su valor y si es el valor
+por defecto. Al elegir uno se ve qué hace, su valor actual, quién lo cambió por última vez y cuándo,
+su valor por defecto, cuándo surte efecto y su historial: cuándo, quién, el valor anterior y el
+nuevo, y el motivo.
+
+Cada ajuste se edita con un control acorde a su tipo: una casilla para activado o desactivado, un
+cuadro para un número o una palabra, una tabla de **Dirección o red** y **Etiqueta** para
+`labels.addresses` y una lista de entradas para una lista de direcciones. Cualquier otra forma se
+edita como JSON, y **Editar como JSON** cambia cualquier editor a texto JSON y de vuelta, para un
+valor que la tabla o la lista no pueden contener. Si un valor es aceptable lo decide la misma
+comprobación que usa `wpshield settings set`, y su respuesta aparece bajo el editor. **Guardar** sigue
+deshabilitado hasta que el valor es válido, distinto del actual y tiene un **motivo**. **Volver al valor por defecto**
+quita el valor guardado y también necesita un motivo. Cada cambio queda registrado con su usuario de
+Windows y el motivo, igual que lo registra la línea de comandos.
+
+**Guardar no aplica nada.** Cada ajuste indica cuándo surte efecto: en su próximo uso (la próxima
+poda, consulta o vista que lo lea) o la próxima vez que arranque el proceso que lo lee. La ventana no
+reinicia nada.
+
+**Mi conexión actual** añade una fila con la dirección que **este servidor ve** para su sesión de
+Escritorio remoto: la dirección desde la que llegaría un ataque y la que tiene que nombrar una lista de
+permitidos. Se lee de las conexiones establecidas al puerto de Escritorio remoto del servidor (el
+puerto configurado para la escucha, no un 3389 supuesto). Si hay varias personas conectadas, el
+registro de inicio o de reconexión más reciente de esta sesión en el registro
+`TerminalServices-LocalSessionManager/Operational` (eventos 21 y 25) indica cuál de ellas es la suya, y
+solo se usa si esa dirección está conectada ahora. Con una sola conexión y sin ese registro, se ofrece
+esa conexión y la información emergente lo dice. No se ofrece nada, y la información emergente explica
+por qué, en una sesión de consola, cuando no se pueden leer las conexiones, cuando hay varias personas
+conectadas y nada indica cuál es usted (se enumeran para que escriba la correcta) y cuando su registro
+indica una dirección que no está conectada ahora, como a través de una puerta de enlace de Escritorio
+remoto, y cuando su registro indica `LOCAL`: esa sesión no llegó por la red (por ejemplo, la sesión
+mejorada de una máquina virtual), así que la conexión que haya es de otra persona. La ventana lee todo
+esto al abrirse y con **Actualizar**; la información emergente indica la hora.
+
+Nunca se ofrece la dirección que su cliente de Escritorio remoto comunica sobre sí mismo. Microsoft
+documenta que la comunica el cliente: detrás de NAT es la dirección privada de su propia red, que nunca
+coincide con nada de lo que ve este servidor. Si difiere de la dirección ofrecida, la información
+emergente la menciona solo para explicar la diferencia.
+
+Lo que la ventana no hace:
+
+- **Cambiar nada sin elevación.** La carpeta del almacén solo admite a administradores y al servicio.
+  Sin elevación la ventana es de solo lectura y, si no puede abrir el almacén, muestra cada valor como
+  desconocido, nunca como su valor por defecto. **Abrir como administrador** la vuelve a abrir con
+  permisos en esta vista.
+- **Crear el almacén.** Si no existen la carpeta de evidencia o el archivo del almacén, la ventana lo
+  dice y menciona `wpshield install`; el servicio crea el almacén cuando se ejecuta.
+- **Dejar el almacén abierto ni sobrescribir un cambio que no ha visto.** Abre el almacén para
+  escribir solo durante un cambio, mientras el servicio sigue escribiendo. Si el valor se cambió en
+  otro sitio después de que la ventana lo leyera (la línea de comandos, otra ventana), no se guarda y
+  se indica quién lo cambió; **Actualizar** muestra ese cambio. Un guardado que falla explica por qué
+  y conserva su edición.
 
 ### Tráfico por adaptador
 
@@ -228,6 +286,10 @@ motivo. `set` reemplaza el valor completo: para añadir una etiqueta, lea `label
 
 **El comando no aplica nada.** Cada ajuste surte efecto en su próximo uso (la próxima poda, consulta
 o vista que lo lea) o en el próximo arranque del proceso que lo lee, y el comando dice cuál.
+
+La [ventana de ajustes](#ventana-de-ajustes) del monitor de escritorio hace los mismos cambios, con
+las mismas comprobaciones y el mismo historial, con un editor para cada ajuste en lugar de un archivo
+JSON.
 
 Los valores son JSON, y un ajuste de texto acepta también una palabra sin comillas (`7d`). Windows
 PowerShell 5.1 elimina las comillas de dentro de un argumento al pasarlo a un programa, así que un
