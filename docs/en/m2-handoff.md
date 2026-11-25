@@ -3,8 +3,7 @@
 Working note, not a published document. Delete it when M2 closes.
 
 Branch `chore/community-readiness`, pushed to origin at `e00afdf`. Working tree clean.
-Build: 0 warnings. Tests: **856 passing** (83 Core, 208 Abstractions, 308 Rules.WordPress,
-257 Gateway). `dotnet format --verify-no-changes`: clean.
+Build: 0 warnings. Tests passed. `dotnet format --verify-no-changes`: clean.
 
 ## What landed
 

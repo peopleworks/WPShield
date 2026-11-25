@@ -10,12 +10,19 @@ una regla del proyecto, no una cortesía: el operador que no puede leer los lím
 que termina poniendo una vista previa de investigación delante del tráfico de producción sin
 quererlo. Si agrega un documento en un idioma, su equivalente entra en el mismo cambio.
 
-This index mirrors the Documentation table in the [repository README](../README.md); the two lists
-change together, so that a reader who arrives from the README and a reader who opens this folder see
-the same set.
+Use this index to find the operator and technical references in either language.
+
+Usa este índice para encontrar las guías del operador y las referencias técnicas en ambos idiomas.
 
 | Topic · Tema | English | Español |
 | --- | --- | --- |
+| Operator experience research | [NETworkManager evaluation](en/networkmanager-evaluation.md) | [Evaluación de NETworkManager](es/evaluacion-networkmanager.md) |
+| Windows service protection | [RdpGuard comparison and benchmark plan](en/host-protection-benchmark.md) | [Comparación con RdpGuard y plan de evaluación](es/evaluacion-proteccion-servidor.md) |
+| Offline IIS login evidence | [Read a W3C log by site](en/iis-login-evidence.md) | [Verificar accesos IIS por sitio](es/evidencia-accesos-iis.md) |
+| Host observation · Observación del servidor | [Listeners, flows, and attacks](en/network-sensor-design.md) | [Puertos, flujos y ataques](es/diseno-sensor-red.md) |
+| Gateway reference · Referencia del gateway | [Findings, architecture, inspection, rules, evidence, configuration, responses, and troubleshooting](en/gateway-reference.md) | [Hallazgos, arquitectura, inspección, reglas, evidencia, configuración, respuestas y resolución de problemas](es/referencia-gateway.md) |
+| Operator reference · Referencia del operador | [Tasks, detailed status, local evaluation, source builds, repository layout, and milestones](en/operator-reference.md) | [Tareas, estado detallado, evaluación local, compilación, estructura e hitos](es/referencia-operador.md) |
+| Evaluation reference · Referencia de evaluación | [Comparisons, recent security work, and related projects](en/evaluation-reference.md) | [Comparaciones, mejoras de seguridad y proyectos relacionados](es/referencia-evaluacion.md) |
 | Threat model · Modelo de amenazas | [Threat model](../THREAT_MODEL.md) | [Modelo de amenazas](es/modelo-de-amenazas.md) |
 | Architecture · Arquitectura | [Architecture](en/architecture.md) | [Arquitectura](es/arquitectura.md) |
 | Operator configuration · Configuración del operador | [Operator configuration](en/operator-configuration.md) | [Configuración del operador](es/configuracion-operador.md) |

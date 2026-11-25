@@ -1,7 +1,7 @@
 # TODO — Próxima sesión
 
 Estado actual: rama `main`, commit `1641f3b`, push a `origin/main` completado.
-Build: 0 warnings, 0 errores. Tests: 1,370 pasando, 0 fallos.
+Build: 0 warnings, 0 errores. Pruebas sin fallos.
 
 ---
 
@@ -51,7 +51,7 @@ cliente/sitio/ruta. Lo que falta:
 
 ### 4. Observabilidad automatizada (M4)
 
-Se agregaron 3 pruebas de redacción (`LogRedactionTests.cs`). Falta:
+Se agregaron pruebas de redacción (`LogRedactionTests.cs`). Falta:
 - Más casos: `Authorization` en uploads, `Cookie` en multipart, `Set-Cookie` en respuestas del backend.
 - Métricas por sitio (requests, actions, rule matches, duration).
 - Structured JSON Lines con rotation y retention ya existe en `WPShield.Logging`.
