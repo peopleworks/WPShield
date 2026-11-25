@@ -61,7 +61,7 @@ IIS setting, DNS record, certificate, firewall rule, service or port.
 | Setting `mcp.detailed_records` | Sent to the assistant's model provider |
 | --- | --- |
 | `false` (default) | Counts, source addresses and their networks, timelines, coverage, block decisions, settings, address labels |
-| `true` | All of the above, plus the account names that were tried, single attempts and events, and who requested each decision and who changed each setting (with `false` these show as `"withheld"`, because they are often your own account names) |
+| `true` | All of the above, plus the account names that were tried, single attempts and events, and who requested each decision and who changed each setting (with `false` these show as `"withheld"`, because they are often your own account names; a decision the engine made names its evidence channel, `security-4625` or `rdpcorets-140`, which names nobody and is always shown) |
 
 Account names that were tried include **real accounts on this server**, correctly spelled or not.
 Turn `mcp.detailed_records` on only if you accept that. It is a store setting
