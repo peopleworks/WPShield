@@ -15,6 +15,7 @@ public partial class App : Application
         // worst outcome. The views that know how to fail say so themselves; this is the backstop.
         DispatcherUnhandledException += OnUnhandled;
         TaskScheduler.UnobservedTaskException += (_, args) => args.SetObserved();
+        AppIcon.ApplyToEveryWindow();
         base.OnStartup(e);
     }
 

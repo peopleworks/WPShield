@@ -5,10 +5,15 @@
     <UseWPF>true</UseWPF>
     <!-- The repository verifies formatting for the whole solution on Linux. -->
     <EnableWindowsTargeting Condition="'$(OS)' != 'Windows_NT'">true</EnableWindowsTargeting>
+    <!-- The executable's icon: Explorer, the taskbar and Alt+Tab. AppIcon gives every window the same one. -->
+    <ApplicationIcon>Assets\wpshield.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../WPShield.Cli/WPShield.Cli.csproj" />
     <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
     <InternalsVisibleTo Include="WPShield.Desktop.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\wpshield.ico" />
   </ItemGroup>
 </Project>
