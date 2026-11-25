@@ -322,6 +322,19 @@ pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md
 
 - [x] Select a saved RDP, SQL Server or IIS audit reference with the keyboard and copy its minimal JSON from the desktop monitor. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference)
 - [x] Plot interval history from the host monitor for one adapter and selected ports. Pausing the view keeps capture running. [Traffic history](docs/en/network-sensor-design.md#traffic-history)
+- [x] **Server posture, the dashboard's first data source.** `wpshield audit` reads, and never
+  changes, the IIS configuration that decides whether one compromised site stays one: pools running
+  as an administrator, pools sharing a built-in identity, PHP mapped for every site, site folders
+  anyone can write, and a catch-all site over the others. See [Audit](docs/en/audit.md). Its checks
+  are tested against constructed snapshots; the IIS reader has not yet run against a real IIS host.
+- [ ] Extend the posture audit beyond IIS: module and system binary signatures, WMI subscriptions,
+  cleared event logs, firewall rules open to any address, Defender history, and a web shell's
+  signature in the IIS logs. Read-only, like the rest. Listening ports with their owner PIDs and
+  live Remote Desktop logon outcomes already exist in the host monitor
+  ([local listener inventory](docs/en/network-sensor-design.md#local-listener-inventory),
+  [Remote Desktop logon evidence](docs/en/network-sensor-design.md#remote-desktop-logon-evidence));
+  the audit does not read them yet, compares no port with the firewall, and keeps no history of
+  sign-ins by source.
 - [ ] Bind management access to 127.0.0.1 initially.
 - [ ] Add English and Spanish views for summary, sites, events, rules, health, configuration, versions, export, and diagnostics.
 - [ ] Add CSRF protection and design Windows-authenticated administrative access before any remote use.

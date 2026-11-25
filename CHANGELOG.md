@@ -251,6 +251,22 @@ must complete first.
   gateway resolves with the rules both packages ship, found by reflection, so a forgotten registration
   fails a test rather than shipping a rule that never evaluates. The ordinary-traffic corpus likewise
   runs every path rule, discovered rather than listed.
+- **`wpshield audit` - a read-only posture audit of the IIS server itself.** A web shell in one site
+  is an incident; four common configurations of a shared IIS host turn it into a compromised server,
+  and no scan of the sites reports any of them. The audit does: application pools that run as
+  `LocalSystem` or as a member of the local Administrators group (`AUDIT-002`), pools that share
+  `NetworkService` or `LocalService` (`AUDIT-003`), PHP mapped for the whole server with the sites
+  that run it without WordPress (`AUDIT-004`), site folders that `Everyone`, `Users`,
+  `Authenticated Users` or `IIS_IUSRS` can write into (`AUDIT-005`), and a site that answers any host
+  name while its folder contains other sites' folders (`AUDIT-006`) - which is how a stopped site's
+  files stay on the internet. See [Audit](docs/en/audit.md).
+
+  **It could not look is never a clean report.** Unelevated, or with IIS unreadable, the run is
+  marked incomplete, prints so, and exits `1`; an unresolvable pool account or unreadable folder
+  permissions are warnings to check by hand, never passes. Groups are found by SID, so it works on a
+  Spanish Windows. It never repairs - every remedy is a change made by hand, asserted by a test - and
+  it never reads a password: a pool's account name is read, the password beside it is not, and a
+  test scans the source for any read of that attribute.
 
 - **`wpshield setup` - the five steps between an unpacked artifact and a first finding, in order.**
   The operator took the artifact to a real server, ran `watch`, and got a blank console. Seeing
@@ -1162,6 +1178,14 @@ must complete first.
   the vocabulary check exists for. The list-shaped parts (`vendor/phpunit`, the credential and
   `phpinfo` names) can join that check; the shapes, such as a `.env` segment in any position, need a
   different guarantee.
+- `wpshield audit` covers IIS only. It does not yet verify module or system binary signatures (most
+  Windows binaries are catalog-signed, which .NET has no API to check), read the host beyond IIS -
+  WMI subscriptions, cleared event logs, open firewall rules, Defender - or look for a web shell's
+  signature in the IIS logs. Listening ports and Remote Desktop logon outcomes are read by
+  `wpshield network-monitor`, not by the audit. Membership in the local Administrators group is
+  direct only, and deny entries are compared by group rather than by mask. Its checks are tested
+  against constructed snapshots; the reader that builds a snapshot from a live server has not yet
+  run against a real IIS host. See [Audit](docs/en/audit.md#what-it-does-not-check-yet).
 - `PHP-CONTENT-001` searches a bounded UTF-8 sample and can be evaded by placing the tag beyond the
   sample window, encoding as UTF-16, or splitting it across the boundary. It is a supporting signal,
   never a sole reason to block.
