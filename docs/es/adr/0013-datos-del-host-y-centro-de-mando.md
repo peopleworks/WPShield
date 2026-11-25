@@ -365,6 +365,44 @@ Pedro Hernández aceptó este ADR con estas seis decisiones:
 6. **Los datos del host empiezan solo en `evidence collect`.** El servicio viene después, en una
    enmienda (sección 3).
 
+## Tal como se construyó (2026-11-25)
+
+La fase 1 (la capa de datos del host, `wpshield host` y el resumen de postura del audit) se aparta
+del texto anterior en estos puntos:
+
+- **El filtro de Microsoft es más estricto que la sección 1.3.** Un servicio o una tarea cuyo binario
+  firma Microsoft sigue apareciendo si ejecuta un intérprete (`cmd.exe`, `powershell.exe`,
+  `pwsh.exe`, `mshta.exe`, `wscript.exe`, `cscript.exe`, `rundll32.exe`, `regsvr32.exe`,
+  `certutil.exe`, `bitsadmin.exe`, `wmic.exe`, `forfiles.exe`, `curl.exe`) o lleva una marca
+  `encoded-command`, `contains-url` o `user-writable-path`: `cmd /c powershell -enc ...` también lo
+  firma Microsoft. Los servicios alojados en `svchost.exe` se juzgan por su `ServiceDll`.
+- **Nombres de los campos.** La instantánea de cuentas guarda el indicador como `fullNameTargeted` y
+  `fullNameMatches` (todos los contenidos usan nombres en camelCase); las secciones 1.3, 5 y 6 los
+  llaman `full_name_targeted` y `matches`.
+- **La ventana de intentos es de 14 días con la retención por defecto, no de 30.** El indicador
+  compara los nombres completos con los intentos de los últimos 30 días que aún se guardan en detalle,
+  y los intentos detallados se guardan `retention.raw_days` (14 por defecto). Donde este ADR dice "los
+  últimos 30 días de inicios de sesión fallidos", léase "los intentos detallados que aún se guardan,
+  30 días como máximo".
+- **Las listas de bloqueo casi completas no bloquean.** Una regla de bloqueo solo cuenta si sus
+  direcciones remotas son `*`, `Any`, `Internet` o un rango completo literal. Una regla de bloqueo con
+  una lista que cubre casi todas las direcciones se trata como si cubriera solo algunas, así que no
+  vuelve `blocked` a un puerto: el veredicto se inclina a abierto, como pide la sección 1.1 ante la duda.
+- **Todavía no hay herramientas MCP, y solo `evidence collect`.** Las herramientas de los datos del
+  host y el ajuste `mcp.host_details` que respetan llegan en la siguiente fase; el ajuste existe y se
+  audita, pero aún no cambia nada. El recolector alojado en el servicio no toma datos del host.
+- **Nivel de parches en `host_health`.** Guarda, en solo lectura, lo que Windows dice en tres lugares
+  que pueden no coincidir: `CurrentBuild`, `UBR` y `DisplayVersion` de
+  `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`; la ProductVersion de
+  `%SystemRoot%\System32\ntoskrnl.exe` (comparada con `UBR` solo por la revisión, porque un paquete de
+  habilitación sube `CurrentBuild` mientras el archivo del kernel conserva la compilación base); y, de
+  `Microsoft-Windows-WindowsUpdateClient/Operational`, el evento 19 (instalación correcta) más reciente
+  cuyo título contiene "Cumulative Update" (título limpio y acotado a 200 caracteres, con su fecha y
+  los días transcurridos) y el número de eventos 20 (instalación fallida) de los últimos 30 días. Un
+  log ilegible es `unknown`, nunca "ninguno"; "no encontrado" dice hasta cuándo llega el log. WPShield
+  no tiene una fuente sin conexión de la última compilación, así que nunca califica un servidor de
+  "desactualizado".
+
 ## Cuándo revisar esta decisión
 
 - Tras dos semanas en el servidor del incidente: la CPU y el tiempo del recolector por instantánea,

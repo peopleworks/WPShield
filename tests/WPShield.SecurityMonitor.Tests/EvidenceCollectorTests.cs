@@ -717,6 +717,28 @@ public sealed class EvidenceCollectorTests : IDisposable
     }
 
     /// <summary>Fake host facts: no test reads the real registry or TCP table.</summary>
+    [Fact]
+    public void HostFactsAreRecordedAndNeverReachTheDecisionEngine()
+    {
+        var source = new FakeHostFactSource();
+        var sensor = new HostFactsSensor(source, logger) { RunInBackground = work => Task.FromResult(work()) };
+        var collector = new EvidenceCollector(StorePath, logger, clock, feed.Read, feed.Watch, Protection, hostFacts: sensor);
+
+        var session = CollectorSession.Start(collector, Now);
+        for (var i = 1; i <= 10; i++)
+        {
+            clock.Now = Now.AddSeconds(2.0 * i);
+            session.Tick(clock.Now);
+        }
+        session.Stop(clock.Now);
+
+        using (var store = EvidenceStore.OpenReadOnly(StorePath))
+            Assert.Equal(8, new HostFactsQueries(store).LatestAll().Count);
+        Assert.Empty(Decisions());
+        Assert.Equal(0, collector.Engine.ActiveCount);
+        Assert.Contains(logger.Entries, e => e.Message.StartsWith("Host facts started", StringComparison.Ordinal));
+    }
+
     private AddressProtection Protection => new(() => [IPAddress.Parse("192.0.2.250")], () => RemoteDesktopSnapshot.Of([]));
 
     private EvidenceCollector Collector() => new(StorePath, logger, clock, feed.Read, feed.Watch, Protection);

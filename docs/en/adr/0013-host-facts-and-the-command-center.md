@@ -342,6 +342,42 @@ Pedro Hernández accepted this ADR with these six decisions:
    only (section 1.3).
 6. **Host facts start in `evidence collect` only.** The service follows in an amendment (section 3).
 
+## As built (2026-11-25)
+
+Phase 1 (the host-facts layer, `wpshield host`, the audit's posture summary) differs from the text
+above in these points:
+
+- **The Microsoft filter is stricter than section 1.3.** A service or task whose binary is signed by
+  Microsoft is still listed when it runs a script host (`cmd.exe`, `powershell.exe`, `pwsh.exe`,
+  `mshta.exe`, `wscript.exe`, `cscript.exe`, `rundll32.exe`, `regsvr32.exe`, `certutil.exe`,
+  `bitsadmin.exe`, `wmic.exe`, `forfiles.exe`, `curl.exe`) or carries an `encoded-command`,
+  `contains-url` or `user-writable-path` flag: `cmd /c powershell -enc ...` is signed by Microsoft
+  too. Services hosted in `svchost.exe` are judged by their `ServiceDll`.
+- **Payload field names.** The accounts snapshot stores the indicator as `fullNameTargeted` and
+  `fullNameMatches` (every payload uses camelCase field names); sections 1.3, 5 and 6 call them
+  `full_name_targeted` and `matches`.
+- **The attempt window is 14 days with the default retention, not 30.** The indicator compares the
+  full names with the attempts of the last 30 days that are still stored in detail, and detailed
+  attempts are kept `retention.raw_days` (14 by default). Wherever this ADR says "the last 30 days of
+  failed logons", read "the detailed attempts still kept, 30 days at most".
+- **Near-complete block lists do not block.** A block rule counts only when its remote addresses are
+  `*`, `Any`, `Internet` or a whole-range literal. A block rule with a list that covers almost every
+  address is treated as covering some addresses only, so it does not make a listener `blocked`: the
+  verdict leans open, as section 1.1 asks when unsure.
+- **No MCP tools yet, and `evidence collect` only.** The host-fact tools and the `mcp.host_details`
+  gate they honour come in the next phase; the setting exists and is audited, and changes nothing yet.
+  The service-hosted collector does not take host facts.
+- **Patch level in `host_health`.** It holds, read-only, what Windows reports in three places that can
+  disagree: `CurrentBuild`, `UBR` and `DisplayVersion` from
+  `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`; the ProductVersion of
+  `%SystemRoot%\System32\ntoskrnl.exe` (compared with `UBR` by revision only, since an enablement
+  package raises `CurrentBuild` while the kernel file keeps the base build); and, from
+  `Microsoft-Windows-WindowsUpdateClient/Operational`, the newest event 19 (install succeeded) whose
+  title contains "Cumulative Update" - title cleaned and bounded at 200 characters, with its date and
+  the days since - and the count of event 20 (install failed) in the last 30 days. An unreadable log is
+  `unknown`, never "none"; "not found" says how far back the log reaches. WPShield has no offline
+  source of the latest build, so it never judges a host "outdated".
+
 ## Revisiting this decision
 
 - After two weeks on the incident host: the collector's CPU and time per snapshot, the store's

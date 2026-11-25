@@ -21,6 +21,7 @@ Usa este índice para encontrar las guías del operador y las referencias técni
 | Offline IIS login evidence | [Read a W3C log by site](en/iis-login-evidence.md) | [Verificar accesos IIS por sitio](es/evidencia-accesos-iis.md) |
 | Server posture audit · Auditoría de postura del servidor | [Audit](en/audit.md) | [Auditoría](es/auditoria.md) |
 | Host observation · Observación del servidor | [Listeners, flows, and attacks](en/network-sensor-design.md) | [Puertos, flujos y ataques](es/diseno-sensor-red.md) |
+| Host facts · Datos del host | [Health, restarts, posture, exposure, sessions and inventory](en/host-facts.md) | [Salud, reinicios, postura, exposición, sesiones e inventario](es/datos-del-host.md) |
 | Gateway reference · Referencia del gateway | [Findings, architecture, inspection, rules, evidence, configuration, responses, and troubleshooting](en/gateway-reference.md) | [Hallazgos, arquitectura, inspección, reglas, evidencia, configuración, respuestas y resolución de problemas](es/referencia-gateway.md) |
 | Operator reference · Referencia del operador | [Tasks, detailed status, local evaluation, source builds, repository layout, and milestones](en/operator-reference.md) | [Tareas, estado detallado, evaluación local, compilación, estructura e hitos](es/referencia-operador.md) |
 | Evaluation reference · Referencia de evaluación | [Comparisons, recent security work, and related projects](en/evaluation-reference.md) | [Comparaciones, mejoras de seguridad y proyectos relacionados](es/referencia-evaluacion.md) |

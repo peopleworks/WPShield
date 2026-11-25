@@ -58,6 +58,14 @@ previa: en un servidor con aplicaciones de otras personas, cambiar la identidad 
 los permisos de una carpeta puede tumbar un sitio, y una herramienta de postura que "arreglara" el
 servidor como efecto secundario de una consulta haría exactamente eso.
 
+Su única escritura es en el propio WPShield. Tras cada corrida completa registra un resumen (ID de
+hallazgo, severidades y recuentos, nunca nombres de sitios, pools ni cuentas) como una foto de postura en
+el almacén de evidencias de WPShield ([ADR 0013](adr/0013-datos-del-host-y-centro-de-mando.md)), para que
+`wpshield host posture` muestre cómo avanza "grupos como administrador: N de M". No es un cambio en el
+servidor, y la última línea del informe dice si el resumen se registró. Una corrida que no pudo mirar
+(sin elevación, IIS ilegible) nunca se registra, para que no reemplace una lectura real. `--store` indica
+el almacén.
+
 ## Nunca lee una contraseña
 
 Un pool que corre con una cuenta con nombre guarda la contraseña de esa cuenta en la configuración de

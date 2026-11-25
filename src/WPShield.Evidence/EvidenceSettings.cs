@@ -48,6 +48,12 @@ public static class SettingCatalog
             "Whether the MCP server may return single attempts and account names, or only aggregates. Answers leave the host.",
             JsonValue.Create(false), SettingEffect.NextStart,
             node => node is JsonValue v && v.TryGetValue<bool>(out _) ? null : "true or false"),
+        // ADR 0013, section 5: the host's own inventory is different content from evidence detail, so it has
+        // its own switch. Off, the MCP tools return counts, verdicts and gauges, and "withheld" for names.
+        new SettingDefinition("mcp.host_details",
+            "Whether the MCP tools and the analyst may return this host's own names: sites, accounts, services, tasks, paths and RDP source addresses. Answers leave the host.",
+            JsonValue.Create(false), SettingEffect.NextStart,
+            node => node is JsonValue v && v.TryGetValue<bool>(out _) ? null : "true or false"),
     }.Concat(Decisions.DefenseSettings.Definitions()).Concat(AnalystSettings.Definitions())
       .Concat(WebSettings.Definitions()).ToDictionary(d => d.Key, StringComparer.Ordinal);
 

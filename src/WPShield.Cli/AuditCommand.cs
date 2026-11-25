@@ -1,7 +1,9 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using WPShield.Cli.Audit;
+using WPShield.Evidence;
 
 namespace WPShield.Cli;
 
@@ -19,10 +21,12 @@ internal static class AuditCommand
         wpshield audit - read-only posture audit of this IIS server. Reports the configuration that
         lets one compromised site take over the rest. Changes nothing.
 
-        Usage: wpshield audit [--output report.jsonl]
+        Usage: wpshield audit [--output report.jsonl] [--store <file>]
 
           --output <file>   Optional JSON Lines report, in the same envelope the gateway log, the
                             preflight and the triage tool use.
+          --store <file>    The evidence store the summary is recorded in. Default
+                            %ProgramData%\WPShield\evidence\wpshield-evidence.db.
 
         What it checks:
           AUDIT-001   It could look: running elevated, and IIS readable. When it could not, it says
@@ -44,6 +48,12 @@ internal static class AuditCommand
         at a time, looking at the site while it happens. It reads the account a pool runs as, never
         the password stored beside it.
 
+        Its one write is to WPShield itself: a summary of the run (finding IDs, severities and counts,
+        never names) is recorded in WPShield's evidence store as a posture snapshot (ADR 0013), so
+        'wpshield host posture' and the command center can show the progress. That is not a change
+        to this server. When the store cannot be opened, the audit still runs and says the summary
+        was not recorded.
+
         Run it elevated. Without elevation the answers come out optimistic, and that is reported as
         AUDIT-001 rather than hidden.
 
@@ -53,18 +63,26 @@ internal static class AuditCommand
           2   at least one critical finding
         """;
 
-    private static readonly string[] KnownOptions = ["--output"];
+    private static readonly string[] KnownOptions = ["--output", "--store"];
 
-    public static int Run(CliOptions arguments, TextWriter output)
+    public static int Run(CliOptions arguments, TextWriter output) =>
+        Run(arguments, output, AuditFactsReader.Read,
+            (report, facts, path) => RecordPosture(report, facts, path, EvidenceAccess.IsElevated()), EvidenceStore.DefaultPath);
+
+    /// <param name="record">Records the posture summary; returns <see langword="null"/> when it was recorded, or why not.</param>
+    internal static int Run(CliOptions arguments, TextWriter output, Func<AuditFacts> read,
+        Func<AuditReport, AuditFacts, string, string?> record, string defaultStore)
     {
         ArgumentNullException.ThrowIfNull(arguments);
         ArgumentNullException.ThrowIfNull(output);
 
         arguments.RejectUnknown(KnownOptions);
+        var store = AttacksCommand.StorePath(arguments, defaultStore);
 
-        var report = new AuditRunner(AuditFactsReader.Read()).Run();
+        var facts = read();
+        var report = new AuditRunner(facts).Run();
 
-        Render(report, output);
+        Render(report, output, record(report, facts, store) is { } notRecorded ? new PostureRecord(false, notRecorded) : new PostureRecord(true, null));
 
         var reportPath = arguments.Get("--output");
         if (!string.IsNullOrWhiteSpace(reportPath))
@@ -87,7 +105,34 @@ internal static class AuditCommand
         return report.Criticals.Count > 0 ? ExitCritical : ExitClean;
     }
 
-    internal static void Render(AuditReport report, TextWriter output)
+    /// <summary>Whether the posture summary reached WPShield's evidence store, and why not.</summary>
+    internal sealed record PostureRecord(bool Recorded, string? Reason);
+
+    /// <summary>
+    /// Records one posture snapshot (ADR 0013) in WPShield's own evidence store: finding IDs, severities and counts,
+    /// never names. The store is opened the way a settings change opens it - never created, never migrated.
+    /// </summary>
+    internal static string? RecordPosture(AuditReport report, AuditFacts facts, string path, bool elevated)
+    {
+        // An incomplete run must not become the latest posture: it would replace a real reading with "nobody could look".
+        if (!report.Complete) return "the audit could not look at everything, so its summary is not a posture reading.";
+        try
+        {
+            using var store = EvidenceAccess.OpenForSettings(path, elevated);
+            new HostFactsWriter(store).Write(Host.HostIisFacts.Posture(report, facts, "audit", DateTimeOffset.UtcNow));
+            return null;
+        }
+        catch (EvidenceAccessException exception)
+        {
+            return exception.Message;
+        }
+        catch (Exception exception) when (exception is SqliteException or IOException or UnauthorizedAccessException)
+        {
+            return $"{exception.GetType().Name}: {NetworkMonitorCommand.ConsoleLabel(exception.Message)}";
+        }
+    }
+
+    internal static void Render(AuditReport report, TextWriter output, PostureRecord? recorded = null)
     {
         ArgumentNullException.ThrowIfNull(report);
         ArgumentNullException.ThrowIfNull(output);
@@ -128,6 +173,10 @@ internal static class AuditCommand
 
         output.WriteLine();
         output.WriteLine("Nothing on this server was changed.");
+        if (recorded is { Recorded: true })
+            output.WriteLine("A summary was recorded in WPShield's evidence store (finding IDs and counts, no names).");
+        else if (recorded is { Reason: { } reason })
+            output.WriteLine($"The summary was not recorded in WPShield's evidence store: {Printable(reason)}");
     }
 
     private static string Summary(AuditReport report)
