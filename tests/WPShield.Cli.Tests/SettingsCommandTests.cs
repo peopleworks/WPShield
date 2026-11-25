@@ -173,6 +173,20 @@ public sealed class SettingsCommandTests : IDisposable
         Assert.Empty(History());
     }
 
+    /// <summary>The service holds the store open while an operator changes a setting; SQLite serialises the two.</summary>
+    [Fact]
+    public void Set_WorksWhileTheServiceHoldsTheStoreOpen()
+    {
+        using var service = EvidenceStore.OpenForWriting(store.Path);
+        new EvidenceWriter(service).Append([store.Failure(10, "203.0.113.10")]);
+
+        var (exit, _, error) = Run("set", "retention.raw_days", "30", "--reason", "while the service runs");
+
+        Assert.Equal(0, exit);
+        Assert.Empty(error);
+        Assert.Equal(30, new EvidenceSettings(service).Get<int>("retention.raw_days"));
+    }
+
     [Fact]
     public void ATextSettingTakesABareWordBecausePowerShellDropsTheQuotes()
     {

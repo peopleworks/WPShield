@@ -258,6 +258,24 @@ public sealed class AttacksCommandTests : IDisposable
         Assert.StartsWith("adm", document.RootElement.GetProperty("source").GetProperty("recent")[0].GetProperty("account").GetString(), StringComparison.Ordinal);
     }
 
+    /// <summary>On a live host the service holds the store open in WAL mode while a reader asks.</summary>
+    [Fact]
+    public void TheStoreIsReadWhileTheServiceHoldsItOpen()
+    {
+        using var service = EvidenceStore.OpenForWriting(store.Path);
+        var writer = new EvidenceWriter(service);
+        writer.BeginCoverage(EvidenceWriter.RawSource, Now.AddDays(-2), Now);
+        writer.Append([store.Failure(10, "203.0.113.10"), store.Failure(9, "203.0.113.10")]);
+
+        var (exit, output, error) = Run("--range", "24h");
+
+        Assert.Equal(0, exit);
+        Assert.Empty(error);
+        Assert.Contains("Failed attempts       2", output, StringComparison.Ordinal);
+        writer.Append([store.Failure(5, "203.0.113.11")]);
+        Assert.Contains("Failed attempts       3", Run("--range", "24h").Output, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void TheDefaultRangeComesFromTheSetting()
     {
