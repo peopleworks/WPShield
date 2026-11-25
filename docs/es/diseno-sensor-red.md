@@ -83,8 +83,8 @@ emergente explica por qué; los rangos cortos funcionan como antes.
 **Etiquetas.** El ajuste `labels.addresses` pone nombre a direcciones y redes conocidas: su oficina,
 su propia conexión, una red de escaneo que ya denunció. La etiqueta aparece junto a la dirección que
 coincide en la tabla, en el panel y entre las vecinas, en todos los rangos. Una dirección exacta gana
-a una red, y un prefijo más largo a uno más corto. Las etiquetas se definen en la
-[ventana de ajustes](#ventana-de-ajustes) o con
+a una red, y un prefijo más largo a uno más corto. Las etiquetas se definen desde el panel de un
+origen (**Etiquetar…**, más abajo), en la [ventana de ajustes](#ventana-de-ajustes) o con
 [`wpshield settings`](#historial-de-ataques-desde-la-línea-de-comandos). **Una etiqueta describe
 una dirección; nunca la permite ni la bloquea.**
 
@@ -99,6 +99,27 @@ que cada marca se compara con su vencimiento al dibujarla. El panel de un origen
 enumera las decisiones sobre él y sobre su red de los últimos 30 días, con la regla, el vencimiento
 y el motivo que escribió el motor. **Solo Monitor: no se bloquea nada.** La vista nunca dice
 "bloqueada".
+
+**Etiquetar y Permitir.** El panel de un origen permite actuar sobre la dirección donde se ve:
+
+- **Etiquetar…** abre bajo la dirección un editor con la etiqueta (de 1 a 64 caracteres) y un motivo.
+  Asigna o reemplaza la entrada de esa dirección exacta en `labels.addresses`; la etiqueta que la
+  dirección muestra por una entrada de red queda como está.
+- **Permitir…** añade la dirección exacta a `defense.allow`, con un motivo, tras una confirmación que
+  dice lo que se cede: **el motor de decisiones nunca decidirá contra esta dirección**, y como una
+  decisión sobre una red se detiene cuando cualquier dirección de ella está protegida, tampoco se
+  decide sobre su /24 o /64 (`HOST-AUTH-003`). Si la dirección probó cuentas que no existen en el
+  rango mostrado, o hay una decisión **bloquearía** vigente sobre ella o su red, un aviso da antes esos
+  recuentos. Nunca se ofrece su red: para permitir una red, use la ventana de ajustes. Si la lista ya
+  cubre la dirección, lo dice en lugar de añadirla.
+
+Ambas escriben como la ventana de ajustes: solo con elevación, abriendo el almacén para ese único
+cambio, contra el valor leído al abrir el editor, comprobado por el catálogo y registrado con su
+usuario de Windows y el motivo. Un valor cambiado en otro lugar entretanto no se sobrescribe: el editor
+dice quién lo cambió, lo vuelve a leer y conserva su texto, y un segundo guardado lo aplica encima. Sin
+elevación, o si no se puede leer el almacén, ambas quedan deshabilitadas y el panel dice por qué. Tras
+guardar se vuelven a leer las etiquetas y las decisiones vigentes. Una dirección permitida surte efecto
+en la próxima evaluación; una decisión ya vigente no se retira y termina a su vencimiento.
 
 Lo que la vista no hace:
 
@@ -116,10 +137,56 @@ Lo que la vista no hace:
   igual.
 - **Presentar agregados como detalle.** Un periodo respondido con agregados por hora lo dice: los
   recuentos son exactos y los nombres ya no están.
-- **Decidir ni bloquear nada.** Lee y muestra. Las decisiones las toma el motor del servicio, en
-  Monitor, y la vista solo las lee. Los registros en vivo se aplican una vez por segundo y la memoria
-  guarda como máximo 100 000 registros: descarta los más antiguos y mueve con ellos la línea de
-  **sin datos**.
+- **Decidir ni bloquear nada.** Las decisiones las toma el motor del servicio, en Monitor, y la vista
+  solo las lee. Lo que escribe es una etiqueta o una entrada de la lista de permitidas, desde el panel
+  de un origen, con las comprobaciones de la ventana de ajustes. Los registros en vivo se aplican una
+  vez por segundo y la memoria guarda como máximo 100 000 registros: descarta los más antiguos y mueve
+  con ellos la línea de **sin datos**.
+
+### Protección
+
+Abra **Protección**, la primera de la navegación principal, para ver qué registra y decide WPShield en
+este servidor, con la forma de la ventana principal de RdpGuard pero solo con lo que es cierto.
+`--protection` la abre directamente, y **Abrir como administrador** la vuelve a abrir con elevación en
+esta vista. Lee el almacén de evidencia en solo lectura y el administrador de servicios de Windows,
+fuera del hilo de la interfaz, cada 15 segundos mientras está abierta.
+
+La cabecera reúne tres hechos:
+
+- **El recolector, según el almacén.** **Registrando** (verde) mientras su cobertura llega a menos de
+  dos minutos de ahora, la misma definición que decide qué está vigente. **En marcha, sin registrar**
+  (ámbar) cuando hay un recolector activo que no puede leer el registro de seguridad, así que extiende
+  un intervalo `unavailable` y no registra nada. **Detenido: último registro** y la hora (gris). **No se
+  pudo leer el almacén** (ámbar), con el remedio en un aviso: abrirla como administrador, instalar el
+  servicio o usar el monitor que vino con él.
+- **El servicio de Windows `WPShield`, en solo lectura.** En ejecución, detenido, no instalado o no se
+  pudo leer. Desde aquí no se inicia ni se detiene. Nunca contradice al recolector: si el almacén
+  muestra que se registra y el servicio está detenido o no instalado, la ventana dice que el registro
+  viene de `wpshield evidence collect` en primer plano (o de un servicio que se detuvo hace menos de dos
+  minutos).
+- **El modo, según `defense.mode`:** **Monitor: no se bloquea nada**. **Block** aparece punteado y
+  deshabilitado; no existe hasta que el aplicador de la ADR 0006 supere su validación.
+
+**Sensores.** El punto de cada chip se gana, nunca se activa a mano. **Inicios de sesión de Windows
+(Escritorio remoto, SMB, red)** está en verde si registró dentro del margen; en ámbar si está
+configurado pero a ciegas o su cobertura indica un problema, con una información emergente que nombra
+la causa y el remedio (para un registro de seguridad ilegible: añadir `NT SERVICE\WPShield` a Lectores
+del registro de eventos y reiniciar el servicio, o ejecutar `wpshield evidence collect` con elevación
+si no hay servicio); en gris si no se registra nada o no se pudo leer el almacén. **Inicios de sesión
+de SQL Server** y **Solicitudes a los sitios (gateway)** están en la hoja de ruta y aparecen punteados
+y deshabilitados, marcados **planificado**: ninguno se registra en el almacén, así que el motor no los
+ve.
+
+**Decisiones (Monitor).** Cuatro recuentos: decisiones **bloquearía** vigentes ahora, y registros
+**protegida**, **rechazada** e **informe** de las últimas 24 horas, contados con exactitud en el
+almacén. **Vigentes**, **Últimas 24 h** y **30 días** enumeran los registros con destino, etiqueta,
+regla, acción, motivo, desde y hasta, del más reciente al más antiguo, como máximo 500 por pestaña (el
+recuento de la pestaña sigue siendo exacto, y el pie avisa si la lista es más corta). Un destino de red
+muestra su propia etiqueta o la de una entrada más amplia, nunca la de una dirección suya. La búsqueda
+encuentra un destino, una etiqueta o una regla. Si no se puede leer el almacén, cada recuento es `—`,
+nunca 0; un periodo que el recolector no registró también es `—`; y **Vigentes** vacía dice por qué:
+no hay nada vigente, el motor nunca se ejecutó o el servicio no está registrando. **Abrir Ataques** y
+**Abrir Ajustes (defense.\*)** abren esas ventanas, la de ajustes en `defense.allow`.
 
 ### Ventana de ajustes
 
@@ -379,8 +446,8 @@ guardan igualmente.
 
 **Vigente.** Una decisión está vigente si es el registro más reciente sobre su destino, no ha
 vencido, la tomó el motor desde su último arranque, y el recolector sigue registrando. Una decisión
-nunca sobrevive al proceso que la tomó, y un cierre inesperado no escribe ningún `expire`. La CLI, el
-escritorio y un futuro panel de Protección usan esta única definición
+nunca sobrevive al proceso que la tomó, y un cierre inesperado no escribe ningún `expire`. La CLI, la
+vista Ataques del escritorio y su ventana de [Protección](#protección) usan esta única definición
 (`EvidenceQueries.ActiveDecisions`).
 
 ### `wpshield decisions`
