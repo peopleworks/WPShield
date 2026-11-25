@@ -44,7 +44,9 @@ to what it originally claimed.</sub>
 | Which rule fired on my IIS-hosted WordPress site? | `wpshield watch --plain` | Start the gateway in Monitor on loopback and read its evidence log. [Request evidence](docs/en/request-evidence.md) |
 | Which local ports are in use? | `wpshield network-monitor --listeners` | Use `--protocol tcp --local-address 127.0.0.1` to find sockets bound to IPv4 loopback. Add `--port-hints` for conventional port names or `--owners` for the observed PID. [Listener inventory](docs/en/network-sensor-design.md#local-listener-inventory) |
 | Can I see local ports in a window? | `dotnet run --project src/WPShield.Desktop -c Release` | Browse TCP listeners and bound UDP sockets in a Windows desktop window, with the process name when its start time confirms the observed PID. Search by address, port, PID, process or port name. [Desktop monitor](docs/en/network-sensor-design.md#desktop-monitor) |
-| Who is trying to log in to this server? | Open **Attacks** in the desktop monitor | Failed Remote Desktop, SMB and network logons from the last 24 hours, then live: totals, a timeline, one row per source address and a slide-in detail with the accounts tried and other attackers in the same network. Needs administrator rights to read the Security log, and says so instead of showing an empty board. [Attacks view](docs/en/network-sensor-design.md#attacks) |
+| Who is trying to log in to this server? | Open **Attacks** in the desktop monitor | Failed Remote Desktop, SMB and network logons from the last 24 hours, then live: totals, a timeline, one row per source address and a slide-in detail with the accounts tried and other attackers in the same network. **7 d** and **30 d** read the WPShield service's evidence store. Needs administrator rights, and says so instead of showing an empty board. [Attacks view](docs/en/network-sensor-design.md#attacks) |
+| Who attacked this server last week? | `wpshield attacks --range 7d` | Totals and top source addresses from the evidence store, or one address's history with `--source`. Says when an answer comes from hourly aggregates and lists unrecorded time as "no data", never zero. Elevated prompt; `--json` for scripts. [Attack history](docs/en/network-sensor-design.md#attack-history-from-the-command-line) |
+| How do I name my office's address? | `wpshield settings set labels.addresses --value-file labels.json --reason "..."` | Labels appear next to matching addresses in `wpshield attacks` and the Attacks view; they never allow or block. Every change is recorded with who and why, and says when it takes effect. [Settings](docs/en/network-sensor-design.md#settings) |
 | How busy is one network adapter? | Open **Adapter traffic** in the desktop monitor | Compare received and sent bytes per second for one Windows interface. Works without Npcap. [Adapter traffic](docs/en/network-sensor-design.md#adapter-traffic) |
 | How much traffic involves selected TCP or UDP ports? | Open **Port traffic** in the desktop monitor | Type ports or add them from the port list, then select a capture adapter. The chart shows observed IP bytes per second and coverage for each interval. Requires Npcap and administrator privileges. [Traffic history](docs/en/network-sensor-design.md#traffic-history) |
 | How do I copy one record from a saved audit? | Open **Audit references** in the desktop monitor | Open one WPShield JSON snapshot, select the row with the arrow keys and press Ctrl+C to copy its reference. [Selected audit reference](docs/en/network-sensor-design.md#selected-audit-reference) |
@@ -194,7 +196,7 @@ WPShield is **not** an antivirus, EDR, stored-file malware scanner, replacement 
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,854 tests |
+| .NET 10 foundation and CI | Available | Nullable reference types, warnings as errors, central package management, CodeQL, formatting gate, Linux verification of the portable core, 1,950 tests |
 | Multi-site host resolution | Available | Unknown hosts fail closed; no default backend |
 | Explainable inspection engine | Available | Stable rule IDs, scoring, Monitor/Block action calculation |
 | WordPress and IIS upload rules | Available | Windows-aware file name normalization, PHP and IIS executable extensions, `web.config` detection, disguised extensions, structural anomalies, file-signature mismatch, image/PHP polyglots |
@@ -433,7 +435,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 1,854 tests across twelve projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 424 for the CLI, 75 for the desktop monitor, 475 for the gateway, 41 for the network sensor, 14 for the network filter, 73 for the security monitor, 15 for the evidence store and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 1,950 tests across twelve projects — 251 for the abstractions, 90 for the core, 98 for the Windows rules, 293 for the WordPress rules, 481 for the CLI, 101 for the desktop monitor, 475 for the gateway, 41 for the network sensor, 14 for the network filter, 73 for the security monitor, 28 for the evidence store and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 
@@ -622,7 +624,7 @@ WPShield/
 |   |-- WPShield.Logging/            JSON Lines file logging, kept out of the gateway
 |   `-- WPShield.Gateway/            Loopback-only M1 HTTP gateway
 |   `-- WPShield.NetworkSensor/     Passive network metadata capture (Npcap, operator-named ports)
-|-- tests/                            xUnit test projects, 1,854 tests
+|-- tests/                            xUnit test projects, 1,950 tests
 |-- scripts/                          Read-only operator scripts: triage, IIS validation
 |-- assets/                           Hero and social images
 |-- docs/

@@ -6,23 +6,34 @@ using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Controls.Primitives;
+using System.Windows.Data;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
+using WPShield.Cli;
 using WPShield.Evidence;
 using WPShield.SecurityMonitor;
 
 namespace WPShield.Desktop;
 
 /// <summary>
-/// Failed Windows logons over the last day, then live: who is trying, how often, which accounts.
+/// Failed Windows logons over the last day, then live: who is trying, how often, which accounts. With
+/// the WPShield service's evidence store, also the last 7 and 30 days.
 /// </summary>
 /// <remarks>
+/// <para>
 /// Reads the Security log, which needs administrator rights. Without them the window says so and
 /// offers to reopen elevated; it never shows an empty board as if nobody were trying. Live records are
 /// queued from the event-log thread and applied once a second, so a burst of thousands of failures
 /// cannot flood the interface.
+/// </para>
+/// <para>
+/// 1 h, 6 h and 24 h come from the Security log exactly as before. 7 d and 30 d come from the evidence
+/// store through <see cref="IAttackStore"/>, read off the interface thread and kept until the next
+/// refresh; when the store cannot be opened those chips are disabled and say why. Labels from the
+/// store's <c>labels.addresses</c> setting are shown in every range when the store can be read.
+/// </para>
 /// </remarks>
 public partial class AttacksWindow : Window
 {
@@ -35,30 +46,48 @@ public partial class AttacksWindow : Window
     private readonly bool spanish;
     private readonly Func<DateTimeOffset, AuthFailureSnapshot> read;
     private readonly Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch;
+    private readonly IAttackStore? store;
     private readonly AttackBoard board = new();
     private readonly ConcurrentQueue<AuthFailure> pending = new();
     private readonly DispatcherTimer flush = new() { Interval = TimeSpan.FromSeconds(1) };
+    private readonly Dictionary<AttackRange, StoredAttacks> stored = [];
+    private readonly Dictionary<AttackRange, Task> storedReads = [];
     private IDisposable? subscription;
     private AttackRange range = AttackRange.Day;
     private AttackView? view;
     private string? selected;
     private Task? loading;
+    private AddressLabels labels = AddressLabels.None;
+    private EvidenceProblem? storeProblem;
+    private bool defaultApplied;
+    private string? storedError;
+    private StoredDetail? storedDetail;
+    private Task? storedDetailRead;
     private bool securityReadable;
     private bool reading;
     private bool closed;
     private int ticks;
 
+    /// <summary>The detail of one source in a stored range: read, being read, or failed.</summary>
+    private sealed record StoredDetail(AttackRange Range, string Address, AttackDetail? Detail, bool Loading, string? Error);
+
     public AttacksWindow(bool spanish) : this(spanish, end => AuthFailureFeed.ReadRecent(end, TimeSpan.FromHours(24)),
-        AuthFailureFeed.Watch)
+        AuthFailureFeed.Watch, new EvidenceAttackStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated))
     {
     }
 
     internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
-        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch)
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch) : this(spanish, read, watch, null)
+    {
+    }
+
+    internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store)
     {
         this.spanish = spanish;
         this.read = read;
         this.watch = watch;
+        this.store = store;
         InitializeComponent();
         Title = "WPShield | " + L("Attacks", "Ataques");
         SourceLabel.Text = L("Security  /  Windows", "Seguridad  /  Windows");
@@ -77,17 +106,18 @@ public partial class AttacksWindow : Window
         LegendUnknown.Text = L("account does not exist", "cuenta inexistente");
         LegendGap.Text = L("no data", "sin datos");
         SearchLabel.Content = L("_Search", "_Buscar");
-        Search.ToolTip = L("Address, network or account", "Dirección, red o cuenta");
+        Search.ToolTip = L("Address, network, label or account", "Dirección, red, etiqueta o cuenta");
         CopyAddress.Content = L("Copy address", "Copiar dirección");
         DetailCaption.Text = L("Source", "Origen");
         DetailTimelineLabel.Text = L("Attempts over time", "Intentos en el tiempo");
         DetailAccountsLabel.Text = L("Accounts tried", "Cuentas probadas");
         DetailNeighborsLabel.Text = L("Other addresses in the same network", "Otras direcciones de la misma red");
         DetailRecentLabel.Text = L("Latest attempts", "Últimos intentos");
-        string[] headers = [L("Address", "Dirección"), L("Attempts", "Intentos"), L("Accounts", "Cuentas"),
+        string[] headers = [L("Address", "Dirección"), L("Label", "Etiqueta"), L("Attempts", "Intentos"), L("Accounts", "Cuentas"),
             L("Most tried", "Más probadas"), L("Nonexistent", "Inexistentes"), L("Type", "Tipo"), L("Network", "Red"),
             L("Neighbors", "Vecinas"), L("Last (UTC)", "Último (UTC)")];
         for (var i = 0; i < headers.Length; i++) Rows.Columns[i].Header = headers[i];
+        RangeWeek.ToolTip = RangeMonth.ToolTip = L("Checking the WPShield evidence store…", "Comprobando el almacén de evidencia de WPShield…");
         RangeDay.IsChecked = true;
         flush.Tick += OnFlush;
     }
@@ -105,6 +135,8 @@ public partial class AttacksWindow : Window
         reading = true;
         RefreshButton.IsEnabled = false;
         Footer.Text = L("Reading the last 24 hours of the Security log…", "Leyendo las últimas 24 horas del registro de seguridad…");
+        // The store is asked at the same time; it decides the 7 d / 30 d chips and the labels.
+        var probe = ProbeStoreAsync();
         try
         {
             var now = DateTimeOffset.UtcNow;
@@ -128,6 +160,119 @@ public partial class AttacksWindow : Window
             reading = false;
             RefreshButton.IsEnabled = true;
         }
+        await probe;
+    }
+
+    /// <summary>
+    /// Opens the store once per load to learn whether it can be read, its labels and the range to open
+    /// with. A refresh forgets what was read from it, so the next 7 d or 30 d view asks again.
+    /// </summary>
+    private async Task ProbeStoreAsync()
+    {
+        stored.Clear();
+        storedDetail = null;
+        if (store is null)
+        {
+            ShowStore(EvidenceProblem.Missing);
+            return;
+        }
+        try
+        {
+            var status = await Task.Run(() => store.Probe());
+            if (closed) return;
+            labels = status.Labels;
+            ShowStore(null);
+            if (!defaultApplied)
+            {
+                defaultApplied = true;
+                SelectRange(StoredAttackBoard.Parse(status.DefaultRange));
+            }
+        }
+        catch (EvidenceAccessException ex)
+        {
+            if (closed) return;
+            ShowStore(ex.Problem);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (closed) return;
+            ShowStore(EvidenceProblem.Unreadable);
+        }
+        if (closed || !IsLoaded) return;
+        if (StoredAttackBoard.IsStored(range)) await LoadStoredAsync();
+        // Only redraw a board that was drawn: after a failed live read the footer holds the reason.
+        else if (!reading && view is not null) Render();
+    }
+
+    /// <summary>Enables the 7 d and 30 d chips, or disables them with the reason in their tooltip.</summary>
+    private void ShowStore(EvidenceProblem? problem)
+    {
+        storeProblem = problem;
+        var available = problem is null;
+        RangeWeek.IsEnabled = RangeMonth.IsEnabled = available;
+        RangeWeek.ToolTip = RangeMonth.ToolTip = problem switch
+        {
+            null => L("From the WPShield evidence store: hourly and daily history kept by the service.",
+                "Del almacén de evidencia de WPShield: el historial por horas y días que guarda el servicio."),
+            EvidenceProblem.NotElevated or EvidenceProblem.AccessDenied =>
+                L("Needs the WPShield service's evidence store; run as administrator.",
+                    "Necesita el almacén de evidencia del servicio WPShield; ejecute como administrador."),
+            EvidenceProblem.Missing => L("Needs the WPShield service's evidence store, which is not on this server yet: install the service with 'wpshield install'.",
+                "Necesita el almacén de evidencia del servicio WPShield, que aún no está en este servidor: instale el servicio con 'wpshield install'."),
+            EvidenceProblem.Schema => L("The evidence store was written by another version of WPShield; use the desktop that came with the installed service.",
+                "Otra versión de WPShield escribió el almacén de evidencia; use el monitor que vino con el servicio instalado."),
+            _ => L("The WPShield evidence store could not be read.", "No se pudo leer el almacén de evidencia de WPShield.")
+        };
+        if (!available && StoredAttackBoard.IsStored(range)) SelectRange(AttackRange.Day);
+    }
+
+    private void SelectRange(AttackRange wanted)
+    {
+        var chip = wanted switch
+        {
+            AttackRange.Hour => RangeHour,
+            AttackRange.SixHours => RangeSix,
+            AttackRange.Week => RangeWeek,
+            AttackRange.Month => RangeMonth,
+            _ => RangeDay
+        };
+        if (chip.IsEnabled) chip.IsChecked = true;
+    }
+
+    /// <summary>Reads the evidence store for the selected 7 d or 30 d range, unless that read is already running.</summary>
+    internal Task LoadStoredAsync()
+    {
+        var wanted = range;
+        if (!StoredAttackBoard.IsStored(wanted) || store is null || storeProblem is not null) return Task.CompletedTask;
+        if (storedReads.TryGetValue(wanted, out var running) && !running.IsCompleted) return running;
+        if (stored.ContainsKey(wanted)) return Task.CompletedTask;
+        return storedReads[wanted] = ReadStoredAsync(wanted);
+    }
+
+    private async Task ReadStoredAsync(AttackRange wanted)
+    {
+        storedError = null;
+        if (range == wanted) Render();
+        try
+        {
+            var now = DateTimeOffset.UtcNow;
+            var data = await Task.Run(() => store!.Read(wanted, now));
+            if (closed) return;
+            stored[wanted] = data;
+            labels = data.Labels;
+            storedDetail = null;
+        }
+        catch (EvidenceAccessException ex)
+        {
+            if (closed) return;
+            storedError = DisplayText.Clean(ex.Message, 300);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (closed) return;
+            storedError = DisplayText.Clean(ex.GetType().Name + ": " + ex.Message, 300);
+        }
+        if (!closed && range == wanted) Render();
     }
 
     /// <summary>
@@ -214,29 +359,72 @@ public partial class AttacksWindow : Window
 
     private void Render()
     {
-        view = board.View(DateTimeOffset.UtcNow, range, Search.Text.Trim());
+        var isStored = StoredAttackBoard.IsStored(range);
+        var data = isStored && stored.TryGetValue(range, out var cached) ? cached : null;
+        view = isStored
+            ? data is null ? null : StoredAttackBoard.View(data, Search.Text.Trim())
+            : board.View(DateTimeOffset.UtcNow, range, Search.Text.Trim(), labels: labels);
+        // Across 7 or 30 days "last" needs its date. Rebinding only when the format changes keeps the grid's cells.
+        var lastFormat = isStored ? "yyyy-MM-dd HH:mm" : "HH:mm:ss";
+        if (Rows.Columns[^1] is DataGridTextColumn { Binding: Binding { StringFormat: var current } } last && current != lastFormat)
+        {
+            last.Binding = new Binding(nameof(AttackSource.Last)) { StringFormat = lastFormat };
+            last.Width = new DataGridLength(isStored ? 150 : 100);
+        }
+        if (view is null)
+        {
+            // Nothing read yet, or the store failed: the cards say nothing was read, never zero.
+            RenderUnread(storedError is null
+                ? L("Reading the evidence store…", "Leyendo el almacén de evidencia…")
+                : L("No data: the evidence store could not be read. ", "Sin datos: no se pudo leer el almacén de evidencia. ") + storedError);
+            return;
+        }
         RenderCards(view);
         RenderChart(view.Buckets);
         var previous = selected;
         Rows.ItemsSource = view.Rows;
         if (previous is not null) Rows.SelectedItem = view.Rows.FirstOrDefault(r => r.Address == previous);
-        Empty.Text = !securityReadable
-            ? L("No data: the Security log could not be read.", "Sin datos: no se pudo leer el registro de seguridad.")
-            : L("No failed logons with a source address in this period.", "Sin inicios de sesión fallidos con dirección de origen en este periodo.");
+        Empty.Text = isStored
+            ? view.NoData
+                ? L("No data: the WPShield service recorded nothing for this period. That is not the same as no attacks.",
+                    "Sin datos: el servicio WPShield no registró nada en este periodo. No es lo mismo que no haber ataques.")
+                : L("No failed logons with a source address were recorded in this period.",
+                    "No se registraron inicios de sesión fallidos con dirección de origen en este periodo.")
+            : !securityReadable
+                ? L("No data: the Security log could not be read.", "Sin datos: no se pudo leer el registro de seguridad.")
+                : L("No failed logons with a source address in this period.", "Sin inicios de sesión fallidos con dirección de origen en este periodo.");
         Empty.Visibility = view.Rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
-        Footer.Text = L($"{view.Rows.Count:N0} of {view.MatchingRows:N0} sources shown · {board.Count:N0} records in memory",
-            $"{view.Rows.Count:N0} de {view.MatchingRows:N0} orígenes · {board.Count:N0} registros en memoria");
+        Footer.Text = isStored
+            ? L($"{view.Rows.Count:N0} of {view.MatchingRows:N0} sources shown · from the WPShield evidence store",
+                    $"{view.Rows.Count:N0} de {view.MatchingRows:N0} orígenes · del almacén de evidencia de WPShield") +
+                (view.Detailed ? "" : L(" · hourly aggregates: account names are no longer kept for this period",
+                    " · agregados por hora: los nombres de cuenta ya no se guardan para este periodo"))
+            : L($"{view.Rows.Count:N0} of {view.MatchingRows:N0} sources shown · {board.Count:N0} records in memory",
+                $"{view.Rows.Count:N0} de {view.MatchingRows:N0} orígenes · {board.Count:N0} registros en memoria");
         if (selected is not null) RenderDetail(selected);
+    }
+
+    private void RenderUnread(string message)
+    {
+        foreach (var value in new[] { AttemptsValue, SourcesValue, UnknownValue, HourValue }) value.Text = "—";
+        foreach (var note in new[] { AttemptsNote, SourcesNote, UnknownNote, HourNote }) note.Text = L("Not read", "Sin lectura");
+        ChartTitle.Text = ChartStart.Text = ChartEnd.Text = "";
+        Plot.Children.Clear();
+        Rows.ItemsSource = Array.Empty<AttackSource>();
+        Empty.Text = message;
+        Empty.Visibility = Visibility.Visible;
+        Footer.Text = message;
     }
 
     private void RenderCards(AttackView view)
     {
-        if (!securityReadable)
+        var isStored = StoredAttackBoard.IsStored(range);
+        if (isStored ? view.NoData : !securityReadable)
         {
-            // Zero would say "nobody tried". The truth is "nobody could look".
+            // Zero would say "nobody tried". The truth is "nobody could look", or nothing was recorded.
             foreach (var value in new[] { AttemptsValue, SourcesValue, UnknownValue, HourValue }) value.Text = "—";
             foreach (var note in new[] { AttemptsNote, SourcesNote, UnknownNote, HourNote })
-                note.Text = L("Not read", "Sin lectura");
+                note.Text = isStored ? L("Nothing recorded", "Nada registrado") : L("Not read", "Sin lectura");
             return;
         }
         AttemptsValue.Text = view.Attempts.ToString("N0", CultureInfo.CurrentCulture);
@@ -246,31 +434,52 @@ public partial class AttacksWindow : Window
         SourcesValue.Text = view.Sources.ToString("N0", CultureInfo.CurrentCulture);
         SourcesNote.Text = view.TopAccount.Length > 0
             ? L("Most tried account: ", "Cuenta más probada: ") + DisplayText.Clean(view.TopAccount, 40)
+            : !view.Detailed ? L("Account names are not kept for this period", "Los nombres de cuenta no se guardan para este periodo")
             : RangeText();
         UnknownValue.Text = view.Attempts == 0 ? "—" : view.UnknownShare.ToString("P0", CultureInfo.CurrentCulture);
         UnknownNote.Text = L("Guessing names, not a known user mistyping", "Adivinan nombres; no es un usuario conocido equivocándose");
-        HourValue.Text = view.LastHour.ToString("N0", CultureInfo.CurrentCulture);
-        HourNote.Text = subscription is not null ? L("Updating live", "Actualizando en vivo") : L("Not live", "Sin actualización en vivo");
+        HourValue.Text = view.LastHourKnown ? view.LastHour.ToString("N0", CultureInfo.CurrentCulture) : "—";
+        HourNote.Text = !view.LastHourKnown ? L("Nothing recorded in the last hour", "Nada registrado en la última hora")
+            : isStored ? L("From the evidence store", "Del almacén de evidencia")
+            : subscription is not null ? L("Updating live", "Actualizando en vivo") : L("Not live", "Sin actualización en vivo");
     }
 
     private string RangeText() => range switch
     {
         AttackRange.Hour => L("Last hour", "Última hora"),
         AttackRange.SixHours => L("Last 6 hours", "Últimas 6 horas"),
+        AttackRange.Week => L("Last 7 days", "Últimos 7 días"),
+        AttackRange.Month => L("Last 30 days", "Últimos 30 días"),
         _ => L("Last 24 hours", "Últimas 24 horas")
     };
 
     private void RenderChart(IReadOnlyList<AttackBucket> buckets)
     {
-        var (_, size) = AttackBoard.Layout(range);
-        var unit = size.TotalMinutes switch { 1 => L("minute", "minuto"), 5 => L("5 minutes", "5 minutos"), _ => L("15 minutes", "15 minutos") };
+        var size = buckets.Count > 0 ? buckets[0].End - buckets[0].Start : AttackBoard.Layout(range).Size;
+        var unit = size.TotalMinutes switch
+        {
+            1 => L("minute", "minuto"),
+            5 => L("5 minutes", "5 minutos"),
+            15 => L("15 minutes", "15 minutos"),
+            60 => L("hour", "hora"),
+            _ => L("day", "día")
+        };
         var peak = buckets.Select(b => b.Total).DefaultIfEmpty().Max();
         ChartTitle.Text = L($"Attempts per {unit}", $"Intentos por {unit}") + (peak > 0 ? $"   ·   {L("Peak", "Máximo")} {peak:N0}" : "");
-        // Across a day both ends share a clock time, so the date tells them apart.
-        var format = range == AttackRange.Day ? "yyyy-MM-dd HH:mm" : "HH:mm";
+        // Across a day or more both ends share a clock time, so the date tells them apart.
+        var format = range == AttackRange.Month ? "yyyy-MM-dd" : range is AttackRange.Hour or AttackRange.SixHours ? "HH:mm" : "yyyy-MM-dd HH:mm";
         ChartStart.Text = buckets.Count > 0 ? buckets[0].Start.ToString(format, CultureInfo.InvariantCulture) + " UTC" : "";
         ChartEnd.Text = buckets.Count > 0 ? buckets[^1].End.ToString(format, CultureInfo.InvariantCulture) + " UTC" : "";
         Fill(Plot, buckets, peak, Plot.ActualHeight);
+    }
+
+    /// <summary>A bucket's time as its tooltip and screen reader name say it: the date appears once a bucket spans hours.</summary>
+    internal static string BucketTime(AttackBucket bucket)
+    {
+        var size = bucket.End - bucket.Start;
+        if (size >= TimeSpan.FromDays(1)) return bucket.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " UTC";
+        var start = bucket.Start.ToString(size >= TimeSpan.FromHours(1) ? "yyyy-MM-dd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
+        return $"{start}–{bucket.End.ToString("HH:mm", CultureInfo.InvariantCulture)} UTC";
     }
 
     private void Fill(UniformGrid plot, IReadOnlyList<AttackBucket> buckets, int peak, double height)
@@ -279,12 +488,13 @@ public partial class AttacksWindow : Window
         plot.Children.Clear();
         foreach (var bucket in buckets)
         {
-            var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(1, 0, 1, 0) };
+            var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(buckets.Count > 100 ? 0 : 1, 0, buckets.Count > 100 ? 0 : 1, 0) };
             string label;
             if (!bucket.Covered)
             {
                 stack.Children.Add(new Border { Background = Gap, Height = 6 });
-                label = $"{bucket.Start:HH:mm}–{bucket.End:HH:mm} UTC  ·  {L("no data", "sin datos")}";
+                label = $"{BucketTime(bucket)}  ·  {L("no data", "sin datos")}" +
+                    (bucket.Total > 0 ? $" ({bucket.Total:N0} {L("attempts recorded in part of it", "intentos registrados en parte")})" : "");
             }
             else
             {
@@ -292,7 +502,7 @@ public partial class AttacksWindow : Window
                     stack.Children.Add(new Border { Background = Unknown, Height = bucket.UnknownAccount / (double)peak * height });
                 if (peak > 0 && bucket.Other > 0)
                     stack.Children.Add(new Border { Background = Other, Height = bucket.Other / (double)peak * height });
-                label = $"{bucket.Start:HH:mm}–{bucket.End:HH:mm} UTC  ·  {bucket.Total:N0} " + L("attempts", "intentos") +
+                label = $"{BucketTime(bucket)}  ·  {bucket.Total:N0} " + L("attempts", "intentos") +
                     (bucket.UnknownAccount > 0 ? $" ({bucket.UnknownAccount:N0} {L("nonexistent accounts", "cuentas inexistentes")})" : "");
             }
             var cell = new Grid { Background = Brushes.Transparent, ToolTip = label };
@@ -317,31 +527,110 @@ public partial class AttacksWindow : Window
 
     private void RenderDetail(string address)
     {
-        if (board.Detail(address, DateTimeOffset.UtcNow, range) is not { } detail)
+        var isStored = StoredAttackBoard.IsStored(range);
+        AttackDetail? detail;
+        if (isStored)
         {
-            DetailSummary.Text = L("No attempts from this address in the selected period.", "Sin intentos desde esta dirección en el periodo elegido.");
-            DetailAccounts.ItemsSource = DetailNeighbors.ItemsSource = DetailRecent.ItemsSource = null;
-            DetailPlot.Children.Clear();
+            if (storedDetail is not { } state || state.Range != range || state.Address != address)
+            {
+                _ = LoadStoredDetailAsync(address);
+                return;
+            }
+            if (state.Loading || state.Error is not null)
+            {
+                ClearDetail(address, state.Error ?? L("Reading the evidence store…", "Leyendo el almacén de evidencia…"));
+                return;
+            }
+            detail = state.Detail;
+        }
+        else detail = board.Detail(address, DateTimeOffset.UtcNow, range, labels);
+
+        if (detail is null)
+        {
+            ClearDetail(address, L("No attempts from this address in the selected period.", "Sin intentos desde esta dirección en el periodo elegido."));
             return;
         }
         var s = detail.Source;
         DetailAddress.Text = s.Address;
-        DetailSummary.Text = L($"{s.Attempts:N0} attempts, first {s.First:yyyy-MM-dd HH:mm:ss} and last {s.Last:HH:mm:ss} UTC. ",
-                $"{s.Attempts:N0} intentos, el primero {s.First:yyyy-MM-dd HH:mm:ss} y el último {s.Last:HH:mm:ss} UTC. ") +
-            L($"{s.Accounts:N0} different accounts, {s.UnknownShare:P0} of them attempts on names that do not exist. ",
-                $"{s.Accounts:N0} cuentas distintas; el {s.UnknownShare:P0} de los intentos fue a nombres que no existen. ") +
-            L("Logon types: ", "Tipos de inicio: ") + LogonTypes(s.LogonTypes) + ". " + Neighbors(s);
+        DetailLabel.Text = s.Label;
+        DetailLabel.Visibility = s.Label.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        DetailNote.Text = L("From hourly aggregates: the counts are exact, but account names and single attempts are no longer kept for this period.",
+            "De agregados por hora: los recuentos son exactos, pero los nombres de cuenta y los intentos individuales ya no se guardan para este periodo.");
+        DetailNoteBox.Visibility = detail.Detailed ? Visibility.Collapsed : Visibility.Visible;
+        var last = isStored ? "yyyy-MM-dd HH:mm" : "HH:mm:ss";
+        var first = isStored ? "yyyy-MM-dd HH:mm" : "yyyy-MM-dd HH:mm:ss";
+        DetailSummary.Text = L($"{s.Attempts:N0} attempts, first {s.First.ToString(first, CultureInfo.InvariantCulture)} and last {s.Last.ToString(last, CultureInfo.InvariantCulture)} UTC. ",
+                $"{s.Attempts:N0} intentos, el primero {s.First.ToString(first, CultureInfo.InvariantCulture)} y el último {s.Last.ToString(last, CultureInfo.InvariantCulture)} UTC. ") +
+            (s.Accounts is int accounts
+                ? L($"{accounts:N0} different accounts, {s.UnknownShare:P0} of them attempts on names that do not exist. ",
+                    $"{accounts:N0} cuentas distintas; el {s.UnknownShare:P0} de los intentos fue a nombres que no existen. ")
+                : L($"{s.UnknownShare:P0} of the attempts were on names that do not exist. ",
+                    $"El {s.UnknownShare:P0} de los intentos fue a nombres que no existen. ")) +
+            (s.LogonTypes == StoredAttackBoard.NotAsked ? "" : L("Logon types: ", "Tipos de inicio: ") + LogonTypes(s.LogonTypes) + ". ") +
+            Neighbors(s) +
+            (detail.FirstSeen is { } seen
+                ? " " + L($"First seen by WPShield {seen:yyyy-MM-dd HH:mm} UTC, on {detail.DaysSeen:N0} different days.",
+                    $"WPShield lo vio por primera vez el {seen:yyyy-MM-dd HH:mm} UTC, en {detail.DaysSeen:N0} días distintos.")
+                : "");
         var peak = detail.Timeline.Select(b => b.Total).DefaultIfEmpty().Max();
         Fill(DetailPlot, detail.Timeline, peak, 66);
-        DetailAccounts.ItemsSource = detail.Accounts.Count == 0
-            ? new[] { L("The records name no account.", "Los registros no indican cuenta.") }
-            : detail.Accounts.Select(a => $"{DisplayText.Clean(a.Account, 48)}   ·   {a.Count:N0}").ToArray();
+        DetailAccounts.ItemsSource = !detail.Detailed
+            ? new[] { L("Not kept for this period.", "No se guardan para este periodo.") }
+            : detail.Accounts.Count == 0
+                ? new[] { L("The records name no account.", "Los registros no indican cuenta.") }
+                : detail.Accounts.Select(a => $"{DisplayText.Clean(a.Account, 48)}   ·   {a.Count:N0}").ToArray();
         DetailNeighbors.ItemsSource = detail.Neighbors.Count == 0
             ? new[] { L("None in this period.", "Ninguna en este periodo.") }
-            : detail.Neighbors.Select(n => $"{n.Address}   ·   {n.Attempts:N0}").ToArray();
-        DetailRecent.ItemsSource = detail.Recent.Select(f =>
-            $"{f.Timestamp:HH:mm:ss}   {(f.Account.Length > 0 ? DisplayText.Clean(f.Account, 32) : "—")}   ·   {AuthReason(f.Reason)}" +
-            (f.LogonType is int t ? $"   ·   {LogonTypes(t.ToString(CultureInfo.InvariantCulture))}" : "")).ToArray();
+            : detail.Neighbors.Select(n =>
+            {
+                var label = AttackBoard.LabelFor(labels, n.Address);
+                return $"{n.Address}{(label.Length > 0 ? $"  ({label})" : "")}   ·   {n.Attempts:N0}";
+            }).ToArray();
+        var time = isStored ? "yyyy-MM-dd HH:mm:ss" : "HH:mm:ss";
+        DetailRecent.ItemsSource = !detail.Detailed
+            ? new[] { L("Single attempts are not kept for this period.", "Los intentos individuales no se guardan para este periodo.") }
+            : detail.Recent.Select(f =>
+                $"{f.Timestamp.ToString(time, CultureInfo.InvariantCulture)}   {(f.Account.Length > 0 ? DisplayText.Clean(f.Account, 32) : "—")}   ·   {AuthReason(f.Reason)}" +
+                (f.LogonType is int t ? $"   ·   {LogonTypes(t.ToString(CultureInfo.InvariantCulture))}" : "")).ToArray();
+    }
+
+    private void ClearDetail(string address, string message)
+    {
+        DetailAddress.Text = address;
+        DetailLabel.Visibility = Visibility.Collapsed;
+        DetailNoteBox.Visibility = Visibility.Collapsed;
+        DetailSummary.Text = message;
+        DetailAccounts.ItemsSource = DetailNeighbors.ItemsSource = DetailRecent.ItemsSource = null;
+        DetailPlot.Children.Clear();
+    }
+
+    /// <summary>Asks the store for one source's history in the selected range, unless that read is already running.</summary>
+    internal Task LoadStoredDetailAsync(string address)
+    {
+        if (storedDetail is { Loading: true } running && running.Range == range && running.Address == address && storedDetailRead is not null)
+            return storedDetailRead;
+        return storedDetailRead = ReadStoredDetailAsync(address);
+    }
+
+    private async Task ReadStoredDetailAsync(string address)
+    {
+        var wanted = range;
+        if (store is null || !stored.TryGetValue(wanted, out var data)) return;
+        storedDetail = new StoredDetail(wanted, address, null, true, null);
+        ClearDetail(address, L("Reading the evidence store…", "Leyendo el almacén de evidencia…"));
+        try
+        {
+            var history = await Task.Run(() => store.History(address, data.Window));
+            if (closed) return;
+            storedDetail = new StoredDetail(wanted, address, StoredAttackBoard.Detail(data, history), false, null);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (closed) return;
+            storedDetail = new StoredDetail(wanted, address, null, false,
+                L("The evidence store could not be read: ", "No se pudo leer el almacén de evidencia: ") + DisplayText.Clean(ex.Message, 200));
+        }
+        if (selected == address && range == wanted) RenderDetail(address);
     }
 
     private string Neighbors(AttackSource s) => s.Neighbors switch
@@ -427,8 +716,14 @@ public partial class AttacksWindow : Window
 
     private void OnRange(object sender, RoutedEventArgs e)
     {
-        range = sender == RangeHour ? AttackRange.Hour : sender == RangeSix ? AttackRange.SixHours : AttackRange.Day;
-        if (IsLoaded) Render();
+        range = sender == RangeHour ? AttackRange.Hour
+            : sender == RangeSix ? AttackRange.SixHours
+            : sender == RangeWeek ? AttackRange.Week
+            : sender == RangeMonth ? AttackRange.Month
+            : AttackRange.Day;
+        if (!IsLoaded) return;
+        if (StoredAttackBoard.IsStored(range) && !stored.ContainsKey(range)) _ = LoadStoredAsync();
+        else Render();
     }
 
     private void OnSearch(object sender, TextChangedEventArgs e)

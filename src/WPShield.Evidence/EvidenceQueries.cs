@@ -33,6 +33,9 @@ public sealed class EvidenceQueries
     public const int MaxRecent = 500;
     public const int MaxBuckets = 2000;
     private const int MaxNetworkScan = 200_000;
+
+    /// <summary>How far behind 'now' a collected interval may end and still vouch for the present.</summary>
+    public static readonly TimeSpan CurrentAllowance = TimeSpan.FromMinutes(2);
     private readonly EvidenceStore store;
 
     public EvidenceQueries(EvidenceStore store) => this.store = store;
@@ -164,7 +167,10 @@ public sealed class EvidenceQueries
         {
             var start = from + bucket * i;
             var end = start + bucket < to ? start + bucket : to;
-            var covered = intervals.Any(c => c.From <= start && c.To >= end) && (rawFrom is null || start >= rawFrom);
+            // The collector extends its interval as it goes, so the newest bucket is vouched for when the
+            // interval reaches the last moments before 'to' - the same allowance CoveredFrom makes.
+            var needed = end < to ? end : to - CurrentAllowance > start ? to - CurrentAllowance : start;
+            var covered = intervals.Any(c => c.From <= start && c.To >= needed) && (rawFrom is null || start >= rawFrom);
             return new EvidenceBucket(start, end, attempts[i], unknown[i], covered);
         }).ToArray();
     }
@@ -224,17 +230,37 @@ public sealed class EvidenceQueries
     private DateTimeOffset? CoveredFrom(DateTimeOffset from, DateTimeOffset to)
     {
         var intervals = Collected(from, to);
-        var covering = intervals.Where(c => c.To >= to - TimeSpan.FromMinutes(2)).OrderBy(c => c.From).FirstOrDefault();
+        var covering = intervals.Where(c => c.To >= to - CurrentAllowance).OrderBy(c => c.From).FirstOrDefault();
         if (covering is null) return null;
         return covering.From > from ? covering.From : from;
     }
 
     /// <summary>
-    /// Intervals the failed-logon collector vouches for. Another source's coverage (a future HTTP or SQL
-    /// collector) must not make a failed-logon bucket look covered.
+    /// Intervals the failed-logon collector vouches for (source auth-failures only: a future HTTP or SQL
+    /// collector's coverage must not make a failed-logon bucket look covered), with intervals that
+    /// overlap or touch joined into one: a service restart that resumes where it stopped leaves no gap,
+    /// so it must not draw one. Intervals with any time between them stay apart - that time was not
+    /// recorded.
     /// </summary>
-    private List<EvidenceCoverage> Collected(DateTimeOffset from, DateTimeOffset to) =>
-        Coverage(from, to).Where(c => c.Status == "collected" && c.Source == EvidenceWriter.RawSource).ToList();
+    private List<EvidenceCoverage> Collected(DateTimeOffset from, DateTimeOffset to)
+    {
+        var merged = new List<EvidenceCoverage>();
+        EvidenceCoverage? current = null;
+        foreach (var interval in Coverage(from, to)
+                     .Where(c => c.Status == "collected" && c.Source == EvidenceWriter.RawSource)
+                     .OrderBy(c => c.From))
+        {
+            if (current is not null && interval.From <= current.To)
+            {
+                if (interval.To > current.To) current = current with { To = interval.To };
+                continue;
+            }
+            if (current is not null) merged.Add(current);
+            current = interval;
+        }
+        if (current is not null) merged.Add(current);
+        return merged;
+    }
 
     private bool Detailed(DateTimeOffset from)
     {

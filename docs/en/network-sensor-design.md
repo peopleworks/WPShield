@@ -54,7 +54,31 @@ that do not exist (guessing, rather than a known user mistyping) and the last ho
 splits each interval into nonexistent accounts and the rest, for 1 hour, 6 hours or 24 hours.
 Select a source to slide in its detail: the accounts it tried, its attempts over time, other
 addresses attacking from the same /24 (IPv4) or /64 (IPv6) network, and its latest attempts. **Esc**
-or **✕** closes it. Search matches an address, a network such as `203.0.113.0/24`, or an account.
+or **✕** closes it. Search matches an address, a network such as `203.0.113.0/24`, an account or a
+label.
+
+**7 d and 30 d** read the WPShield service's evidence store
+([ADR 0007](adr/0007-local-evidence-store.md)) instead of the Security log, which on a busy host
+rarely reaches back a week. The 7-day timeline has one bar per hour and the 30-day timeline one per
+day; both start on a whole hour or UTC day, so the hourly totals add up exactly. The store answers
+with counts per source, so the table shows `—` for each row's accounts and logon types; a source's
+detail asks the store for its accounts and latest attempts, and adds when WPShield first saw it.
+Where the store keeps only hourly aggregates (by default, anything older than 14 days), the detail
+says that account names and single attempts are no longer kept for that period, and the account
+count is `—`, not 0. Intervals the service did not record are grey, as unread time is in the
+shorter ranges. 1 h, 6 h and 24 h still read the Security log directly, and live updates continue
+whichever range is shown. The view opens on the `attacks.default_range` setting.
+
+The store exists only once the WPShield service is installed, and opening it needs administrator
+rights. When it cannot be opened, **7 d** and **30 d** are disabled and their tooltip says why;
+the shorter ranges work as before.
+
+**Labels.** The `labels.addresses` setting names addresses and networks you know: your office, your
+own connection, a scanner network you have already reported. A label appears next to a matching
+address in the table, in the detail and among the neighbours, in every range. An exact address
+wins over a network, and a longer prefix over a shorter one. Labels are set with
+[`wpshield settings`](#attack-history-from-the-command-line). **A label describes an address; it
+never allows or blocks one.**
 
 What the view will not do:
 
@@ -67,7 +91,10 @@ What the view will not do:
   10 seconds per log), are drawn as **no data**, and the banner names the time the data starts.
   Enlarging the Security log is a manual server setting.
 - **Trust the account names.** The attacker chose them. They are cleaned of control and format
-  characters and bounded to 64 characters before they are stored or shown.
+  characters and bounded to 64 characters before they are stored or shown. Labels are cleaned the
+  same way.
+- **Present aggregates as detail.** A period answered from hourly aggregates says so; the counts
+  are exact and the names are gone.
 - **Decide or block anything.** It reads and shows. Live records are applied once a second and
   memory holds at most 100,000 records, dropping the oldest and moving the "no data" line with them.
 
@@ -83,6 +110,100 @@ divides their change by the measured elapsed time. A failed read, lower counter,
 or interval longer than five seconds marks a gap in amber. Two equal counter readings measure zero.
 **Pause chart** freezes the display while sampling continues. Resume returns to the latest 30
 observations. Switching adapters starts a new history. Closing the traffic window ends sampling.
+
+## Attack history from the command line
+
+`wpshield attacks` and `wpshield settings` read the evidence store the WPShield service writes
+([ADR 0007](adr/0007-local-evidence-store.md)), at
+`%ProgramData%\WPShield\evidence\wpshield-evidence.db` unless `--store` names another. Its folder
+admits only administrators and the service, so run them from an elevated prompt. Neither changes
+anything on the server except, for `settings set` and `settings reset`, the setting named.
+
+```powershell
+wpshield attacks --range 24h
+wpshield attacks --range 30d --top 50
+wpshield attacks --source 203.0.113.45 --range 7d
+wpshield attacks --range 7d --json
+```
+
+`wpshield attacks` prints the failed attempts, the distinct source addresses, the share of attempts
+on nonexistent accounts and the most tried account, then the top sources (`--top`, 20 by default)
+with their network, neighbours in the same /24 or /64, first and last attempt, and label.
+`--source` prints one address's history instead: when the store first saw it, the accounts it
+tried, its attempts per hour or per day, and its latest attempts. `--range` defaults to the
+`attacks.default_range` setting. Every answer says what it is made of:
+
+- **Records:** `detailed`, or `hourly aggregates` - the counts are exact, but account names, logon
+  types and single attempts are no longer kept for that period.
+- **Coverage:** recorded for the whole range, the gaps with the reason the service wrote down, or
+  none. A range nobody recorded is `no data` (exit code 2, `null` in JSON), never zero.
+- **Range:** from 24 hours up a range starts on a whole hour (30 days on a whole UTC day), so it is
+  never shorter than its name and the hourly totals add up exactly.
+
+```text
+Evidence store   C:\ProgramData\WPShield\evidence\wpshield-evidence.db (read-only)
+Range            last 24 hours: 2026-11-23 23:00 to 2026-11-24 23:54 UTC
+Records          detailed: every attempt and the account it named
+Coverage         gaps - these times were not recorded and read as no data, never as zero:
+                   2026-11-24 14:54 to 2026-11-24 16:34 UTC  (service-stopped: service not running)
+
+Failed attempts       725  (8 without a source address)
+Source addresses      5
+Nonexistent accounts  64% of attempts
+Most tried account    administrator
+
+Top 5 of 5 source addresses
+ADDRESS         ATTEMPTS  NONEXISTENT  ACCOUNTS  NETWORK          NEIGHBOURS  FIRST (UTC)       LAST (UTC)        LABEL
+203.0.113.45         420          66%         6  203.0.113.0/24            1  2026-11-24 03:55  2026-11-24 23:54  Scanner network
+203.0.113.46         160         100%         6  203.0.113.0/24            1  2026-11-24 03:58  2026-11-24 23:45  Scanner network
+198.51.100.23         95           0%         1  198.51.100.0/24           0  2026-11-24 17:54  2026-11-24 23:43
+2001:db8:5::17        30         100%         1  2001:db8:5::/64           0  2026-11-24 05:01  2026-11-24 23:17
+192.0.2.10            12           0%         1  192.0.2.0/24              0  2026-11-24 20:57  2026-11-24 23:51  My office
+```
+
+When the store cannot be opened, the command stops with the reason instead of printing an empty
+table: exit code 3 when there is no store (the service is not installed), 1 when this process is not
+elevated or access was denied, 2 when another version of WPShield wrote it. Account names and labels
+are printed with control and format characters replaced, and escaped in `--json`.
+
+### Settings
+
+```powershell
+wpshield settings list
+wpshield settings get labels.addresses
+wpshield settings set attacks.default_range 7d --reason "a week by default"
+wpshield settings set labels.addresses --value-file .\labels.json --reason "name the office"
+wpshield settings reset retention.raw_days --reason "back to the default"
+wpshield settings history
+```
+
+| Setting | Default | Takes effect | What it does |
+| --- | --- | --- | --- |
+| `retention.raw_days` | `14` | next use | Days of detailed failed logons kept |
+| `retention.aggregate_days` | `400` | next use | Days of hourly aggregates and decisions kept |
+| `retention.event_days` | `90` | next use | Days of other evidence events kept |
+| `retention.max_megabytes` | `2048` | next use | Size the store may reach before detailed rows are pruned |
+| `attacks.default_range` | `"24h"` | next use | Range `wpshield attacks` and the desktop's Attacks view open with |
+| `labels.addresses` | `{}` | next use | Names for addresses and networks; they never allow or block |
+| `mcp.detailed_records` | `false` | next start | Whether a future MCP server may return single attempts; none exists yet |
+
+`list`, `get` and `history` open the store read-only and fail, rather than print the defaults, when
+it cannot be opened. `set` and `reset` need an elevated prompt and a `--reason`. They refuse a key
+this version does not know and list the known ones, validate the value, never create the store, and
+record the change in the store's settings history with your Windows user name and the reason. `set`
+replaces the whole value: to add one label, `get labels.addresses`, edit it, and set all of it back.
+
+**The command applies nothing.** Each setting takes effect at its next use (the next pruning pass,
+query or view that reads it) or at the next start of the process that reads it, and the command
+prints which.
+
+Values are JSON, and a text setting also takes a bare word (`7d`). Windows PowerShell 5.1 drops the
+quotes inside an argument on its way to a program, so give an object such as the labels in a file
+(64 KB at most):
+
+```json
+{ "198.51.100.7": "My office", "203.0.113.0/24": "Scanner network" }
+```
 
 ## Local listener inventory
 

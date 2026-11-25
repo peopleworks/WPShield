@@ -60,7 +60,32 @@ equivocándose) y la última hora. La línea de tiempo separa en cada intervalo 
 del resto, para 1 hora, 6 horas o 24 horas. Elija un origen para abrir su panel: las cuentas que
 probó, sus intentos en el tiempo, otras direcciones que atacan desde la misma red /24 (IPv4) o /64
 (IPv6) y sus últimos intentos. **Esc** o **✕** lo cierran. La búsqueda acepta una dirección, una red
-como `203.0.113.0/24` o una cuenta.
+como `203.0.113.0/24`, una cuenta o una etiqueta.
+
+**7 d y 30 d** leen el almacén de evidencia del servicio WPShield
+([ADR 0007](adr/0007-almacen-local-de-evidencia.md)) en lugar del registro de seguridad, que en un
+servidor con mucho tráfico rara vez llega a una semana atrás. La línea de tiempo de 7 días tiene una
+barra por hora y la de 30 días una por día; ambas empiezan en una hora o un día UTC completos, para
+que los totales por hora cuadren exactamente. El almacén responde con recuentos por origen, así que
+la tabla muestra `—` en las cuentas y los tipos de inicio de cada fila; el panel de un origen le pide
+al almacén sus cuentas y sus últimos intentos, e indica cuándo lo vio WPShield por primera vez.
+Donde el almacén solo conserva agregados por hora (por defecto, lo que tiene más de 14 días), el
+panel dice que los nombres de cuenta y los intentos individuales ya no se guardan para ese periodo,
+y el número de cuentas es `—`, no 0. Los intervalos que el servicio no registró se dibujan en gris,
+como el tiempo no leído en los rangos cortos. 1 h, 6 h y 24 h siguen leyendo directamente el
+registro de seguridad, y la actualización en vivo continúa sea cual sea el rango. La vista se abre
+con el rango del ajuste `attacks.default_range`.
+
+El almacén solo existe una vez instalado el servicio WPShield, y abrirlo requiere permisos de
+administrador. Si no se puede abrir, **7 d** y **30 d** quedan deshabilitados y su información
+emergente explica por qué; los rangos cortos funcionan como antes.
+
+**Etiquetas.** El ajuste `labels.addresses` pone nombre a direcciones y redes conocidas: su oficina,
+su propia conexión, una red de escaneo que ya denunció. La etiqueta aparece junto a la dirección que
+coincide en la tabla, en el panel y entre las vecinas, en todos los rangos. Una dirección exacta gana
+a una red, y un prefijo más largo a uno más corto. Las etiquetas se definen con
+[`wpshield settings`](#historial-de-ataques-desde-la-línea-de-comandos). **Una etiqueta describe
+una dirección; nunca la permite ni la bloquea.**
 
 Lo que la vista no hace:
 
@@ -74,7 +99,10 @@ Lo que la vista no hace:
   **sin datos**, y el aviso indica desde cuándo hay datos. Ampliar el registro de seguridad es un
   ajuste manual del servidor.
 - **Fiarse de los nombres de cuenta.** Los eligió el atacante. Se limpian de caracteres de control y
-  de formato y se limitan a 64 caracteres antes de guardarlos o mostrarlos.
+  de formato y se limitan a 64 caracteres antes de guardarlos o mostrarlos. Las etiquetas se limpian
+  igual.
+- **Presentar agregados como detalle.** Un periodo respondido con agregados por hora lo dice: los
+  recuentos son exactos y los nombres ya no están.
 - **Decidir ni bloquear nada.** Lee y muestra. Los registros en vivo se aplican una vez por segundo y
   la memoria guarda como máximo 100 000 registros: descarta los más antiguos y mueve con ellos la
   línea de **sin datos**.
@@ -92,6 +120,105 @@ que retrocede, una discontinuidad del reloj o una demora superior a cinco segund
 Dos lecturas iguales miden cero. **Pausar gráfica** congela la imagen mientras continúa la medición.
 Al reanudar se muestran las últimas 30 observaciones. Cambiar de adaptador inicia un historial nuevo.
 Cerrar la ventana de tráfico detiene la medición.
+
+## Historial de ataques desde la línea de comandos
+
+`wpshield attacks` y `wpshield settings` leen el almacén de evidencia que escribe el servicio
+WPShield ([ADR 0007](adr/0007-almacen-local-de-evidencia.md)), en
+`%ProgramData%\WPShield\evidence\wpshield-evidence.db` salvo que `--store` indique otro. Su carpeta
+solo admite a los administradores y al servicio, así que ejecútelos desde una consola elevada.
+Ninguno cambia nada en el servidor, salvo `settings set` y `settings reset`, que cambian el ajuste
+que se les indica.
+
+```powershell
+wpshield attacks --range 24h
+wpshield attacks --range 30d --top 50
+wpshield attacks --source 203.0.113.45 --range 7d
+wpshield attacks --range 7d --json
+```
+
+`wpshield attacks` muestra los intentos fallidos, las direcciones de origen distintas, la proporción
+de intentos a cuentas inexistentes y la cuenta más probada, y después los orígenes principales
+(`--top`, 20 por defecto) con su red, sus vecinas en la misma /24 o /64, su primer y último intento y
+su etiqueta. `--source` muestra en cambio el historial de una dirección: cuándo la vio el almacén por
+primera vez, las cuentas que probó, sus intentos por hora o por día y sus últimos intentos. Si no se
+indica `--range`, se usa el ajuste `attacks.default_range`. Cada respuesta dice de qué está hecha:
+
+- **Records:** `detailed` (detalle), u `hourly aggregates` (agregados por hora): los recuentos son
+  exactos, pero los nombres de cuenta, los tipos de inicio y los intentos individuales ya no se
+  guardan para ese periodo.
+- **Coverage:** registrado en todo el rango, los huecos con el motivo que anotó el servicio, o nada.
+  Un rango que nadie registró es `no data` (código de salida 2, `null` en JSON), nunca cero.
+- **Range:** desde 24 horas, un rango empieza en una hora completa (30 días, en un día UTC
+  completo), así que nunca es más corto que su nombre y los totales por hora cuadran exactamente.
+
+La salida de la herramienta está en inglés, como el resto de la CLI:
+
+```text
+Evidence store   C:\ProgramData\WPShield\evidence\wpshield-evidence.db (read-only)
+Range            last 24 hours: 2026-11-23 23:00 to 2026-11-24 23:54 UTC
+Records          detailed: every attempt and the account it named
+Coverage         gaps - these times were not recorded and read as no data, never as zero:
+                   2026-11-24 14:54 to 2026-11-24 16:34 UTC  (service-stopped: service not running)
+
+Failed attempts       725  (8 without a source address)
+Source addresses      5
+Nonexistent accounts  64% of attempts
+Most tried account    administrator
+
+Top 5 of 5 source addresses
+ADDRESS         ATTEMPTS  NONEXISTENT  ACCOUNTS  NETWORK          NEIGHBOURS  FIRST (UTC)       LAST (UTC)        LABEL
+203.0.113.45         420          66%         6  203.0.113.0/24            1  2026-11-24 03:55  2026-11-24 23:54  Scanner network
+203.0.113.46         160         100%         6  203.0.113.0/24            1  2026-11-24 03:58  2026-11-24 23:45  Scanner network
+198.51.100.23         95           0%         1  198.51.100.0/24           0  2026-11-24 17:54  2026-11-24 23:43
+2001:db8:5::17        30         100%         1  2001:db8:5::/64           0  2026-11-24 05:01  2026-11-24 23:17
+192.0.2.10            12           0%         1  192.0.2.0/24              0  2026-11-24 20:57  2026-11-24 23:51  My office
+```
+
+Si el almacén no se puede abrir, el comando se detiene con el motivo en lugar de mostrar una tabla
+vacía: código de salida 3 si no hay almacén (el servicio no está instalado), 1 si este proceso no
+está elevado o se denegó el acceso, 2 si lo escribió otra versión de WPShield. Los nombres de cuenta
+y las etiquetas se muestran con los caracteres de control y de formato sustituidos, y escapados en
+`--json`.
+
+### Ajustes
+
+```powershell
+wpshield settings list
+wpshield settings get labels.addresses
+wpshield settings set attacks.default_range 7d --reason "una semana por defecto"
+wpshield settings set labels.addresses --value-file .\etiquetas.json --reason "nombrar la oficina"
+wpshield settings reset retention.raw_days --reason "volver al valor por defecto"
+wpshield settings history
+```
+
+| Ajuste | Por defecto | Surte efecto | Qué hace |
+| --- | --- | --- | --- |
+| `retention.raw_days` | `14` | próximo uso | Días que se guardan los inicios fallidos en detalle |
+| `retention.aggregate_days` | `400` | próximo uso | Días que se guardan los agregados por hora y las decisiones |
+| `retention.event_days` | `90` | próximo uso | Días que se guardan los demás eventos de evidencia |
+| `retention.max_megabytes` | `2048` | próximo uso | Tamaño que puede alcanzar el almacén antes de podar el detalle |
+| `attacks.default_range` | `"24h"` | próximo uso | Rango con el que se abren `wpshield attacks` y la vista Ataques |
+| `labels.addresses` | `{}` | próximo uso | Nombres para direcciones y redes; nunca permiten ni bloquean |
+| `mcp.detailed_records` | `false` | próximo arranque | Si un futuro servidor MCP podrá devolver intentos individuales; aún no existe |
+
+`list`, `get` y `history` abren el almacén en solo lectura y, si no pueden abrirlo, fallan en lugar
+de mostrar los valores por defecto. `set` y `reset` necesitan una consola elevada y un `--reason`.
+Rechazan una clave que esta versión no conoce y enumeran las conocidas, validan el valor, nunca crean
+el almacén y anotan el cambio en el historial de ajustes del almacén con su usuario de Windows y el
+motivo. `set` reemplaza el valor completo: para añadir una etiqueta, lea `labels.addresses` con
+`get`, edítelo y vuelva a guardarlo entero.
+
+**El comando no aplica nada.** Cada ajuste surte efecto en su próximo uso (la próxima poda, consulta
+o vista que lo lea) o en el próximo arranque del proceso que lo lee, y el comando dice cuál.
+
+Los valores son JSON, y un ajuste de texto acepta también una palabra sin comillas (`7d`). Windows
+PowerShell 5.1 elimina las comillas de dentro de un argumento al pasarlo a un programa, así que un
+objeto como las etiquetas se da en un archivo (64 KB como máximo):
+
+```json
+{ "198.51.100.7": "Mi oficina", "203.0.113.0/24": "Red de escaneo" }
+```
 
 ## Inventario de puertos locales
 
