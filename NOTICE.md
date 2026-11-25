@@ -65,10 +65,26 @@ packages the repository references:
 | [`Yarp.ReverseProxy`](https://github.com/dotnet/yarp) | 2.3.0 | MIT | `WPShield.Gateway` | The forwarding engine. The only third-party component in the request path. |
 | [`Microsoft.Data.Sqlite`](https://github.com/dotnet/efcore) | 10.0.14 | MIT | `WPShield.Evidence` | The local evidence store (ADR 0007). Brings `SQLitePCLRaw` (Apache-2.0) and its native SQLite build (public domain). |
 | [`ModelContextProtocol`](https://github.com/modelcontextprotocol/csharp-sdk) | 2.4.0 | Apache-2.0 | `WPShield.Cli` | The read-only `wpshield mcp` server (ADR 0008), stdio transport only. Brings `ModelContextProtocol.Core` (Apache-2.0) and `Microsoft.Extensions.AI.Abstractions`, `Microsoft.Extensions.Hosting.Abstractions` and `Microsoft.Extensions.Caching.Abstractions` (MIT). |
+| [`Spectre.Console`](https://www.nuget.org/packages/Spectre.Console/0.49.1) | 0.49.1 | [MIT](https://licenses.nuget.org/MIT) | `WPShield.Cli` | Renders the live `wpshield watch` console. |
+| [`QuestPDF`](https://www.nuget.org/packages/QuestPDF/2024.12.3) | 2024.12.3 | [QuestPDF Community MIT License](https://github.com/QuestPDF/QuestPDF/blob/ffa497de7d6b590f8988344ac6e302924af5e9ea/Source/QuestPDF/Resources/PackageLicense.md#questpdf-community-mit-license) | `WPShield.Cli` | Generates PDFs for `wpshield report`. See the eligibility terms below. |
+| [`Microsoft.Web.Administration`](https://www.nuget.org/packages/Microsoft.Web.Administration/11.1.0) | 11.1.0 | [Microsoft Software License Terms for the Microsoft .NET Library](https://dotnet.microsoft.com/en-us/dotnet_library_license.htm) | `WPShield.Cli` | Reads IIS configuration and applies operator-initiated changes to the named site. |
 | [`Microsoft.AspNetCore.TestHost`](https://asp.net/) | 10.0.0 | MIT | `WPShield.Gateway.Tests` | In-process host for the gateway integration suite. |
 | [`Microsoft.NET.Test.Sdk`](https://github.com/microsoft/vstest) | 17.14.1 | MIT | all test projects | Test platform. |
 | [`xunit`](https://github.com/xunit/xunit) | 2.9.3 | Apache-2.0 | all test projects | Test framework. |
 | [`xunit.runner.visualstudio`](https://github.com/xunit/visualstudio.xunit) | 3.1.4 | Apache-2.0 | all test projects | Test adapter. Referenced with `PrivateAssets="all"`. |
+
+The license file shipped with QuestPDF 2024.12.3 offers the Community MIT tier for open-source
+projects, charitable organizations, educational or training use, transitive dependency users, and
+businesses with annual gross revenue below USD 1 million. The selection guide calls for a paid
+license for businesses above that threshold, with Professional covering up to 10 developers who
+use QuestPDF and Enterprise covering more than 10. It leaves revenue of exactly USD 1 million
+unspecified. The Community MIT terms require including the upstream copyright and permission
+notices in copies or substantial portions of QuestPDF. WPShield uses QuestPDF directly and selects
+Community as an open-source project. [License file for 2024.12.3](https://github.com/QuestPDF/QuestPDF/blob/ffa497de7d6b590f8988344ac6e302924af5e9ea/Source/QuestPDF/Resources/PackageLicense.md)
+
+QuestPDF's current source-available Community License uses its own eligibility and redistribution
+terms. The license shipped with each release governs that release unless the user expressly accepts
+later terms. [Current Community License](https://www.questpdf.com/license/community.html)
 
 `Yarp.ReverseProxy` is the only third-party component in the gateway's request path. `Microsoft.Data.Sqlite`
 ships wherever the evidence store is read or written, and `ModelContextProtocol` ships with the CLI - and, because
