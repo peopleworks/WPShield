@@ -32,9 +32,10 @@ internal sealed record AttackSource(string Address, int Attempts, DateTimeOffset
 
 /// <param name="Detailed">False when the answer comes from hourly aggregates: counts exact, names gone.</param>
 /// <param name="NoData">Nothing was recorded for the range, so the numbers are not zeros but unknown.</param>
+/// <param name="LastHourKnown">False when nothing was recorded in the last hour, so <c>LastHour</c> is not a zero.</param>
 internal sealed record AttackView(int Attempts, int Sources, int WithoutAddress, double UnknownShare, int LastHour,
     string TopAccount, IReadOnlyList<AttackBucket> Buckets, IReadOnlyList<AttackSource> Rows, int MatchingRows,
-    DateTimeOffset? CoveredFrom, bool Detailed = true, bool NoData = false);
+    DateTimeOffset? CoveredFrom, bool Detailed = true, bool NoData = false, bool LastHourKnown = true);
 
 /// <param name="Detailed">False when account names and single attempts are no longer kept for the period.</param>
 /// <param name="FirstSeen">The first attempt anywhere in the evidence store, when the store answered.</param>

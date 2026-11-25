@@ -73,6 +73,7 @@ public sealed class StoredAttacksTests : IDisposable
         Assert.Equal(168, view.Buckets.Count);
         Assert.All(view.Buckets, b => Assert.True(b.Covered));
         Assert.Equal(0, view.LastHour);
+        Assert.True(view.LastHourKnown);
     }
 
     [Theory]
@@ -101,6 +102,22 @@ public sealed class StoredAttacksTests : IDisposable
         var gap = buckets.Where(b => !b.Covered).ToArray();
         Assert.Equal(5, gap.Length);
         Assert.All(gap, b => Assert.InRange(b.Start, Now.AddHours(-50), Now.AddHours(-46)));
+    }
+
+    [Fact]
+    public void ALastHourTheServiceDidNotRecordIsUnknownNotZero()
+    {
+        Fill(store =>
+        {
+            var writer = new EvidenceWriter(store);
+            writer.BeginCoverage(EvidenceWriter.RawSource, Now.AddDays(-8), Now.AddHours(-3));
+            writer.Append([Failure(5, "203.0.113.10")]);
+        });
+
+        var view = StoredAttackBoard.View(Store().Read(AttackRange.Week, Now), "");
+
+        Assert.False(view.LastHourKnown);
+        Assert.Equal(1, view.Attempts);
     }
 
     [Fact]

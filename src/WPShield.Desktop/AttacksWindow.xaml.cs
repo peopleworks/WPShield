@@ -438,8 +438,9 @@ public partial class AttacksWindow : Window
             : RangeText();
         UnknownValue.Text = view.Attempts == 0 ? "—" : view.UnknownShare.ToString("P0", CultureInfo.CurrentCulture);
         UnknownNote.Text = L("Guessing names, not a known user mistyping", "Adivinan nombres; no es un usuario conocido equivocándose");
-        HourValue.Text = view.LastHour.ToString("N0", CultureInfo.CurrentCulture);
-        HourNote.Text = isStored ? L("From the evidence store", "Del almacén de evidencia")
+        HourValue.Text = view.LastHourKnown ? view.LastHour.ToString("N0", CultureInfo.CurrentCulture) : "—";
+        HourNote.Text = !view.LastHourKnown ? L("Nothing recorded in the last hour", "Nada registrado en la última hora")
+            : isStored ? L("From the evidence store", "Del almacén de evidencia")
             : subscription is not null ? L("Updating live", "Actualizando en vivo") : L("Not live", "Sin actualización en vivo");
     }
 

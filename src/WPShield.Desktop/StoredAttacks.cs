@@ -7,8 +7,9 @@ namespace WPShield.Desktop;
 internal sealed record AttackStoreStatus(AddressLabels Labels, string DefaultRange);
 
 /// <summary>One read of the evidence store for a 7-day or 30-day range, kept until the next refresh.</summary>
+/// <param name="LastHour">Attempts in the last hour, or <see langword="null"/> when the service recorded none of it.</param>
 internal sealed record StoredAttacks(AttackRange Range, EvidenceWindow Window, EvidenceSummary Summary,
-    IReadOnlyList<EvidenceSource> Sources, IReadOnlyList<EvidenceBucket> Timeline, long LastHour, CoverageReport Coverage,
+    IReadOnlyList<EvidenceSource> Sources, IReadOnlyList<EvidenceBucket> Timeline, long? LastHour, CoverageReport Coverage,
     AddressLabels Labels);
 
 /// <summary>
@@ -39,10 +40,13 @@ internal sealed class EvidenceAttackStore(string path, Func<bool> elevated) : IA
         using var store = EvidenceAccess.OpenReadOnly(path, elevated());
         var window = EvidenceRanges.Window(StoredAttackBoard.Name(range), now);
         var queries = new EvidenceQueries(store);
+        var hourAgo = window.To - TimeSpan.FromHours(1);
+        var lastHour = queries.Summary(hourAgo, window.To).Attempts;
+        var lastHourRecorded = CoverageReport.Analyse(queries.Coverage(hourAgo, window.To), hourAgo, window.To).State != CoverageReport.None;
         return new(range, window, queries.Summary(window.From, window.To),
             queries.TopSources(window.From, window.To, EvidenceQueries.MaxSources),
             queries.Timeline(window.From, window.To, window.Bucket),
-            queries.Summary(window.To - TimeSpan.FromHours(1), window.To).Attempts,
+            lastHour == 0 && !lastHourRecorded ? null : lastHour,
             CoverageReport.Analyse(queries.Coverage(window.From, window.To), window.From, window.To),
             AddressLabels.Read(store));
     }
@@ -94,9 +98,9 @@ internal static class StoredAttackBoard
         var matching = rows.Where(r => r.Matches(query)).ToArray();
         var noData = stored.Coverage.State == CoverageReport.None && summary.Attempts == 0;
         return new(Int(summary.Attempts), Int(summary.Sources), Int(summary.WithoutAddress),
-            summary.Attempts == 0 ? 0 : (double)summary.UnknownAccount / summary.Attempts, Int(stored.LastHour),
+            summary.Attempts == 0 ? 0 : (double)summary.UnknownAccount / summary.Attempts, Int(stored.LastHour ?? 0),
             summary.TopAccount ?? "", stored.Timeline.Select(Bucket).ToArray(), matching.Take(maxRows).ToArray(), matching.Length,
-            summary.CoveredFrom, summary.Detailed, noData);
+            summary.CoveredFrom, summary.Detailed, noData, LastHourKnown: stored.LastHour is not null);
     }
 
     /// <summary>The detail of one source; <see langword="null"/> when it is not among the sources read.</summary>
