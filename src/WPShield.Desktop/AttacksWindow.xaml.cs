@@ -103,7 +103,8 @@ public partial class AttacksWindow : Window
 
     public AttacksWindow(bool spanish) : this(spanish, end => AuthFailureFeed.ReadRecent(end, TimeSpan.FromHours(24)),
         AuthFailureFeed.Watch, new EvidenceAttackStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated),
-        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser))
+        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser),
+        new EvidenceWebStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, () => DateTimeOffset.UtcNow))
     {
     }
 
@@ -118,19 +119,17 @@ public partial class AttacksWindow : Window
     }
 
     internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
-        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store, ISettingsStore? settings)
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store, ISettingsStore? settings,
+        EvidenceWebStore? webStore = null)
     {
         this.spanish = spanish;
         this.read = read;
         this.watch = watch;
         this.store = store;
         this.settings = settings;
+        this.webStore = webStore;
         InitializeComponent();
-        Title = "WPShield | " + L("Attacks", "Ataques");
-        SourceLabel.Text = L("Security  /  Windows", "Seguridad  /  Windows");
-        Heading.Text = L("Attacks", "Ataques");
-        Subtitle.Text = L("Failed Windows logons: Remote Desktop, SMB and network logons (Security 4625, RdpCoreTS 140).",
-            "Inicios de sesión fallidos de Windows: Escritorio remoto, SMB e inicios de red (Seguridad 4625, RdpCoreTS 140).");
+        SetViewHeading(false);
         Live.Content = L("Live", "En vivo");
         Live.IsChecked = true;
         RefreshButton.Content = L("Refresh", "Actualizar");
@@ -163,6 +162,7 @@ public partial class AttacksWindow : Window
         RangeWeek.ToolTip = RangeMonth.ToolTip = L("Checking the WPShield evidence store…", "Comprobando el almacén de evidencia de WPShield…");
         RangeDay.IsChecked = true;
         flush.Tick += OnFlush;
+        InitializeWeb();
     }
 
     private string L(string english, string es) => spanish ? es : english;
@@ -176,7 +176,7 @@ public partial class AttacksWindow : Window
     {
         if (reading || closed) return;
         reading = true;
-        RefreshButton.IsEnabled = false;
+        if (!showingWeb) RefreshButton.IsEnabled = false;
         Footer.Text = L("Reading the last 24 hours of the Security log…", "Leyendo las últimas 24 horas del registro de seguridad…");
         // The store is asked at the same time; it decides the 7 d / 30 d chips and the labels.
         var probe = ProbeStoreAsync();
@@ -189,7 +189,7 @@ public partial class AttacksWindow : Window
             securityReadable = snapshot.Coverage.Any(c => c.Channel == AuthFailureFeed.SecurityChannel && c.Status != "unavailable");
             ShowCoverage(snapshot);
             // Following a log this process cannot read would only fail again; the banner already says why.
-            if (Live.IsChecked == true && securityReadable) StartLive();
+            if (!showingWeb && Live.IsChecked == true && securityReadable) StartLive();
             Render();
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)
@@ -261,6 +261,13 @@ public partial class AttacksWindow : Window
     {
         storeProblem = problem;
         if (problem is not null) decisions = null;
+        if (!showingWeb) UpdateAttackRangeChips();
+        if (problem is not null && StoredAttackBoard.IsStored(range)) SelectRange(AttackRange.Day);
+    }
+
+    private void UpdateAttackRangeChips()
+    {
+        var problem = storeProblem;
         var available = problem is null;
         RangeWeek.IsEnabled = RangeMonth.IsEnabled = available;
         RangeWeek.ToolTip = RangeMonth.ToolTip = problem switch
@@ -276,10 +283,15 @@ public partial class AttacksWindow : Window
                 "Otra versión de WPShield escribió el almacén de evidencia; use el monitor que vino con el servicio instalado."),
             _ => L("The WPShield evidence store could not be read.", "No se pudo leer el almacén de evidencia de WPShield.")
         };
-        if (!available && StoredAttackBoard.IsStored(range)) SelectRange(AttackRange.Day);
     }
 
     private void SelectRange(AttackRange wanted)
+    {
+        if (showingWeb) range = wanted;
+        else CheckRangeChip(wanted);
+    }
+
+    private void CheckRangeChip(AttackRange wanted)
     {
         var chip = wanted switch
         {
@@ -412,6 +424,7 @@ public partial class AttacksWindow : Window
 
     private void Render()
     {
+        if (showingWeb) return;
         var isStored = StoredAttackBoard.IsStored(range);
         var data = isStored && stored.TryGetValue(range, out var cached) ? cached : null;
         view = isStored
@@ -532,37 +545,45 @@ public partial class AttacksWindow : Window
     }
 
     /// <summary>A bucket's time as its tooltip and screen reader name say it: the date appears once a bucket spans hours.</summary>
-    internal static string BucketTime(AttackBucket bucket)
+    internal static string BucketTime(AttackBucket bucket) => BucketTime(bucket.Start, bucket.End);
+
+    private static string BucketTime(DateTimeOffset from, DateTimeOffset to)
     {
-        var size = bucket.End - bucket.Start;
-        if (size >= TimeSpan.FromDays(1)) return bucket.Start.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " UTC";
-        var start = bucket.Start.ToString(size >= TimeSpan.FromHours(1) ? "yyyy-MM-dd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
-        return $"{start}–{bucket.End.ToString("HH:mm", CultureInfo.InvariantCulture)} UTC";
+        var size = to - from;
+        if (size >= TimeSpan.FromDays(1)) return from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) + " UTC";
+        var start = from.ToString(size >= TimeSpan.FromHours(1) ? "yyyy-MM-dd HH:mm" : "HH:mm", CultureInfo.InvariantCulture);
+        return $"{start}–{to.ToString("HH:mm", CultureInfo.InvariantCulture)} UTC";
     }
 
-    private void Fill(UniformGrid plot, IReadOnlyList<AttackBucket> buckets, int peak, double height)
+    private void Fill(UniformGrid plot, IReadOnlyList<AttackBucket> buckets, int peak, double height) =>
+        FillPlot(plot, buckets, peak, height, bucket => (bucket.Other, bucket.UnknownAccount, bucket.Covered), bucket =>
+            !bucket.Covered
+                ? $"{BucketTime(bucket)}  ·  {L("no data", "sin datos")}" +
+                    (bucket.Total > 0 ? $" ({bucket.Total:N0} {L("attempts recorded in part of it", "intentos registrados en parte")})" : "")
+                : $"{BucketTime(bucket)}  ·  {bucket.Total:N0} " + L("attempts", "intentos") +
+                    (bucket.UnknownAccount > 0 ? $" ({bucket.UnknownAccount:N0} {L("nonexistent accounts", "cuentas inexistentes")})" : ""));
+
+    private static void FillPlot<T>(UniformGrid plot, IReadOnlyList<T> buckets, double peak, double height,
+        Func<T, (long Primary, long Secondary, bool Covered)> values, Func<T, string> describe)
     {
         plot.Columns = Math.Max(1, buckets.Count);
         plot.Children.Clear();
         foreach (var bucket in buckets)
         {
             var stack = new StackPanel { VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(buckets.Count > 100 ? 0 : 1, 0, buckets.Count > 100 ? 0 : 1, 0) };
-            string label;
-            if (!bucket.Covered)
+            var (primary, secondary, covered) = values(bucket);
+            if (!covered)
             {
                 stack.Children.Add(new Border { Background = Gap, Height = 6 });
-                label = $"{BucketTime(bucket)}  ·  {L("no data", "sin datos")}" +
-                    (bucket.Total > 0 ? $" ({bucket.Total:N0} {L("attempts recorded in part of it", "intentos registrados en parte")})" : "");
             }
             else
             {
-                if (peak > 0 && bucket.UnknownAccount > 0)
-                    stack.Children.Add(new Border { Background = Unknown, Height = bucket.UnknownAccount / (double)peak * height });
-                if (peak > 0 && bucket.Other > 0)
-                    stack.Children.Add(new Border { Background = Other, Height = bucket.Other / (double)peak * height });
-                label = $"{BucketTime(bucket)}  ·  {bucket.Total:N0} " + L("attempts", "intentos") +
-                    (bucket.UnknownAccount > 0 ? $" ({bucket.UnknownAccount:N0} {L("nonexistent accounts", "cuentas inexistentes")})" : "");
+                if (peak > 0 && secondary > 0)
+                    stack.Children.Add(new Border { Background = Unknown, Height = secondary / peak * height });
+                if (peak > 0 && primary > 0)
+                    stack.Children.Add(new Border { Background = Other, Height = primary / peak * height });
             }
+            var label = describe(bucket);
             var cell = new Grid { Background = Brushes.Transparent, ToolTip = label };
             cell.Children.Add(stack);
             AutomationProperties.SetName(cell, label);
@@ -577,7 +598,7 @@ public partial class AttacksWindow : Window
 
     private void OnRowSelected(object sender, SelectionChangedEventArgs e)
     {
-        if (Rows.SelectedItem is not AttackSource source || source.Address == selected) return;
+        if (showingWeb || Rows.SelectedItem is not AttackSource source || source.Address == selected) return;
         selected = source.Address;
         RenderDetail(source.Address);
         Slide(DetailWidth);
@@ -764,7 +785,7 @@ public partial class AttacksWindow : Window
 
     /// <summary>Why Label and Allow cannot be used for this address, or <see langword="null"/> when they can.</summary>
     private string? ActionsUnavailable(string? canonical) =>
-        settings is null || store is null ? AddressActions.NoStore(spanish)
+        settings is null || (showingWeb ? webStore is null : store is null) ? AddressActions.NoStore(spanish)
         : canonical is null ? L("Only a single address can be labelled or allowed from here.", "Desde aquí solo se puede etiquetar o permitir una dirección.")
         : AddressActions.Unavailable(settingsRead, spanish);
 
@@ -814,7 +835,7 @@ public partial class AttacksWindow : Window
     /// </summary>
     internal Task OpenEditorAsync(AddressAction kind)
     {
-        var address = AddressActions.Canonical(selected);
+        var address = AddressActions.Canonical(SelectedAddress);
         if (address is null || ActionsUnavailable(address) is not null) return Task.CompletedTask;
         editing = kind;
         editingAddress = address;
@@ -842,21 +863,22 @@ public partial class AttacksWindow : Window
         if (kind == AddressAction.Label)
         {
             var own = AddressActions.OwnLabel(editingValue?.Value, address);
-            ActionText.Text = AddressActions.LabelIntro(address, own, own is null ? AttackBoard.LabelFor(labels, address) : "", spanish);
+            var currentLabels = showingWeb ? webSnapshot?.Labels ?? AddressLabels.None : labels;
+            ActionText.Text = AddressActions.LabelIntro(address, own, own is null ? AttackBoard.LabelFor(currentLabels, address) : "", spanish);
             if (prefill && own is not null) LabelBox.Text = DisplayText.Clean(own, AddressActions.MaxLabel);
         }
         else
         {
             ActionText.Text = AddressActions.AllowConfirmation(address, spanish);
             // The detail's source, or the selected row while the detail is still being read: both carry the count.
-            var source = detailSource?.Address == address ? detailSource
+            var source = showingWeb ? null : detailSource?.Address == address ? detailSource
                 : Rows.SelectedItem is AttackSource row && row.Address == address ? row : null;
             var warning = AddressActions.AllowWarning(source, AddressActions.WouldBlockInForce(storeProblem is null ? decisions : null, address,
-                DateTimeOffset.UtcNow), Period(), spanish);
+                DateTimeOffset.UtcNow), showingWeb ? L("the Windows logon history", "el historial de inicios de sesión de Windows") : Period(), spanish);
             ActionWarningText.Text = warning ?? "";
             ActionWarning.Visibility = warning is null ? Visibility.Collapsed : Visibility.Visible;
         }
-        if (selected is not null) RenderActions(selected);
+        if (SelectedAddress is { } current) RenderActions(current);
         UpdateActionState();
     }
 
@@ -994,7 +1016,9 @@ public partial class AttacksWindow : Window
             }
         }
         await access;
-        if (!closed && view is not null) Render();
+        if (closed) return;
+        if (showingWeb) await LoadWebAsync();
+        else if (view is not null) Render();
     }
 
     /// <summary>The selected range in a sentence: "the last 24 hours".</summary>
@@ -1063,14 +1087,22 @@ public partial class AttacksWindow : Window
     private void HideDetail()
     {
         CloseEditor();
-        selected = null;
-        Rows.SelectedItem = null;
+        if (showingWeb)
+        {
+            webSelected = null;
+            WebRows.SelectedItem = null;
+        }
+        else
+        {
+            selected = null;
+            Rows.SelectedItem = null;
+        }
         Slide(0);
     }
 
     private void OnKey(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Escape && selected is not null)
+        if (e.Key == Key.Escape && SelectedAddress is not null)
         {
             HideDetail();
             e.Handled = true;
@@ -1079,10 +1111,10 @@ public partial class AttacksWindow : Window
 
     private void OnCopyAddress(object sender, RoutedEventArgs e)
     {
-        if (selected is null) return;
+        if (SelectedAddress is not { } address) return;
         try
         {
-            Clipboard.SetText(selected);
+            Clipboard.SetText(address);
         }
         catch (System.Runtime.InteropServices.ExternalException)
         {
@@ -1092,11 +1124,19 @@ public partial class AttacksWindow : Window
 
     private void OnRange(object sender, RoutedEventArgs e)
     {
-        range = sender == RangeHour ? AttackRange.Hour
+        if (restoringRange) return;
+        var wanted = sender == RangeHour ? AttackRange.Hour
             : sender == RangeSix ? AttackRange.SixHours
             : sender == RangeWeek ? AttackRange.Week
             : sender == RangeMonth ? AttackRange.Month
             : AttackRange.Day;
+        if (showingWeb)
+        {
+            webRange = wanted;
+            ResetWebFilter();
+            return;
+        }
+        range = wanted;
         if (!IsLoaded) return;
         if (StoredAttackBoard.IsStored(range) && !stored.ContainsKey(range)) _ = LoadStoredAsync();
         else Render();
@@ -1110,6 +1150,11 @@ public partial class AttacksWindow : Window
     private void OnLive(object sender, RoutedEventArgs e)
     {
         if (!IsLoaded) return;
+        if (showingWeb)
+        {
+            UpdateWebLive();
+            return;
+        }
         if (Live.IsChecked == true && securityReadable) StartLive(); else StopLive();
         Render();
     }
@@ -1118,9 +1163,15 @@ public partial class AttacksWindow : Window
 
     private async void OnRefresh(object sender, RoutedEventArgs e)
     {
+        if (showingWeb) await LoadWebAsync();
+        else await RefreshAttacksAsync();
+    }
+
+    private Task RefreshAttacksAsync()
+    {
         StopLive();
         while (pending.TryDequeue(out _)) { }
-        await LoadAsync();
+        return LoadAsync();
     }
 
     private void OnElevate(object sender, RoutedEventArgs e)
@@ -1132,14 +1183,14 @@ public partial class AttacksWindow : Window
             {
                 UseShellExecute = true,
                 Verb = "runas",
-                Arguments = (spanish ? "--es" : "--en") + " --attacks"
+                Arguments = (spanish ? "--es" : "--en") + (showingWeb ? " --web" : " --attacks")
             });
             Application.Current.Shutdown();
         }
         catch (Win32Exception)
         {
             // The operator declined the elevation prompt; keep this window as it is.
-            Footer.Text = L("Elevation was cancelled.", "Se canceló la elevación.");
+            (showingWeb ? WebFooter : Footer).Text = L("Elevation was cancelled.", "Se canceló la elevación.");
         }
     }
 
@@ -1147,6 +1198,7 @@ public partial class AttacksWindow : Window
     {
         closed = true;
         StopLive();
+        webLive.Stop();
     }
 
     private static Brush Frozen(string color)
