@@ -4,6 +4,14 @@ namespace WPShield.Desktop.Tests;
 
 internal static class DesktopDispatcher
 {
+    /// <summary>
+    /// How long a window test may run before it is called hung. It guards against a hang, it does not
+    /// measure speed: a window test takes well under a second alone, but in CI every test assembly runs at
+    /// once, and a cold WPF start on a loaded runner has taken longer than 30 seconds. A failed assertion
+    /// still fails at once.
+    /// </summary>
+    internal static readonly TimeSpan HangGuard = TimeSpan.FromMinutes(2);
+
     internal static async Task RunAsync(Func<Task> verify)
     {
         var completed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -25,6 +33,6 @@ internal static class DesktopDispatcher
         thread.IsBackground = true;
         thread.SetApartmentState(ApartmentState.STA);
         thread.Start();
-        await completed.Task.WaitAsync(TimeSpan.FromSeconds(30));
+        await completed.Task.WaitAsync(HangGuard);
     }
 }
