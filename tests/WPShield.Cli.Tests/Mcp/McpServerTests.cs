@@ -165,12 +165,12 @@ public sealed class McpServerTests : IDisposable
     /// <summary>A server and a client joined by two in-memory pipes, as an assistant and <c>wpshield mcp</c> are by stdio.</summary>
     private sealed class Session : IAsyncDisposable
     {
-        private readonly EvidenceAccess? access;
+        private readonly McpEvidenceAccess? access;
         private readonly McpServer server;
         private readonly Task running;
         private readonly CancellationTokenSource stop = new();
 
-        private Session(EvidenceAccess? access, McpServer server, McpClient client)
+        private Session(McpEvidenceAccess? access, McpServer server, McpClient client)
         {
             this.access = access;
             this.server = server;
@@ -182,11 +182,11 @@ public sealed class McpServerTests : IDisposable
 
         public static Task<Session> StartAsync(string store, CancellationToken token)
         {
-            var access = new EvidenceAccess(store, isElevated: () => true);
+            var access = new McpEvidenceAccess(store, isElevated: () => true);
             return StartAsync(new EvidenceTools(access, new FixedClock(EvidenceToolsTests.Now)), token, access);
         }
 
-        public static async Task<Session> StartAsync(EvidenceTools tools, CancellationToken token, EvidenceAccess? access = null)
+        public static async Task<Session> StartAsync(EvidenceTools tools, CancellationToken token, McpEvidenceAccess? access = null)
         {
             var toServer = new Pipe();
             var toClient = new Pipe();

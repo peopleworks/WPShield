@@ -72,7 +72,7 @@ internal static class McpCommand
         Console.SetOut(diagnostics);
         try
         {
-            using var access = new EvidenceAccess(path);
+            using var access = new McpEvidenceAccess(path);
             var problem = access.TryOpenNow();
             diagnostics.WriteLine(problem is null
                 ? $"wpshield mcp: evidence store opened read-only. Detailed records: {(access.DetailedRecords ? "on" : "off")}. Path: {path}"

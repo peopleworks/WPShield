@@ -93,10 +93,10 @@ internal sealed partial class EvidenceTools
         ("6h", TimeSpan.FromHours(6)), ("1d", TimeSpan.FromDays(1))
     ];
 
-    private readonly EvidenceAccess access;
+    private readonly McpEvidenceAccess access;
     private readonly TimeProvider clock;
 
-    public EvidenceTools(EvidenceAccess access, TimeProvider? clock = null)
+    public EvidenceTools(McpEvidenceAccess access, TimeProvider? clock = null)
     {
         this.access = access;
         this.clock = clock ?? TimeProvider.System;

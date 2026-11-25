@@ -23,7 +23,7 @@ internal sealed record StoreProblem(string Reason, string Message, string Remedy
 /// by <c>list_settings</c> as waiting for a restart, never applied silently.
 /// </para>
 /// </remarks>
-internal sealed class EvidenceAccess : IDisposable
+internal sealed class McpEvidenceAccess : IDisposable
 {
     private readonly object gate = new();
     private readonly Func<string, EvidenceStore> open;
@@ -31,7 +31,7 @@ internal sealed class EvidenceAccess : IDisposable
     private EvidenceStore? store;
     private bool disposed;
 
-    public EvidenceAccess(string path, Func<string, EvidenceStore>? open = null, Func<bool>? isElevated = null)
+    public McpEvidenceAccess(string path, Func<string, EvidenceStore>? open = null, Func<bool>? isElevated = null)
     {
         Path = path;
         this.open = open ?? EvidenceStore.OpenReadOnly;

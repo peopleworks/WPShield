@@ -15,7 +15,7 @@ public sealed partial class EvidenceToolsTests : IDisposable
 {
     internal static readonly DateTimeOffset Now = new(2026, 11, 24, 12, 0, 0, TimeSpan.Zero);
     private readonly string directory = Path.Combine(Path.GetTempPath(), "wpshield-mcp-tests", Guid.NewGuid().ToString("N"));
-    private readonly List<EvidenceAccess> opened = [];
+    private readonly List<McpEvidenceAccess> opened = [];
     private long record;
 
     public EvidenceToolsTests() => Directory.CreateDirectory(directory);
@@ -525,7 +525,7 @@ public sealed partial class EvidenceToolsTests : IDisposable
 
     internal EvidenceTools Tools(bool elevated = true, DateTimeOffset? now = null)
     {
-        var access = new EvidenceAccess(DbPath, isElevated: () => elevated);
+        var access = new McpEvidenceAccess(DbPath, isElevated: () => elevated);
         opened.Add(access);
         return new EvidenceTools(access, new FixedClock(now ?? Now));
     }
