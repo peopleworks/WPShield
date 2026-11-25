@@ -3,7 +3,6 @@ global using System.Collections.Generic;
 global using WPShield.Abstractions;
 global using WPShield.Integration;
 global using WPShield.NetworkFilter;
-global using WPShield.NetworkFilter.Rules;
 global using WPShield.SecurityMonitor;
 global using WPShield.SecurityMonitor.Rules;
 global using Xunit;

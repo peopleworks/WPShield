@@ -66,6 +66,7 @@
     -->
     <ProjectReference Include="../WPShield.NetworkSensor/WPShield.NetworkSensor.csproj" />
 
+    <ProjectReference Include="../WPShield.NetworkFilter/WPShield.NetworkFilter.csproj" />
     <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
     <!-- The evidence store's read-only queries (ADR 0007), for 'wpshield mcp'. -->
     <ProjectReference Include="../WPShield.Evidence/WPShield.Evidence.csproj" />

@@ -13,7 +13,7 @@ public sealed class NetworkFilterBlockListSinkTests
         IpRange.TryParseAllow(allow, out var allowed, out _);
         var service = new NetworkFilterService(
             new NetworkFilterOptions { Mode = mode, AllowList = [allowed!] },
-            new FakeDivertDriver(),
+            () => new FakeWfpSession(),
             new RecordingSink(),
             lockoutProbe: () => new LockoutProbe(3389, []));
         Assert.True(service.Start().Started);
@@ -53,6 +53,31 @@ public sealed class NetworkFilterBlockListSinkTests
         Assert.Equal("198.51.100.9", entry.Range.ToString());
         Assert.Equal("WP-SEC-002", entry.Source);
         Assert.NotNull(entry.ExpiresAt);
+    }
+
+    [Theory]
+    [InlineData(4624, "3")]
+    [InlineData(4625, "2")]
+    [InlineData(4625, "")]
+    public void ARecordWithoutARemoteFailedLogonDoesNotRequestABlock(int eventId, string logonType)
+    {
+        using var filter = StartedFilter(NetworkFilterMode.Block);
+
+        new NetworkFilterBlockListSink(filter).Publish(Finding(NetworkInspectionAction.Block),
+            Logon("198.51.100.9") with { EventId = eventId, LogonType = logonType });
+
+        Assert.Empty(filter.Blocks.Snapshot());
+    }
+
+    [Fact]
+    public void UnknownRulesCannotRequestABlock()
+    {
+        using var filter = StartedFilter(NetworkFilterMode.Block);
+
+        new NetworkFilterBlockListSink(filter).Publish(Finding(NetworkInspectionAction.Block, "WP-SEC-000"),
+            Logon("198.51.100.9"));
+
+        Assert.Empty(filter.Blocks.Snapshot());
     }
 
     [Fact]

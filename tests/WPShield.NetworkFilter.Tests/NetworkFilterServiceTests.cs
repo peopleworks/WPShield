@@ -2,340 +2,128 @@ using System.Net;
 
 namespace WPShield.NetworkFilter.Tests;
 
-/// <summary>
-/// The safety properties of ADR 0006, asserted end to end through a fake driver.
-/// </summary>
 public sealed class NetworkFilterServiceTests
 {
-    private const string Operator = "203.0.113.50";
-
-    private readonly FakeDivertDriver _driver = new();
+    private readonly FakeWfpSession _session = new();
     private readonly RecordingSink _sink = new();
     private readonly ManualTimeProvider _time = new();
 
-    private NetworkFilterService Create(NetworkFilterOptions options, params TcpConnectionSnapshot[] connections) =>
-        new(options, _driver, _sink, _time, () => new LockoutProbe(3770, connections));
-
-    private static NetworkFilterOptions Block(params string[] blocks) => new()
-    {
-        Mode = NetworkFilterMode.Block,
-        AllowList = [Ranges.Allow(Operator)],
-        Blocks = [.. blocks.Select(Ranges.Block)],
-        MaxConnectionsPerMinute = 5,
-        MaxDistinctPortsPerMinute = 3,
-    };
-
-    private static byte[] Syn(string source, int port = 443) =>
-        SyntheticPacket.Tcp(IPAddress.Parse(source), IPAddress.Parse("192.0.2.1"), (ushort)port);
-
     [Fact]
-    public void Monitor_NeverOpensADropHandle_EvenWithBlocksAndBlockFindings()
+    public void MonitorReportsOperatorAndLogRequestsWithoutOpeningWfp()
     {
-        using var service = Create(new NetworkFilterOptions
-        {
-            AllowList = [Ranges.Allow(Operator)],
-            Blocks = [Ranges.Block("94.0.0.0/24")],
-            MaxDistinctPortsPerMinute = 3,
-            SynRulesMayBlock = true,
-        });
+        using var service = new NetworkFilterService(new NetworkFilterOptions { Blocks = [Ranges.Block("203.0.113.20")] },
+            () => throw new InvalidOperationException("Monitor opened WFP."), _sink);
 
         Assert.True(service.Start().Started);
-        for (var port = 1; port <= 20; port++)
-        {
-            service.InspectPacket(Syn("198.51.100.9", port));
-        }
+        service.RequestBlock(Ranges.Ip("198.51.100.4"), "WP-SEC-002");
 
-        service.RequestBlock(IPAddress.Parse("198.51.100.10"), "WP-SEC-002", EvidenceGrade.Authenticated);
-        service.Maintain();
-
-        Assert.Empty(_driver.Live(DivertHandleKind.Drop));
-        Assert.False(service.IsEnforcing);
-        Assert.NotEmpty(_sink.WithAction(NetworkFilterActions.WouldBlock));
-        Assert.Single(_driver.Live(DivertHandleKind.Observe));
+        Assert.Equal(2, _sink.WithAction(NetworkFilterActions.WouldBlock).Count());
+        Assert.Empty(_sink.WithAction(NetworkFilterActions.Blocked));
     }
 
     [Fact]
-    public void Monitor_IsTheDefault()
+    public void BlockRefusesAnEmptyAllowListWithoutOpeningWfp()
     {
-        Assert.Equal(NetworkFilterMode.Monitor, new NetworkFilterOptions().Mode);
-    }
+        using var service = new NetworkFilterService(new NetworkFilterOptions { Mode = NetworkFilterMode.Block },
+            () => throw new InvalidOperationException("Opened WFP without an allow-list."), _sink,
+            lockoutProbe: () => new LockoutProbe(3389, []));
 
-    [Fact]
-    public void Block_AppliesOperatorBlocksBeforeObserving()
-    {
-        using var service = Create(Block("94.0.0.0/24"));
-
-        Assert.True(service.Start().Started);
-
-        var drop = Assert.Single(_driver.Live(DivertHandleKind.Drop));
-        Assert.Contains("94.0.0.0", drop.Filter, StringComparison.Ordinal);
-        Assert.True(_driver.Opened.ToList().IndexOf(drop) < _driver.Opened.ToList().IndexOf(_driver.Live(DivertHandleKind.Observe)[0]));
-    }
-
-    [Fact]
-    public void Block_WithoutAnAllowList_IsRefusedAndOpensNothing()
-    {
-        using var service = Create(Block("94.0.0.0/24") with { AllowList = [] });
-
-        var outcome = service.Start();
-
-        Assert.False(outcome.Started);
-        Assert.Contains("--allow", outcome.Refusal, StringComparison.Ordinal);
-        Assert.Empty(_driver.Opened);
-    }
-
-    [Fact]
-    public void Block_WithAnRdpClientNotOnTheAllowList_IsRefused()
-    {
-        var connection = new TcpConnectionSnapshot(
-            new IPEndPoint(IPAddress.Parse("192.0.2.1"), 3770),
-            new IPEndPoint(IPAddress.Parse("198.51.100.200"), 50000));
-        using var service = Create(Block(), connection);
-
-        var outcome = service.Start();
-
-        Assert.False(outcome.Started);
-        Assert.Contains("198.51.100.200", outcome.Refusal, StringComparison.Ordinal);
-        Assert.Empty(_driver.Opened);
-    }
-
-    [Fact]
-    public void Block_WhenTheSelfTestFails_IsRefusedAndOpensNothing()
-    {
-        _driver.EvaluateOverride = (_, source) => source.ToString() == "198.51.101.0" ? true : null;
-        using var service = Create(Block());
-
-        var outcome = service.Start();
-
-        Assert.False(outcome.Started);
-        Assert.Contains("self-test", outcome.Refusal, StringComparison.Ordinal);
-        Assert.Empty(_driver.Opened);
-    }
-
-    [Fact]
-    public void Monitor_WhenTheSelfTestFails_StartsAndWarns()
-    {
-        _driver.EvaluateOverride = (_, source) => source.ToString() == "198.51.101.0" ? true : null;
-        using var service = Create(new NetworkFilterOptions());
-
-        Assert.True(service.Start().Started);
-        Assert.Single(_sink.WithAction(NetworkFilterActions.SelfTestFailed));
-    }
-
-    [Fact]
-    public void Block_WhenTheDriverIsMissing_IsRefusedWithTheDriverMessage()
-    {
-        _driver.OpenFails = (_, _) => true;
-        using var service = Create(Block("94.0.0.0/24"));
-
-        var outcome = service.Start();
-
-        Assert.False(outcome.Started);
-        Assert.Contains("fake: open refused", outcome.Refusal, StringComparison.Ordinal);
-        Assert.Empty(_driver.Live(DivertHandleKind.Drop));
-    }
-
-    [Fact]
-    public void SynFindings_DoNotBlockUnlessTheOperatorOptedIn()
-    {
-        using var service = Create(Block());
-        service.Start();
-
-        for (var port = 1; port <= 20; port++)
-        {
-            service.InspectPacket(Syn("198.51.100.9", port));
-        }
-
-        service.Maintain();
-
-        Assert.Equal(0, service.Blocks.Count);
-        Assert.NotEmpty(_sink.WithAction(NetworkFilterActions.NotBlockedSpoofable));
-        Assert.Empty(_driver.Live(DivertHandleKind.Drop));
-    }
-
-    [Fact]
-    public void SynFindings_BlockWithTheOptInAndTheBlockIsEnforcedAtTheNextMaintenance()
-    {
-        using var service = Create(Block() with { SynRulesMayBlock = true });
-        service.Start();
-
-        for (var port = 1; port <= 20; port++)
-        {
-            service.InspectPacket(Syn("198.51.100.9", port));
-        }
-
-        Assert.Equal(1, service.Blocks.Count);
-        service.Maintain();
-
-        Assert.Contains("198.51.100.9", Assert.Single(_driver.Live(DivertHandleKind.Drop)).Filter, StringComparison.Ordinal);
-        Assert.Single(_sink.WithAction(NetworkFilterActions.Blocked));
-    }
-
-    [Fact]
-    public void AnAllowListedAddress_IsNeitherObservedNorBlocked()
-    {
-        using var service = Create(Block() with { SynRulesMayBlock = true });
-        service.Start();
-
-        for (var port = 1; port <= 20; port++)
-        {
-            service.InspectPacket(Syn(Operator, port));
-        }
-
-        var outcome = service.RequestBlock(IPAddress.Parse(Operator), "WP-SEC-002", EvidenceGrade.Authenticated);
-
-        Assert.Equal(BlockAddOutcome.RefusedAllowListed, outcome);
-        Assert.Equal(0, service.Blocks.Count);
-        Assert.Empty(_sink.WithAction(NetworkFilterActions.Observed));
+        Assert.False(service.Start().Started);
     }
 
     [Theory]
-    [InlineData("127.0.0.1")]
-    [InlineData("::1")]
-    [InlineData("0.0.0.0")]
-    public void AnUnblockableAddressFromALogRecord_IsRefused(string address)
+    [InlineData(true)]
+    [InlineData(false)]
+    public void BlockRefusesWhenProbeCannotBeReadOrRemoved(bool removeFails)
     {
-        using var service = Create(Block());
-        service.Start();
+        var session = new FakeWfpSession { EnumerationSucceeds = removeFails, RejectDeletes = removeFails };
+        using var service = new NetworkFilterService(
+            new NetworkFilterOptions
+            {
+                Mode = NetworkFilterMode.Block,
+                AllowList = [Ranges.Allow("203.0.113.1")],
+                Blocks = [Ranges.Block("203.0.113.8")],
+            },
+            () => session, _sink, _time, () => new LockoutProbe(3389, []));
 
-        Assert.Null(service.RequestBlock(IPAddress.Parse(address), "WP-SEC-002", EvidenceGrade.Authenticated));
-        Assert.Equal(0, service.Blocks.Count);
+        Assert.False(service.Start().Started);
+        Assert.Single(session.Added);
+        Assert.True(session.Disposed);
+        Assert.Empty(session.Filters);
     }
 
     [Fact]
-    public void ADynamicBlock_ExpiresAndTheDropHandleCloses()
+    public void DynamicBlockExpiresAfterItsLastFindingAndLeavesOperatorBlock()
     {
-        using var service = Create(Block() with { DynamicBlockLifetime = TimeSpan.FromMinutes(10) });
-        service.Start();
-        service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated);
-        service.Maintain();
-        Assert.Single(_driver.Live(DivertHandleKind.Drop));
+        var operatorBlock = Ranges.Block("203.0.113.8");
+        var source = Ranges.Ip("198.51.100.4");
+        using var service = CreateService([operatorBlock]);
 
-        _time.Advance(TimeSpan.FromMinutes(10));
-        service.Maintain();
-
-        Assert.Empty(_driver.Live(DivertHandleKind.Drop));
-        Assert.Single(_sink.WithAction(NetworkFilterActions.Expired));
-    }
-
-    [Fact]
-    public void Stop_ClosesEveryHandleAndLiftsEveryBlock()
-    {
-        var service = Create(Block("94.0.0.0/24"));
-        service.Start();
-        Assert.NotEmpty(_driver.Live(DivertHandleKind.Drop));
-
-        service.Stop();
-
-        Assert.All(_driver.Opened, handle => Assert.True(handle.IsDisposed));
-        Assert.Single(_sink.WithAction(NetworkFilterActions.Stopped));
-    }
-
-    [Fact]
-    public void TheObserverThread_FeedsDeliveredPacketsToTheRules()
-    {
-        using var service = Create(new NetworkFilterOptions { MaxDistinctPortsPerMinute = 3 });
-        service.Start();
-        var observer = Assert.Single(_driver.Live(DivertHandleKind.Observe));
-
-        for (var port = 1; port <= 3; port++)
-        {
-            observer.Deliver(Syn("198.51.100.9", port));
-        }
-
-        var deadline = DateTime.UtcNow.AddSeconds(5);
-        while (!_sink.WithAction(NetworkFilterActions.Observed).Any() && DateTime.UtcNow < deadline)
-        {
-            Thread.Sleep(10);
-        }
-
-        Assert.NotEmpty(_sink.WithAction(NetworkFilterActions.Observed));
-        service.Stop();
-    }
-
-    [Fact]
-    public void Findings_AreThrottledPerSourceNotLoggedPerPacket()
-    {
-        using var service = Create(new NetworkFilterOptions { MaxConnectionsPerMinute = 5 });
-        service.Start();
-
-        for (var i = 0; i < 1_000; i++)
-        {
-            service.InspectPacket(Syn("198.51.100.9"));
-        }
-
-        Assert.InRange(_sink.WithAction(NetworkFilterActions.Observed).Count(), 1, 3);
-    }
-
-    [Fact]
-    public void EventState_CarriesNormalizedValuesOnly()
-    {
-        using var service = Create(new NetworkFilterOptions { MaxDistinctPortsPerMinute = 3 });
-        service.Start();
-        for (var port = 1; port <= 3; port++)
-        {
-            service.InspectPacket(Syn("198.51.100.9", port));
-        }
-
-        foreach (var value in _sink.Events.SelectMany(e => e.State.Values))
-        {
-            Assert.True(value is int or bool || (value is string text && text.All(c => c is >= ' ' and <= '~')), $"unexpected state value {value}");
-        }
-    }
-
-    [Fact]
-    public void ABlockEvent_CarriesWpNet001AndTheFindingThatAskedForIt()
-    {
-        using var service = Create(Block());
-        service.Start();
-
-        service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated);
-
-        var blocked = Assert.Single(_sink.WithAction(NetworkFilterActions.Blocked));
-        Assert.Equal("WP-NET-001", blocked.State["rule_id"]);
-        Assert.Equal("WP-SEC-002", blocked.State["requested_by"]);
-    }
-
-    [Fact]
-    public void ADynamicBlock_ForAnAddressThatJoinedTheRdpPortMidRun_IsRefused()
-    {
-        var connections = new List<TcpConnectionSnapshot>();
-        using var service = new NetworkFilterService(Block(), _driver, _sink, _time, () => new LockoutProbe(3770, [.. connections]));
         Assert.True(service.Start().Started);
+        Assert.Equal(BlockAddOutcome.Added, service.RequestBlock(source, "WP-SEC-002"));
+        _time.Advance(TimeSpan.FromMinutes(59));
+        Assert.Equal(BlockAddOutcome.Extended, service.RequestBlock(source, "WP-SEC-002"));
+        _time.Advance(TimeSpan.FromMinutes(59));
+        service.Maintain();
+        Assert.Equal(2, _session.Filters.Count);
+        _time.Advance(TimeSpan.FromMinutes(1));
+        service.Maintain();
 
-        connections.Add(new TcpConnectionSnapshot(
-            new IPEndPoint(IPAddress.Parse("192.0.2.1"), 3770),
-            new IPEndPoint(IPAddress.Parse("::ffff:198.51.100.9"), 50000)));
-        var outcome = service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated);
+        Assert.Equal(operatorBlock, Assert.Single(_session.Filters.Values));
+        var expired = Assert.Single(_sink.WithAction(NetworkFilterActions.Expired));
+        Assert.Equal("WP-NET-001", expired.State["rule_id"]);
+        Assert.Equal("WP-SEC-002", expired.State["requested_by"]);
+        service.Dispose();
+        Assert.Empty(_session.Filters);
+    }
 
-        Assert.Null(outcome);
-        Assert.Equal(0, service.Blocks.Count);
+    [Fact]
+    public void RdpClientAndAllowListAreCheckedBeforeDynamicEnforcement()
+    {
+        var rdpClient = Ranges.Ip("198.51.100.4");
+        var local = new IPEndPoint(Ranges.Ip("192.0.2.10"), 3390);
+        var remote = new IPEndPoint(rdpClient, 50023);
+        var connected = false;
+        using var service = CreateService([], () => new LockoutProbe(local.Port, connected ? [new(local, remote)] : []));
+
+        Assert.True(service.Start().Started);
+        connected = true;
+        Assert.Null(service.RequestBlock(rdpClient, "WP-SEC-002"));
+        Assert.Equal(BlockAddOutcome.RefusedAllowListed, service.RequestBlock(Ranges.Ip("203.0.113.1"), "WP-SEC-002"));
+        Assert.Empty(_session.Filters);
         Assert.Single(_sink.WithAction(NetworkFilterActions.RefusedRdpClient));
     }
 
     [Fact]
-    public void WhenTheConnectionsCannotBeRead_ADynamicBlockIsRefused()
+    public void AFailedExpirationClosesTheSessionAndLiftsEveryBlock()
     {
-        var failing = false;
-        using var service = new NetworkFilterService(Block(), _driver, _sink, _time, () =>
-            failing ? throw new System.Net.NetworkInformation.NetworkInformationException() : new LockoutProbe(3770, []));
+        using var service = CreateService([Ranges.Block("203.0.113.8")]);
         Assert.True(service.Start().Started);
+        Assert.Equal(BlockAddOutcome.Added, service.RequestBlock(Ranges.Ip("198.51.100.4"), "WP-SEC-002"));
+        _session.RejectDeletes = true;
 
-        failing = true;
+        _time.Advance(TimeSpan.FromHours(1));
+        service.Maintain();
 
-        Assert.Null(service.RequestBlock(IPAddress.Parse("198.51.100.9"), "WP-SEC-002", EvidenceGrade.Authenticated));
-        Assert.Equal(0, service.Blocks.Count);
+        Assert.True(_session.Disposed);
+        Assert.Empty(_session.Filters);
+        Assert.Empty(_sink.WithAction(NetworkFilterActions.Expired));
+        Assert.Single(_sink.WithAction(NetworkFilterActions.EnforcementFailed));
     }
 
     [Fact]
-    public void OptionsThatOverlap_AreRefusedBeforeAnythingOpens()
+    public void NativeAddFailureDuringStartupClosesTheSessionAndDoesNotReportBlocks()
     {
-        using var service = Create(Block("94.0.0.0/24") with { AllowList = [Ranges.Allow("94.0.0.7")] });
+        _session.RejectAdd = range => range.Equals(Ranges.Block("203.0.113.9"));
+        using var service = CreateService([Ranges.Block("203.0.113.8"), Ranges.Block("203.0.113.9")]);
 
-        var outcome = service.Start();
-
-        Assert.False(outcome.Started);
-        Assert.Contains("overlap", outcome.Refusal, StringComparison.Ordinal);
-        Assert.Empty(_driver.Opened);
+        Assert.False(service.Start().Started);
+        Assert.True(_session.Disposed);
+        Assert.Empty(_session.Filters);
+        Assert.Empty(_sink.WithAction(NetworkFilterActions.Blocked));
     }
+
+    private NetworkFilterService CreateService(IReadOnlyList<IpRange> blocks, Func<LockoutProbe>? probe = null) => new(
+        new NetworkFilterOptions { Mode = NetworkFilterMode.Block, AllowList = [Ranges.Allow("203.0.113.1")], Blocks = blocks },
+        () => _session, _sink, _time, probe ?? (() => new LockoutProbe(3389, [])));
 }

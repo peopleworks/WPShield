@@ -9,10 +9,8 @@ failures that packets alone cannot reveal.
 ## Why it exists
 
 A production WordPress host on Windows Server was observed receiving sustained attacks on
-both web ports (80/443) and Remote Desktop (TCP 3389). `WPShield.NetworkFilter` can drop
-packets from the addresses on its block list and observe connection rates, but it cannot see
-whether an RDP connection succeeded or failed — that happens inside the authentication session,
-after the TCP handshake.
+both web ports (80/443) and Remote Desktop (TCP 3389). `WPShield.NetworkFilter` can block a remote address at WFP connection authorization. The
+Security log records whether the subsequent RDP authentication succeeded or failed.
 
 `WPShield.SecurityMonitor` reads Event ID `4625` (failed logon) and `4624` (logon success)
 from the Security log, identifies Logon Type `10` (RemoteInteractive = RDP), and raises
@@ -189,7 +187,7 @@ while (!cts.Token.IsCancellationRequested)
 
 | Milestone | Relationship |
 |---|---|
-| M2.7 Network filter | `WPShield.Integration` turns SecurityMonitor findings into block requests; not wired to `network-filter` until the reader reads new events only. |
+| M2.7 Network filter | `WPShield.Integration` turns SecurityMonitor findings into block requests; the standalone enforcer accepts operator entries. Any decision-engine connection requires a separate ADR. |
 | M3 Rate limiting | `WP-SEC-001` and `WP-SEC-002` are the authentication half of rate limiting; M3 adds the HTTP half. |
 | M4 Observability | SecurityMonitor findings use the same JSON Lines log envelope as the gateway. |
 | M6 Windows Service | `SecurityEventMonitor` can run as part of the WPShield Windows service under `NT SERVICE\WPShield`. |

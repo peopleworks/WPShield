@@ -47,11 +47,6 @@ internal static class ProgramMain
             return PrintVerbHelp(command);
         }
 
-        if (command == "network-filter")
-        {
-            return Fail(NetworkFilterCommand.Unavailable);
-        }
-
         try
         {
             var options = CliOptions.Parse(rest);
@@ -75,6 +70,7 @@ internal static class ProgramMain
                 "network-monitor" => NetworkMonitorCommand.Run(options, Console.Out),
                 "iis-login" => IisLoginCommand.RunAsync(options, Console.Out).GetAwaiter().GetResult(),
                 "audit-reference" => AuditReferenceCommand.RunAsync(options, Console.Out, Console.Error).GetAwaiter().GetResult(),
+                "network-filter" => NetworkFilterCommand.Run(options, Console.Out),
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
                 "evidence" => EvidenceCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? string.Empty),
                 "attacks" => AttacksCommand.Run(options, Console.Out, Console.Error),
@@ -283,7 +279,8 @@ internal static class ProgramMain
                           --snapshot <report.json> --source <rdp|sql|iis> (--record-id <id> | --line <n>)
 
               network-filter
-                          Unavailable in this preview. No host-wide packet blocking is active.
+                          Preview host-wide address blocks (Monitor by default), or enforce with WFP.
+                          Use network-filter --check to verify the current Windows identity.
 
               security-monitor
                           Read-only Windows Security event log monitor. Detects RDP brute force

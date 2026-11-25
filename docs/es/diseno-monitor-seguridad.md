@@ -11,9 +11,8 @@ paquetes por sí solos no pueden revelar.
 
 Un host de producción con WordPress sobre Windows Server fue observado recibiendo ataques
 sostenidos tanto en puertos web (80/443) como en Escritorio Remoto (TCP 3389).
-`WPShield.NetworkFilter` puede descartar paquetes de las direcciones de su lista de bloqueo y
-observar tasas de conexión, pero no puede ver si una conexión RDP tuvo éxito o falló — eso ocurre
-dentro de la sesión de autenticación, después del handshake TCP.
+`WPShield.NetworkFilter` puede bloquear una dirección remota cuando WFP autoriza la conexión. El
+registro de Seguridad indica si la autenticación RDP posterior se completó o falló.
 
 `WPShield.SecurityMonitor` lee el Event ID `4625` (inicio de sesión fallido) y `4624` (inicio
 de sesión exitoso) del registro de Seguridad, identifica el Tipo de Inicio de Sesión `10`
@@ -194,7 +193,7 @@ while (!cts.Token.IsCancellationRequested)
 
 | Hito | Relación |
 |---|---|
-| M2.7 Filtro de red | `WPShield.Integration` convierte los hallazgos de SecurityMonitor en solicitudes de bloqueo; no se conectará a `network-filter` hasta que el lector lea solo eventos nuevos. |
+| M2.7 Filtro de red | `WPShield.Integration` convierte los hallazgos de SecurityMonitor en solicitudes de bloqueo; el proceso independiente acepta entradas del operador. La conexión con el motor de decisión requiere otro ADR. |
 | M3 Limitación de velocidad | `WP-SEC-001` y `WP-SEC-002` son la mitad de autenticación de la limitación de velocidad; M3 agrega la mitad HTTP. |
 | M4 Observabilidad | Los hallazgos de SecurityMonitor usan el mismo sobre JSON Lines que el gateway. |
 | M6 Servicio de Windows | `SecurityEventMonitor` puede ejecutarse como parte del servicio de Windows de WPShield bajo `NT SERVICE\WPShield`. |

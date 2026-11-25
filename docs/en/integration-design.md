@@ -9,24 +9,23 @@ Block action into a block request on the network filter.
 ## What it does
 
 ```text
-Security log 4625 ─► SecurityEventMonitor ─► WP-SEC-001 / WP-SEC-002 finding (Block)
+Security log 4625 (types 3 and 10) ─► SecurityEventMonitor ─► WP-SEC-001 / WP-SEC-002 finding (Block)
                                                 │
                                                 ▼
                                NetworkFilterBlockListSink.Publish
                                                 │  address from the event's IpAddress field
                                                 ▼
-                 NetworkFilterService.RequestBlock(address, rule, EvidenceGrade.Authenticated)
+                 NetworkFilterService.RequestBlock(address, rule)
 ```
 
-The sink decides nothing. Whether a request becomes a block is decided by
+The sink forwards Block findings for event 4625 of logon type 3 or 10. Whether a request becomes a block is decided by
 `NetworkFilterService.RequestBlock`, the one place blocks are created ([ADR 0006](adr/0006-network-layer-blocking.md)):
 
 - Monitor mode logs `would-block` and blocks nothing.
 - An allow-listed address is refused, whatever the finding says.
 - Loopback, unspecified and other unblockable addresses (`127.0.0.1`, `::1`, `-`) are refused.
-- Security-log evidence is graded `Authenticated`: the logon failed after a completed TCP handshake,
-  so the address answered packets and was not forged. That is why it may add a block in Block mode
-  without `--syn-rules-may-block`. The block carries the dynamic TTL (default 60 minutes).
+- A trusted source must establish the address through a completed TCP handshake. The block carries
+  the dynamic TTL (default 60 minutes).
 
 ## Why it is not wired
 
@@ -35,7 +34,8 @@ and collects everything into a list on the first scan. On a host with a 2 GB Sec
 an unbounded read into memory, and every address that ever failed enough logons in a five-minute
 window would be blocked at start-up. ADR 0002 already said how the Security log should be consumed:
 subscribe to new events (`EventLogWatcher` with `readExistingEvents: false`), do not read the file.
-The sink is wired to `network-filter` once the reader does that.
+The standalone command applies operator entries. Connection to the ADR 0009 decision engine
+requires a separate ADR.
 
 Two further limits of the monitor matter to anyone wiring it:
 

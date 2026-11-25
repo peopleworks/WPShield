@@ -1,508 +1,357 @@
-using System.Globalization;
 using System.Net;
 using System.Net.NetworkInformation;
-using WPShield.Abstractions;
-using WPShield.NetworkFilter.Native;
-using WPShield.NetworkFilter.Rules;
+using System.Security;
 
 namespace WPShield.NetworkFilter;
 
-/// <summary>How much an address in a finding can be trusted to be the sender's own.</summary>
-public enum EvidenceGrade
+/// <summary>Reads the configured RDP port and established TCP connections for the lockout guard.</summary>
+internal sealed record LockoutProbe(int RdpPort, IReadOnlyList<TcpConnectionSnapshot> Connections)
 {
-    /// <summary>The operator named it.</summary>
-    Operator,
-
-    /// <summary>A logon failed after a completed TCP handshake, so the address answered packets.</summary>
-    Authenticated,
-
-    /// <summary>A connection attempt: a SYN, whose source address anyone can forge.</summary>
-    ConnectionAttempt,
+    internal static LockoutProbe ReadFromHost() => new(LockoutGuard.ReadRdpPort(), LockoutGuard.ReadEstablishedConnections());
 }
 
-/// <summary>Reads what the lockout guard needs. Replaceable so the guard can be tested.</summary>
-public sealed record LockoutProbe(int RdpPort, IReadOnlyList<TcpConnectionSnapshot> Connections)
-{
-    public static LockoutProbe ReadFromHost() => new(LockoutGuard.ReadRdpPort(), LockoutGuard.ReadEstablishedConnections());
-}
+public sealed record StartOutcome(bool Started, string? Refusal);
 
-public sealed record StartOutcome(bool Started, string? Refusal, SelfTestReport? SelfTest);
-
-/// <summary>
-/// The network filter: the observer, the block set, and - in Block mode only - the enforcer.
-/// </summary>
-/// <remarks>
-/// Start refuses rather than degrades. In Block mode it runs the WinDivert self-test, then the lockout
-/// guard, then opens the DROP handles for the operator's blocks, then the observer; any failure stops
-/// it with the reason and leaves nothing open. Stopping closes every handle, which lifts every block.
-/// </remarks>
+/// <summary>Owns the block set and one dynamic WFP session in Block mode.</summary>
 public sealed class NetworkFilterService : IDisposable
 {
-    private const int StateNew = 0;
-    private const int StateRunning = 1;
-    private const int StateStopped = 2;
-
+    private static readonly TimeSpan MaintenanceInterval = TimeSpan.FromSeconds(5);
     private readonly NetworkFilterOptions _options;
-    private readonly IDivertDriver _driver;
+    private readonly string? _configurationError;
+    private readonly Func<IWfpSession> _openSession;
     private readonly INetworkFilterEventSink _sink;
     private readonly TimeProvider _time;
     private readonly Func<LockoutProbe> _lockoutProbe;
-    private readonly IReadOnlyList<INetworkInspectionRule> _rules;
-    private readonly FindingThrottle _throttle;
-    private readonly object _maintenanceGate = new();
-    private NetworkEnforcer? _enforcer;
-    private IDivertHandle? _observer;
-    private Thread? _observerThread;
+    private readonly FindingThrottle _throttle = new(10_000);
+    private readonly object _gate = new();
+    private Dictionary<IpRange, ulong> _filters = [];
+    private IWfpSession? _session;
     private ITimer? _timer;
-    private long _appliedVersion = -1;
-    private int _state = StateNew;
+    private bool _started;
+    private bool _running;
 
-    public NetworkFilterService(
+    public NetworkFilterService(NetworkFilterOptions options, INetworkFilterEventSink sink)
+        : this(options, WfpSession.Open, sink)
+    {
+    }
+
+    internal NetworkFilterService(
         NetworkFilterOptions options,
-        IDivertDriver driver,
+        Func<IWfpSession> openSession,
         INetworkFilterEventSink sink,
         TimeProvider? time = null,
         Func<LockoutProbe>? lockoutProbe = null)
     {
         ArgumentNullException.ThrowIfNull(options);
-        ArgumentNullException.ThrowIfNull(driver);
+        ArgumentNullException.ThrowIfNull(openSession);
         ArgumentNullException.ThrowIfNull(sink);
 
-        _options = options;
-        _driver = driver;
+        _configurationError = options.Validate();
+        _options = _configurationError is null
+            ? options with { AllowList = [.. options.AllowList], Blocks = [.. options.Blocks] }
+            : new NetworkFilterOptions();
+        _openSession = openSession;
         _sink = sink;
         _time = time ?? TimeProvider.System;
         _lockoutProbe = lockoutProbe ?? LockoutProbe.ReadFromHost;
-        Blocks = new BlockSet(options.AllowList, Math.Clamp(options.MaximumBlocks, 1, BlockSet.MaximumCapacity), _time);
-        _rules =
-        [
-            new RateLimitRule(Math.Max(1, options.MaxConnectionsPerMinute), Math.Max(1, options.MaximumTrackedSources)),
-            new PortScanRule(Math.Max(1, options.MaxDistinctPortsPerMinute), Math.Max(1, options.MaximumTrackedSources)),
-        ];
-        _throttle = new FindingThrottle(Math.Max(1, options.MaximumTrackedSources));
+        Blocks = new BlockSet(_options.AllowList, _options.MaximumBlocks, _time);
     }
 
-    public BlockSet Blocks { get; }
-
-    public NetworkFilterMode Mode => _options.Mode;
-
-    /// <summary>True only in Block mode, while DROP handles may exist.</summary>
-    public bool IsEnforcing
-    {
-        get
-        {
-            lock (_maintenanceGate)
-            {
-                return _enforcer is not null;
-            }
-        }
-    }
+    internal BlockSet Blocks { get; }
 
     public StartOutcome Start()
     {
-        if (Interlocked.CompareExchange(ref _state, StateRunning, StateNew) != StateNew)
+        lock (_gate)
         {
-            throw new InvalidOperationException("The network filter has already been started.");
-        }
-
-        var invalid = _options.Validate();
-        if (invalid is not null)
-        {
-            return Refuse(invalid, null);
-        }
-
-        SelfTestReport report;
-        try
-        {
-            report = NetworkFilterSelfTest.Run(_driver, _options.AllowList, _options.Blocks);
-        }
-        catch (DivertDriverException exception)
-        {
-            return Refuse(exception.Message, null);
-        }
-
-        if (!report.Passed)
-        {
-            var failures = string.Join("; ", report.Failures.Select(failure =>
-                failure.Detail is null ? failure.Name : $"{failure.Name} ({failure.Detail})"));
-            if (_options.Mode == NetworkFilterMode.Block)
+            if (_started)
             {
-                return Refuse(
-                    $"The WinDivert self-test failed: {failures}. Block mode does not start on filters the library does not evaluate as expected.",
-                    report);
+                throw new InvalidOperationException("The network filter can only be started once.");
             }
 
-            Emit(NetworkFilterEventLevel.Warning, "The WinDivert self-test failed; Block mode would refuse to start.", new()
+            _started = true;
+            if (_configurationError is not null)
             {
-                ["action"] = NetworkFilterActions.SelfTestFailed,
-                ["failures"] = failures,
-            });
-        }
-
-        if (_options.Mode == NetworkFilterMode.Block)
-        {
-            var probe = _lockoutProbe();
-            var guard = LockoutGuard.Evaluate(probe.RdpPort, probe.Connections, _options.AllowList);
-            if (!guard.MayBlock)
-            {
-                return Refuse(guard.Refusal ?? "Block mode refused by the lockout guard.", report);
+                return Refuse(_configurationError);
             }
-        }
 
-        foreach (var block in _options.Blocks)
-        {
-            _ = Blocks.TryAdd(block, "operator", lifetime: null);
-        }
-
-        try
-        {
             if (_options.Mode == NetworkFilterMode.Block)
             {
-                lock (_maintenanceGate)
+                var probe = ReadLockoutProbe();
+                if (probe is null)
                 {
-                    var enforcer = new NetworkEnforcer(_driver, _options.EnforcerPriority);
-                    EnforcementResult applied;
-                    try
+                    return Refuse("Block mode could not read the RDP port and established connections.");
+                }
+
+                var guard = LockoutGuard.Evaluate(probe.RdpPort, probe.Connections, _options.AllowList);
+                if (!guard.MayBlock)
+                {
+                    return Refuse(guard.Refusal ?? "Block mode refused by the RDP lockout guard.");
+                }
+
+                try
+                {
+                    _session = _openSession();
+                    var report = NetworkFilterSelfTest.Run(_session, _options.AllowList);
+                    if (!report.Passed)
                     {
-                        applied = ApplyBlocks(enforcer);
-                    }
-                    catch
-                    {
-                        enforcer.Dispose();
-                        throw;
+                        return Refuse(report.Detail);
                     }
 
-                    if (applied.Status == EnforcementStatus.Failed)
+                    foreach (var range in _options.Blocks)
                     {
-                        enforcer.Dispose();
-                        return Refuse(applied.Error ?? "The DROP filters could not be applied.", report);
+                        _ = Blocks.TryAdd(range, "operator", lifetime: null);
                     }
 
-                    _enforcer = enforcer;
+                    ApplyBlocks();
+                    _timer = _time.CreateTimer(_ => Maintain(), null, MaintenanceInterval, MaintenanceInterval);
+                }
+                catch (WfpException exception)
+                {
+                    return Refuse(exception.Message);
+                }
+                catch
+                {
+                    CloseSession();
+                    throw;
                 }
             }
 
-            _observer = _driver.Open(DivertFilterBuilder.ObserverFilter, DivertHandleKind.Observe, _options.ObserverPriority);
-        }
-        catch (DivertDriverException exception)
-        {
-            lock (_maintenanceGate)
+            _running = true;
+            Emit(NetworkFilterEventLevel.Information, "Network filter started.", new()
             {
-                _enforcer?.Dispose();
-                _enforcer = null;
+                ["action"] = NetworkFilterActions.Started,
+                ["mode"] = _options.Mode.ToString(),
+                ["allow_list_entries"] = _options.AllowList.Count,
+                ["operator_blocks"] = _options.Blocks.Count,
+            });
+
+            foreach (var range in _options.Mode == NetworkFilterMode.Monitor ? _options.Blocks.Distinct() : _filters.Keys)
+            {
+                ReportBlock(range, "operator", lifetime: null);
             }
 
-            return Refuse(exception.Message, report);
+            return new StartOutcome(true, null);
         }
-
-        _observerThread = new Thread(ObserveLoop) { IsBackground = true, Name = "WPShield network observer" };
-        _observerThread.Start();
-        _timer = _time.CreateTimer(_ => Maintain(), null, _options.MaintenanceInterval, _options.MaintenanceInterval);
-
-        Emit(NetworkFilterEventLevel.Information, "Network filter started.", new()
-        {
-            ["action"] = NetworkFilterActions.Started,
-            ["mode"] = _options.Mode.ToString(),
-            ["allow_list_entries"] = _options.AllowList.Count,
-            ["operator_blocks"] = _options.Blocks.Count,
-            ["syn_rules_may_block"] = _options.SynRulesMayBlock,
-        });
-
-        return new StartOutcome(true, null, report);
     }
 
-    /// <summary>
-    /// Asks for an address to be blocked. Whether it is depends on the mode, the allow-list, the
-    /// evidence grade and the block set's capacity; every refusal is logged with its reason.
-    /// </summary>
-    public BlockAddOutcome? RequestBlock(IPAddress address, string ruleId, EvidenceGrade grade)
+    /// <summary>Accepts an address confirmed by a TCP handshake in a trusted log source.</summary>
+    public BlockAddOutcome? RequestBlock(IPAddress address, string ruleId)
     {
         ArgumentNullException.ThrowIfNull(address);
         ArgumentException.ThrowIfNullOrWhiteSpace(ruleId);
 
-        if (address.IsIPv4MappedToIPv6)
+        lock (_gate)
         {
-            address = address.MapToIPv4();
-        }
-
-        var source = address.ToString();
-        var now = _time.GetUtcNow();
-        var report = grade == EvidenceGrade.Operator || _throttle.ShouldReport("block:" + ruleId, source, 100, now);
-
-        if (!IpRange.TryParseBlock(source, out var range, out _))
-        {
-            if (report)
+            if (!_running)
             {
-                Emit(NetworkFilterEventLevel.Warning, "Not blocked: the address can never be blocked.", Describe(NetworkFilterActions.RefusedUnblockable, ruleId, source));
+                return null;
             }
 
-            return null;
-        }
-
-        if (Blocks.IsAllowListed(address))
-        {
-            if (report)
+            if (address.IsIPv4MappedToIPv6)
             {
-                Emit(NetworkFilterEventLevel.Warning, "Not blocked: the address is on the allow-list.", Describe(NetworkFilterActions.RefusedAllowListed, ruleId, source));
+                address = address.MapToIPv4();
             }
 
-            return BlockAddOutcome.RefusedAllowListed;
-        }
-
-        if (_options.Mode == NetworkFilterMode.Monitor)
-        {
-            if (report)
+            var source = address.ToString();
+            var report = _throttle.ShouldReport(ruleId, source, _time.GetUtcNow());
+            if (!IpRange.TryParseBlock(source, out var range, out _) || range is null)
             {
-                Emit(NetworkFilterEventLevel.Information, "Would block (Monitor mode).", Describe(NetworkFilterActions.WouldBlock, ruleId, source));
+                ReportRefusal(report, NetworkFilterActions.RefusedUnblockable, "The address cannot be blocked.", ruleId, source);
+                return null;
             }
 
-            return null;
-        }
-
-        if (grade == EvidenceGrade.ConnectionAttempt && !_options.SynRulesMayBlock)
-        {
-            if (report)
+            if (Blocks.IsAllowListed(address))
             {
-                Emit(
-                    NetworkFilterEventLevel.Information,
-                    "Not blocked: the evidence is a connection attempt, whose source address can be forged. --syn-rules-may-block allows it.",
-                    Describe(NetworkFilterActions.NotBlockedSpoofable, ruleId, source));
+                ReportRefusal(report, NetworkFilterActions.RefusedAllowListed, "The address is allow-listed.", ruleId, source);
+                return BlockAddOutcome.RefusedAllowListed;
             }
 
-            return null;
-        }
-
-        if (grade != EvidenceGrade.Operator && !Blocks.IsBlocked(address) && MayBeTheOperatorsSession(address))
-        {
-            if (report)
+            if (_options.Mode == NetworkFilterMode.Monitor)
             {
-                Emit(
-                    NetworkFilterEventLevel.Warning,
-                    "Not blocked: the address holds a connection to the RDP port right now. Add it to --allow if it is yours.",
-                    Describe(NetworkFilterActions.RefusedRdpClient, ruleId, source));
+                if (report)
+                {
+                    ReportBlock(range, ruleId, _options.DynamicBlockLifetime);
+                }
+
+                return null;
             }
 
-            return null;
-        }
+            if (!Blocks.IsBlocked(address) && MayBeRdpClient(address))
+            {
+                ReportRefusal(report, NetworkFilterActions.RefusedRdpClient,
+                    "The address has an RDP connection or the connection list could not be verified.", ruleId, source);
+                return null;
+            }
 
-        var outcome = Blocks.TryAdd(range!, ruleId, grade == EvidenceGrade.Operator ? null : _options.DynamicBlockLifetime);
-        switch (outcome)
-        {
-            case BlockAddOutcome.Added:
-                var state = DescribeBlock(NetworkFilterActions.Blocked, ruleId, source);
-                state["lifetime_minutes"] = grade == EvidenceGrade.Operator ? 0 : (int)_options.DynamicBlockLifetime.TotalMinutes;
-                Emit(NetworkFilterEventLevel.Warning, "Blocked.", state);
-                break;
-            case BlockAddOutcome.RefusedFull when report:
-                Emit(NetworkFilterEventLevel.Warning, "Not blocked: the block set is full.", Describe(NetworkFilterActions.RefusedFull, ruleId, source));
-                break;
-            case BlockAddOutcome.RefusedAllowListed when report:
-                Emit(NetworkFilterEventLevel.Warning, "Not blocked: the address is on the allow-list.", Describe(NetworkFilterActions.RefusedAllowListed, ruleId, source));
-                break;
-        }
+            var outcome = Blocks.TryAdd(range, ruleId, _options.DynamicBlockLifetime);
+            if (outcome == BlockAddOutcome.RefusedFull)
+            {
+                ReportRefusal(report, NetworkFilterActions.RefusedFull, "The block set is full.", ruleId, source);
+            }
+            else if (outcome == BlockAddOutcome.Added)
+            {
+                if (!TryApplyBlocks())
+                {
+                    return null;
+                }
 
-        return outcome;
+                ReportBlock(range, ruleId, _options.DynamicBlockLifetime);
+            }
+
+            return outcome;
+        }
     }
 
-    /// <summary>Removes expired blocks and, in Block mode, rebuilds the DROP filters if the set changed.</summary>
-    public void Maintain()
+    internal void Maintain()
     {
-        lock (_maintenanceGate)
+        lock (_gate)
         {
-            if (Volatile.Read(ref _state) != StateRunning)
+            if (!_running)
             {
                 return;
             }
 
-            foreach (var expired in Blocks.RemoveExpired())
+            var expired = Blocks.RemoveExpired();
+            if (expired.Count == 0 || !TryApplyBlocks())
             {
-                Emit(NetworkFilterEventLevel.Information, "Block expired.", DescribeBlock(NetworkFilterActions.Expired, expired.Source, expired.Range.ToString()));
+                return;
             }
 
-            if (_enforcer is not null && Blocks.Version != _appliedVersion)
+            foreach (var entry in expired)
             {
-                _ = ApplyBlocks(_enforcer);
+                Emit(NetworkFilterEventLevel.Information, "Block expired.",
+                    DescribeBlock(NetworkFilterActions.Expired, entry.Source, entry.Range.ToString()));
             }
         }
     }
 
-    /// <summary>Stops observing and closes every DROP handle, lifting every block.</summary>
-    public void Stop()
+    public void Dispose()
     {
-        if (Interlocked.Exchange(ref _state, StateStopped) != StateRunning)
+        lock (_gate)
+        {
+            _started = true;
+            if (!_running)
+            {
+                return;
+            }
+
+            CloseSession();
+            Emit(NetworkFilterEventLevel.Information, "Network filter stopped.", new()
+            {
+                ["action"] = NetworkFilterActions.Stopped,
+            });
+        }
+    }
+
+    private void ApplyBlocks()
+    {
+        var session = _session!;
+        var desired = WfpFilterBuilder.SelectBlocks(Blocks.Snapshot().Select(entry => entry.Range), _options.AllowList).ToHashSet();
+        var removals = _filters.Keys.Except(desired).ToArray();
+        var additions = desired.Except(_filters.Keys).ToArray();
+        if (removals.Length == 0 && additions.Length == 0)
         {
             return;
         }
 
-        _timer?.Dispose();
-        _observer?.Shutdown();
-        _observerThread?.Join(TimeSpan.FromSeconds(5));
-        _observer?.Dispose();
-
-        lock (_maintenanceGate)
+        var next = new Dictionary<IpRange, ulong>(_filters);
+        session.Update(() =>
         {
-            _enforcer?.Dispose();
-            _enforcer = null;
-        }
+            foreach (var range in removals)
+            {
+                session.Delete(next[range]);
+                _ = next.Remove(range);
+            }
 
-        Emit(NetworkFilterEventLevel.Information, "Network filter stopped; every block was lifted with its handle.", new()
-        {
-            ["action"] = NetworkFilterActions.Stopped,
+            foreach (var range in additions)
+            {
+                next.Add(range, session.Add(range));
+            }
         });
+        _filters = next;
     }
 
-    public void Dispose() => Stop();
-
-    /// <summary>One packet from the observer. Internal so tests can drive it without a thread.</summary>
-    internal void InspectPacket(ReadOnlySpan<byte> packet)
+    private bool TryApplyBlocks()
     {
-        if (!PacketHeaderParser.TryParse(packet, out var headers) || !headers.Syn || headers.Ack)
-        {
-            return;
-        }
-
-        var source = headers.Source.IsIPv4MappedToIPv6 ? headers.Source.MapToIPv4() : headers.Source;
-        if (Blocks.IsAllowListed(source))
-        {
-            return;
-        }
-
-        var context = new NetworkInspectionContext
-        {
-            SourceIp = source.ToString(),
-            DestinationIp = headers.Destination.ToString(),
-            SourcePort = headers.SourcePort,
-            DestinationPort = headers.DestinationPort,
-            Protocol = "TCP",
-            Timestamp = _time.GetUtcNow(),
-            PacketSize = packet.Length,
-        };
-
-        foreach (var rule in _rules)
-        {
-            var result = rule.Inspect(context);
-            if (result.Score == 0)
-            {
-                continue;
-            }
-
-            if (_throttle.ShouldReport(result.RuleId, context.SourceIp, result.Score, context.Timestamp))
-            {
-                var state = Describe(NetworkFilterActions.Observed, result.RuleId, context.SourceIp);
-                state["score"] = result.Score;
-                state["destination_port"] = context.DestinationPort;
-                foreach (var (key, value) in result.Evidence)
-                {
-                    if (value is int)
-                    {
-                        state[key] = value;
-                    }
-                }
-
-                Emit(NetworkFilterEventLevel.Information, "Connection pattern observed.", state);
-            }
-
-            if (result.Action == NetworkInspectionAction.Block)
-            {
-                _ = RequestBlock(source, result.RuleId, EvidenceGrade.ConnectionAttempt);
-            }
-        }
-    }
-
-    private void ObserveLoop()
-    {
-        var buffer = new byte[WinDivertNative.MtuMax];
         try
         {
-            while (true)
-            {
-                var length = _observer!.Receive(buffer);
-                if (length <= 0)
-                {
-                    return;
-                }
-
-                InspectPacket(buffer.AsSpan(0, length));
-            }
+            ApplyBlocks();
+            return true;
         }
-        catch (DivertDriverException exception)
+        catch (WfpException exception)
         {
-            Emit(NetworkFilterEventLevel.Error, "The observer stopped receiving packets. Blocks already in force stay in force.", new()
-            {
-                ["action"] = NetworkFilterActions.ObserverFailed,
-                ["win32_error"] = exception.Win32Error,
-            });
-        }
-        catch (ObjectDisposedException)
-        {
-            // Stop() closed the handle while a receive was pending.
-        }
-    }
-
-    /// <summary>
-    /// Writes the current block set to <paramref name="enforcer"/>. Start passes the enforcer it has
-    /// not published yet, so a failed first apply never leaves a half-built one in <c>_enforcer</c>.
-    /// </summary>
-    private EnforcementResult ApplyBlocks(NetworkEnforcer enforcer)
-    {
-        var version = Blocks.Version;
-        var snapshot = Blocks.Snapshot();
-        var plan = DivertFilterBuilder.BuildDropFilters(snapshot.Select(entry => entry.Range), _options.AllowList);
-        if (plan.Excluded.Count > 0)
-        {
-            Emit(NetworkFilterEventLevel.Error, "Allow-listed entries reached the block set and were left out of enforcement.", new()
+            CloseSession();
+            Emit(NetworkFilterEventLevel.Error, "A WFP update failed and the dynamic session was closed.", new()
             {
                 ["action"] = NetworkFilterActions.EnforcementFailed,
-                ["excluded"] = string.Join(",", plan.Excluded),
+                ["reason"] = exception.Message,
             });
+            return false;
         }
-
-        var result = enforcer.Apply(plan);
-        switch (result.Status)
-        {
-            case EnforcementStatus.Applied:
-                _appliedVersion = version;
-                Emit(NetworkFilterEventLevel.Information, "Enforcement updated.", new()
-                {
-                    ["action"] = NetworkFilterActions.EnforcementUpdated,
-                    ["blocks"] = snapshot.Count,
-                    ["drop_handles"] = result.HandleCount,
-                });
-                break;
-            case EnforcementStatus.Unchanged:
-                _appliedVersion = version;
-                break;
-            default:
-                Emit(NetworkFilterEventLevel.Error, "Enforcement update failed; the previous blocks stay in force.", new()
-                {
-                    ["action"] = NetworkFilterActions.EnforcementFailed,
-                    ["reason"] = result.Error ?? "unknown",
-                });
-                break;
-        }
-
-        return result;
     }
 
-    private StartOutcome Refuse(string reason, SelfTestReport? report)
+    private void CloseSession()
     {
-        Volatile.Write(ref _state, StateStopped);
+        _running = false;
+        _timer?.Dispose();
+        _timer = null;
+        _session?.Dispose();
+        _session = null;
+        _filters.Clear();
+    }
+
+    private StartOutcome Refuse(string reason)
+    {
+        CloseSession();
         Emit(NetworkFilterEventLevel.Error, "Network filter did not start.", new()
         {
             ["action"] = NetworkFilterActions.Stopped,
             ["reason"] = reason,
         });
-        return new StartOutcome(false, reason, report);
+        return new StartOutcome(false, reason);
     }
 
-    private static Dictionary<string, object> Describe(string action, string ruleId, string source) => new()
+    private LockoutProbe? ReadLockoutProbe()
     {
-        ["action"] = action,
-        ["rule_id"] = ruleId,
-        ["source_ip"] = source,
-    };
+        try
+        {
+            return _lockoutProbe();
+        }
+        catch (Exception exception) when (exception is NetworkInformationException or UnauthorizedAccessException or SecurityException or IOException)
+        {
+            return null;
+        }
+    }
 
-    /// <summary>A block-list event: the rule is WP-NET-001, and the finding that asked is named separately.</summary>
+    private bool MayBeRdpClient(IPAddress address)
+    {
+        var probe = ReadLockoutProbe();
+        return probe is null || probe.Connections.Any(connection => connection.Local.Port == probe.RdpPort &&
+            (connection.Remote.Address.IsIPv4MappedToIPv6 ? connection.Remote.Address.MapToIPv4() : connection.Remote.Address).Equals(address));
+    }
+
+    private void ReportBlock(IpRange range, string requestedBy, TimeSpan? lifetime)
+    {
+        var monitor = _options.Mode == NetworkFilterMode.Monitor;
+        var state = DescribeBlock(monitor ? NetworkFilterActions.WouldBlock : NetworkFilterActions.Blocked, requestedBy, range.ToString());
+        state["lifetime_minutes"] = (int)(lifetime?.TotalMinutes ?? 0);
+        Emit(monitor ? NetworkFilterEventLevel.Information : NetworkFilterEventLevel.Warning,
+            monitor ? "Would block (Monitor mode)." : "Blocked by WFP.", state);
+    }
+
+    private void ReportRefusal(bool report, string action, string message, string ruleId, string source)
+    {
+        if (report)
+        {
+            Emit(NetworkFilterEventLevel.Warning, message, new()
+            {
+                ["action"] = action,
+                ["rule_id"] = ruleId,
+                ["source_ip"] = source,
+            });
+        }
+    }
+
     private static Dictionary<string, object> DescribeBlock(string action, string requestedBy, string source) => new()
     {
         ["action"] = action,
@@ -511,37 +360,15 @@ public sealed class NetworkFilterService : IDisposable
         ["source_ip"] = source,
     };
 
-    /// <summary>
-    /// The lockout guard runs at start; this is its live half. The operator may reconnect from a new
-    /// address mid-run, so a dynamic block for an address that holds an RDP connection right now is
-    /// refused. When the connections cannot be read, the answer is "maybe", which refuses: "nobody
-    /// could look" is not "nobody is there".
-    /// </summary>
-    private bool MayBeTheOperatorsSession(IPAddress address)
-    {
-        try
-        {
-            var probe = _lockoutProbe();
-            return probe.Connections.Any(connection =>
-                connection.Local.Port == probe.RdpPort &&
-                (connection.Remote.Address.IsIPv4MappedToIPv6 ? connection.Remote.Address.MapToIPv4() : connection.Remote.Address).Equals(address));
-        }
-        catch (Exception exception) when (exception is NetworkInformationException or UnauthorizedAccessException or System.Security.SecurityException or IOException)
-        {
-            return true;
-        }
-    }
-
     private void Emit(NetworkFilterEventLevel level, string message, Dictionary<string, object> state)
     {
         try
         {
             _sink.Write(new NetworkFilterEvent(_time.GetUtcNow(), level, message, state));
         }
-        catch (Exception exception) when (exception is IOException or ObjectDisposedException or UnauthorizedAccessException)
+        catch (Exception exception) when (exception is IOException or ObjectDisposedException)
         {
-            // A failing log must not stop the observer or leave a half-applied enforcement update.
-            Console.Error.WriteLine(string.Create(CultureInfo.InvariantCulture, $"WPShield network filter: could not write an event ({exception.GetType().Name})."));
+            // The event sink may become unavailable independently of the filtering session.
         }
     }
 }

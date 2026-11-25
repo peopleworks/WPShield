@@ -8,7 +8,7 @@ namespace WPShield.NetworkFilter;
 /// <remarks>
 /// <para>
 /// The allow-list is applied here, at insertion: an entry that contains an allow-listed address is
-/// refused, whatever asked for it. <see cref="DivertFilterBuilder"/> excludes allow-listed addresses
+/// refused, whatever asked for it. <see cref="WfpFilterBuilder"/> excludes allow-listed addresses
 /// again when it writes the filters, so one defect is not enough to block the operator (ADR 0006,
 /// section 3).
 /// </para>

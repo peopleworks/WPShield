@@ -27,13 +27,12 @@ namespace WPShield.Cli;
 internal sealed class CliOptions
 {
     private readonly Dictionary<string, string?> _values;
+    private readonly bool _hasRepeatedOptions;
 
-    private readonly HashSet<string> _repeated;
-
-    private CliOptions(Dictionary<string, string?> values, HashSet<string> repeated)
+    private CliOptions(Dictionary<string, string?> values, bool hasRepeatedOptions)
     {
         _values = values;
-        _repeated = repeated;
+        _hasRepeatedOptions = hasRepeatedOptions;
     }
 
     public static CliOptions Parse(IReadOnlyList<string> args)
@@ -41,17 +40,7 @@ internal sealed class CliOptions
         ArgumentNullException.ThrowIfNull(args);
 
         var values = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
-        var repeated = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-        void Store(string name, string? value)
-        {
-            if (values.ContainsKey(name))
-            {
-                repeated.Add(name);
-            }
-
-            values[name] = value;
-        }
+        var repeated = false;
 
         for (var index = 0; index < args.Count; index++)
         {
@@ -64,49 +53,30 @@ internal sealed class CliOptions
             var separator = token.IndexOf('=', StringComparison.Ordinal);
             if (separator > 2)
             {
-                Store(token[..separator], token[(separator + 1)..]);
+                repeated |= values.ContainsKey(token[..separator]);
+                values[token[..separator]] = token[(separator + 1)..];
                 continue;
             }
 
+            repeated |= values.ContainsKey(token);
             if (index + 1 < args.Count && !args[index + 1].StartsWith("--", StringComparison.Ordinal))
             {
-                Store(token, args[index + 1]);
+                values[token] = args[index + 1];
                 index++;
                 continue;
             }
 
             // A bare --name is a flag. Stored as null rather than absent, so Has and Get can tell
             // "given with no value" apart from "not given".
-            Store(token, null);
+            values[token] = null;
         }
 
         return new CliOptions(values, repeated);
     }
 
-    /// <summary>
-    /// Refuses any option given more than once. Not the same call as
-    /// <see cref="RejectRepeated(string[])"/> with an empty list, which refuses nothing.
-    /// </summary>
     public void RejectRepeated()
     {
-        if (_repeated.Count > 0) throw new CliArgumentException("Repeated options are not supported by this command.");
-    }
-
-    /// <summary>
-    /// Refuses an option given more than once. The last value wins in <see cref="Get(string)"/>, which
-    /// is harmless for a port and dangerous for a list: <c>--allow A --allow B</c> would silently
-    /// allow-list only B. A verb whose options are lists of addresses calls this.
-    /// </summary>
-    public void RejectRepeated(params string[] names)
-    {
-        ArgumentNullException.ThrowIfNull(names);
-
-        var offending = names.Where(_repeated.Contains).Order(StringComparer.Ordinal).ToArray();
-        if (offending.Length > 0)
-        {
-            throw new CliArgumentException(
-                $"Option(s) given more than once: {string.Join(", ", offending)}. Give each once, with a comma-separated list.");
-        }
+        if (_hasRepeatedOptions) throw new CliArgumentException("Repeated options are not supported by this command.");
     }
 
     public bool Has(string name) => _values.ContainsKey(name);

@@ -1,10 +1,8 @@
 # ADR 0006 — Network-layer blocking inside WPShield
 
-- **Status:** Accepted on 2026-11-24: WPShield blocks host-wide itself, in Block mode only. The
-  **mechanism** was amended the same day — see
-  [Amendment: the Windows Filtering Platform instead of WinDivert](#amendment-2026-11-24-the-windows-filtering-platform-instead-of-windivert).
-  The pull request that implements this ADR stays a draft until the enforcer is replaced and the
-  amendment's validation has passed.
+- **Status:** Accepted on 2026-11-24. Block mode uses Windows Filtering Platform (WFP).
+  This implementation stays in research preview pending the disposable-VM validation below.
+
 - **Deciders:** Pedro Hernández (maintainer)
 - **Supersedes:** the network half of [ADR 0002](0002-host-level-brute-force-defence.md)'s decision
   (RDP, FTP, SMTP, SQL and SMB "belong to the sibling project"). ADR 0002's HTTP half stands.
@@ -45,29 +43,21 @@ that cannot take the host down.
 
 ## Decision
 
-**WPShield may drop inbound packets from addresses on its own block list**, under all of the
+**WPShield may block inbound traffic from addresses on its own block list**, under all of the
 following. Each one is enforced in code and covered by tests; none is advice.
 
 ### 1. Benign traffic never passes through WPShield
 
-Enforcement uses WinDivert handles opened with **`WINDIVERT_FLAG_DROP`**, whose filter matches only
-the addresses on the block list. The driver drops those packets in the kernel. Nothing else matches,
-so nothing else is diverted, and **there is no reinjection anywhere in the code**: no `WinDivertSend`
-declaration exists to call.
-
-Observation uses a separate handle opened with **`WINDIVERT_FLAG_SNIFF | WINDIVERT_FLAG_RECV_ONLY`**
-and the filter `inbound and !loopback and tcp.Syn and !tcp.Ack`: new inbound TCP connection attempts,
-nothing else. It receives copies. A slow, stopped or crashed observer loses copies, never traffic.
-
-This is the property the 2026-10-20 design lacked, and the reason it could not be made safe by fixing
-its bugs: a divert-and-reinject filter puts every packet of every site through a user-mode process,
-and a hung process is then a host outage.
+The kernel authorizes inbound traffic using one `FWP_ACTION_BLOCK` filter per accepted
+address or prefix, at `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4` or `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V6`.
+Each filter belongs to the WPShield sublayer and uses `FWPM_CONDITION_IP_REMOTE_ADDRESS`.
+The IPv4 value contains an address and mask in host order. The IPv6 value is a
+`FWP_V6_ADDR_AND_MASK`. WPShield passes policy to WFP. Traffic stays in the Windows network stack.
 
 ### 2. Blocks live exactly as long as the process
 
-No firewall rule, no registry value, no file. A block is a filter on a kernel handle owned by the
-WPShield process. When the process exits, crashes, is stopped, or the machine reboots, the handle
-closes and every block is gone.
+No firewall rule, no registry value, no file. A block is a WFP object owned by the dynamic session. When the process exits, crashes, is stopped, or the machine reboots, the session
+ends and every block is gone.
 
 That is ADR 0002's **dead-man's switch**, obtained from handle lifetime rather than from a scheduled
 task that removes rules. It is stronger, because there is nothing left behind to remove, and it does
@@ -83,7 +73,7 @@ ADR 0002's first mechanism, applied twice:
 
 - An allow-listed address can never enter the block set. A single address on the allow-list is
   refused; a range that contains an allow-listed address is refused.
-- The filter builder excludes allow-listed addresses again when it writes the DROP filters, so a
+- The filter builder excludes allow-listed addresses again when it builds the WFP filters, so a
   defect in one layer is not enough.
 
 And the lockout guard: **Block mode refuses to start** when the allow-list is empty, and when any
@@ -99,24 +89,19 @@ block is refused too, because "nobody could look" is not "nobody is there".
 
 ### 4. Monitor is the default
 
-**Monitor never opens a DROP handle.** It is not a flag checked before each drop; the enforcer is not
-constructed. Monitor logs who *would* have been blocked and why, which is how a week on a real host
-turns a plausible threshold into a defensible one. Block is the explicit `--mode Block`.
+Monitor opens no WFP session and reports proposed blocks. Block is explicit with `--mode Block`.
 
 ### 5. Evidence grade decides who may add a block
 
-A blocked address is blocked for **every site on the host**, which is why the source of a block
-matters more here than in the gateway.
+Blocks apply across the host. Operator-named addresses and ranges may be blocked for the session.
+An automated block request requires a trusted log source and a remote address confirmed by a
+completed TCP handshake. Dynamic blocks carry a TTL.
 
-| Source | Spoofable? | May add a block in Block mode |
-| --- | --- | --- |
-| Operator-named address or range (`--block`) | No | Yes |
-| Security log: repeated failed logons (`WP-SEC-001`, `WP-SEC-002`) | No: the logon failed after a completed TCP handshake | Yes, with a TTL |
-| Connection attempts per minute (`WP-NET-002`) | **Yes**: a SYN's source address is whatever the sender wrote | Only with `--syn-rules-may-block` |
-| Distinct ports per minute (`WP-NET-003`) | **Yes** | Only with `--syn-rules-may-block` |
-
-`--syn-rules-may-block` is documented for what it is: it lets anyone who can send forged SYNs get any
-non-allow-listed address blocked for the TTL, a search engine's crawler included.
+The Security log adapter accepts failed logons (4625, types 3 and 10) with a Block finding from
+`WP-SEC-001` or `WP-SEC-002`. The standalone command enforces operator entries. RdpCoreTS 140,
+SQL Server 18456, FTP 530 and gateway-observed WordPress login and XML-RPC are eligible sources
+only where the TCP address is established. A separate ADR is required to connect the ADR 0009
+decision engine. The SYN observer and its two rules have been removed.
 
 ### 6. Blocks expire and the set is bounded
 
@@ -124,153 +109,58 @@ Dynamic blocks expire after a TTL (default 60 minutes; a repeat finding extends 
 blocks last for the life of the process. The set holds at most 1,000 entries by default; when it is
 full, new dynamic blocks are refused and logged, and an operator entry is never evicted to make room.
 
-### 7. WPShield never loads a kernel driver as a side effect
+### 7. Enforcement uses the Windows network stack
 
-Every handle is opened with **`WINDIVERT_FLAG_NO_INSTALL`**. If the driver is not loaded, the command
-says so and stops. Loading it is an operator action named on the command line (`--install-driver`),
-because the WinDivert driver is a service other than WPShield and `AGENTS.md` keeps those manual
-unless the operator names the change.
-
-What WinDivert then does is read from its source (`dll/windivert.c`), not assumed: it registers a
-demand-start kernel driver service named `WinDivert`, starts it, and **marks it for deletion at
-once**. The registration does not survive `sc stop WinDivert` or a reboot, so nothing stays
-installed on the host. The price is that `--install-driver` is needed again on the first run after
-every reboot, and a future boot-time service will have to pass it knowingly.
-
-WinDivert is **not bundled**. It is LGPLv3, and the operator downloads 2.2.2 from the upstream
-release and checks it against the SHA-256 values in the network filter design. Its user-mode
-`WinDivert.dll` is unsigned; its kernel driver carries an EV code-signing certificate that Sectigo
-issued to a company, not to WinDivert's author. Every copy of the official 2.2.2 release carries that
-same driver, so the check that matters is that the operator's file is that file. `WinDivert.dll` is loaded from the WPShield assembly directory only, never
-from `PATH` or the working directory: the process runs elevated, and a DLL search that reaches a
-writable directory is a privilege escalation.
+`FwpmEngineOpen0` opens a session with `FWPM_SESSION_FLAG_DYNAMIC`. `FwpmSubLayerAdd0` adds the
+WPShield sublayer (`93a54814-5f1d-44f3-b2ba-f4df18dfe12f`) and `FwpmFilterAdd0` adds the filters.
+Both objects are dynamic. Filter flags omit persistence and boot-time enforcement. Every import of
+`fwpuclnt.dll` uses `DefaultDllImportSearchPaths(System32)`. The Base Filtering Engine ships with
+Windows and there is no separate driver installation.
+[Dynamic session lifetime](https://learn.microsoft.com/windows/win32/api/fwpmtypes/ns-fwpmtypes-fwpm_session0)
 
 ### 8. Self-test before Block
 
-Before the first DROP handle opens, every generated filter is compiled with
-`WinDivertHelperCompileFilter` and evaluated with `WinDivertHelperEvalFilter` against synthetic
-packets: an address on the block list must match; an allow-listed address and an unrelated one must
-not; the first and last address of every range must match and the addresses just outside it must
-not. **Block mode refuses to start if any check fails.** `--check` runs the same test without
-elevation and without the driver, because both helpers are plain user-mode functions in
-`WinDivert.dll`.
-
-This is how ranges can ship although the WinDivert documentation does not spell out how address
-comparison orders: the real library is asked, on the machine that will run it, before it is trusted.
+Before enforcing an operator or log-derived block, the process opens a dynamic session and adds a
+filter for an RFC 5737 address outside the allow-list. The same path checks that the block set and
+the filter builder both exclude an allow-listed entry. It reads the probe back by enumeration,
+validates its layer, sublayer, action and address, then deletes it. If any step fails, Block refuses
+to start and closes the session. `wpshield network-filter --check` runs this native test and reports
+the result for the current Windows identity.
 
 ### 9. Everything is bounded
 
-A DROP filter holds at most 200 of the 256 objects WinDivert allows (`WINDIVERT_FILTER_MAXLEN`); a
-larger block set is split across handles. The observer's per-source state is capped and evicts the
-least recently seen source, because a flood of SYNs with random forged sources must not grow a
-dictionary without limit. Findings are logged once per source and threshold, not once per packet.
-
-## What changes in the invariants
-
-- `AGENTS.md`'s rule that infrastructure the operator did not name is never changed **stands**. The
-  network filter writes no Windows Firewall rule and leaves nothing behind; the driver installation is
-  named.
-- `ROADMAP.md`'s opening statement and `docs.instructions.md` said no milestone modifies firewall
-  rules automatically. They now say what is true: WPShield never writes Windows Firewall rules, and
-  its network filter drops packets only from its own block list, only in Block mode, only while it
-  runs. Redefining "firewall rule" quietly to make the old sentence still sound true is the evasion
-  ADR 0002 warned about, so the sentence changes instead.
-- ADR 0002's HTTP split stands: credential attacks against `wp-login.php` and XML-RPC belong to the
-  gateway's M3, inline, where the real client address is already resolved.
+The block set defaults to 1,000 and is capped at 10,000. Up to 1,000 allow-list entries are accepted.
+WFP uses one filter per selected prefix. Enumeration reads up to 16,384 filters in batches of 64 and
+refuses to pass if it cannot find the probe within that budget. Updates are committed in transactions.
+A failed update closes the session so a failed deletion cannot leave expired filters in force.
 
 ## Consequences
 
-- **WinDivert's kernel code is on the packet path for the traffic its filters match.** It is a
-  third-party, signed driver; WPShield ships no kernel code. Filter evaluation per packet is bounded
-  by 256 objects per handle. DROP handles exist only while there are blocks; the observer filter is
-  four tests.
-- **Network blocks are host-wide.** The gateway's per-site isolation does not extend to them, which
-  is why section 5 exists. A block event names `WP-NET-001`, the block list, and records the finding
-  that asked for it in `requested_by`, so the log says both what was done and why.
-- **Not yet validated against the driver.** Everything above is built against the documented 2.2.2
-  API and tested through a fake driver. The first run against a real driver is the operator's, on a
-  development machine first, never on the production host first.
+- The Windows Firewall console and `Get-NetFirewallRule` do not show the dynamic filters.
+  Use `netsh wfp show filters`.
+- WPShield does not write Windows Firewall rules or change IIS, DNS, certificates or services.
+  ADR 0002's HTTP split stands. WordPress credential abuse remains part of the gateway's M3 work.
+- `WP-NET-001` identifies enforcement events, and `requested_by` identifies the source.
+- Persistent Windows Firewall rules and a packet divert-and-reinject process were rejected in favor
+  of dynamic kernel filters.
 
-## Alternatives considered
+## Amendment (2026-11-24) and VM acceptance
 
-- **Windows Firewall rules through the NetSecurity API.** They persist across crashes and reboots,
-  which is the lockout failure mode ADR 0002 described, and they are the thing `AGENTS.md` keeps
-  manual.
-- **The sibling project ADR 0002 proposed.** Still a valid shape. Its reason to exist was that
-  blocking meant persistent firewall changes; handle-scoped drops remove that reason, and the
-  operator wants one tool.
-- **Divert and reinject (the 2026-10-20 design).** Rejected in section 1.
+The amendment adopted WFP in place of WinDivert. WFP keeps the process-lifetime guarantee using
+Windows' Base Filtering Engine and removes the additional driver and packet observer. The
+[VM validation guide](../network-filter-vm-validation.md) carries the six acceptance checks. Keep
+the PR in draft until they pass on a disposable Windows Server VM.
 
-## Amendment (2026-11-24): the Windows Filtering Platform instead of WinDivert
-
-The decision stands: WPShield blocks addresses host-wide, in Block mode only, under sections 2-6 and
-9. The **mechanism** in sections 1, 7 and 8, and the first consequence above, changes. Those sections
-still describe the WinDivert enforcer this pull request implements today; they are rewritten in the
-change that replaces it.
-
-**Enforcement moves to Windows' own Filtering Platform** (`fwpuclnt.dll`: `FwpmEngineOpen0`,
-`FwpmSubLayerAdd0`, `FwpmFilterAdd0`), in a session opened with `FWPM_SESSION_FLAG_DYNAMIC`.
-
-Why:
-
-- **Section 2 survives exactly.** Microsoft documents that every object added in a dynamic session is
-  deleted when the session ends, and that this holds even if the application crashes
-  ([FWPM_SESSION0](https://learn.microsoft.com/windows/win32/api/fwpmtypes/ns-fwpmtypes-fwpm_session0),
-  [WFP best practices](https://learn.microsoft.com/windows/win32/fwp/best-practices)). A block is
-  still a kernel object owned by the process, and process exit still lifts every block.
-- **No third-party kernel driver.** The Base Filtering Engine and the filter engine ship with Windows.
-  There is no `--install-driver`, no unsigned DLL, no question about who signed the driver, nothing to
-  reinstall after a reboot, nothing to download.
-- **The host this project protects already runs a third-party network-stack driver** (endpoint
-  protection) that has crashed it. A second one, for a feature that only has to drop traffic from
-  known addresses, is a risk with no matching benefit.
-- **No 200-object filter budget.** WFP filters carry address and prefix conditions directly.
-- RdpGuard, the product the operator benchmarks against, documents that it blocks through the
-  Filtering Platform rather than through Windows Firewall rules
-  ([RdpGuard FAQ](https://rdpguard.com/faq.aspx)).
-
-What changes:
-
-- **Section 1.** Block filters live at `FWPM_LAYER_ALE_AUTH_RECV_ACCEPT_V4` and `_V6` in a WPShield
-  sublayer and match only block-list addresses minus the allow-list. Benign traffic still never
-  reaches a user-mode process, and there is still no reinjection anywhere: WFP has none to call.
-- **The SYN observer goes with WinDivert.** `WP-NET-002` and `WP-NET-003` lose their source. Host-wide
-  block requests come from log sensors whose source address a TCP handshake has confirmed: Security
-  4625 for logon types 3 and 10, RdpCoreTS 140, SQL Server 18456, FTP 530, and WordPress login and
-  XML-RPC through the gateway. Section 5 stands. SYN-based rules may return later through ETW, still
-  behind `--syn-rules-may-block`.
-- **Section 7** becomes trivially true: there is no driver to load. The import rule still applies:
-  `fwpuclnt.dll` resolves from `System32` only.
-- **Section 8.** Before the first block, Block mode opens a dynamic session, adds a filter for an
-  RFC 5737 address, reads it back by enumeration, checks the allow-list exclusion and deletes it.
-  Block refuses to start if any step fails. Adding a filter needs administrator rights, so `--check`
-  without elevation can only validate how filters are built.
-- **Not a firewall rule.** Dynamic WFP filters do not appear in the Windows Firewall console or in
-  `Get-NetFirewallRule`, so ADR 0005's "firewall rules stay manual" is untouched. They appear in
-  `netsh wfp show filters`. The operator documentation must say where to look, because someone
-  searching the firewall console for a block will not find it.
-
-Validation before Block mode ships, on a disposable Windows Server VM and never first on the
-production host:
-
-1. A filter in WPShield's sublayer refuses a new TCP connection from a test address to a port that a
-   Windows Firewall *allow* rule opens. Record what happens with a rule marked "override block rules".
-2. `taskkill /F` on the process removes every WPShield filter within one second.
-3. An established RDP session from an allow-listed address survives a block on another address.
-4. 10,000 filters: add time, Base Filtering Engine memory, connection-setup latency.
-5. A third-party endpoint-protection product with its own network filtering enabled at the same time:
-   no crash, and its own blocks unchanged.
-6. **Which identity may add filters.** The service runs as `NT SERVICE\WPShield`, never `LocalSystem`.
-   If that account cannot add filters, decide between an enforcer process an administrator starts
-   (as `network-filter` is today) and granting the service SID access with
-   `FwpmEngineSetSecurityInfo0`, which is a server setting and therefore manual.
+1. Exercise ordinary firewall allow arbitration and record the outcome of **Override block rules**.
+2. Kill the process and verify every WPShield filter disappears within one second.
+3. Verify an established allow-listed RDP session survives a block on another address.
+4. Measure addition time, BFE memory and connection latency with 10,000 filters.
+5. Verify third-party endpoint protection remains stable and its own blocks remain effective.
+6. Test both an elevated Administrator and `NT SERVICE\WPShield`. If the service token lacks
+   access, the administrator-started enforcer is the current path. Any change to WFP access
+   descriptors is a manual server setting and requires a separate decision.
 
 ## Revisiting this decision
 
-- If validation item 1 shows that a Windows Firewall rule can override WPShield's block, document it
-  as a limitation and have Block mode report it. Do not add firewall rules to compensate.
-
-- If the self-test or the first real run shows WinDivert does not order address ranges as expected,
-  ranges are removed and only exact addresses ship.
-- If this ADR is rejected, `network-filter` is reduced to Monitor (the observer) and the DROP path is
-  deleted, not left behind a flag.
+If a firewall policy can override a WPShield block, record the limitation and make Block report it.
+If tested CIDRs do not match their promised boundaries, restrict enforcement to exact addresses.

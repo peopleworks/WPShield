@@ -25,35 +25,6 @@ public sealed class CliOptionsTests
     }
 
     [Fact]
-    public void ARepeatedOption_IsRefusedWhenTheVerbAsks()
-    {
-        var options = CliOptions.Parse(["--allow", "203.0.113.50", "--allow=198.51.100.7"]);
-
-        var exception = Assert.Throws<CliArgumentException>(() => options.RejectRepeated("--allow", "--block"));
-
-        Assert.Contains("--allow", exception.Message, StringComparison.Ordinal);
-        Assert.Equal("198.51.100.7", options.Get("--allow"));
-    }
-
-    [Fact]
-    public void AnOptionGivenOnce_IsNotRepeated()
-    {
-        CliOptions.Parse(["--allow", "203.0.113.50", "--block", "94.0.0.0/24"]).RejectRepeated("--allow", "--block");
-    }
-
-    /// <summary>
-    /// The parameterless overload refuses every repeated option, flags included. It must not bind to
-    /// the named overload with an empty list, which would refuse nothing.
-    /// </summary>
-    [Fact]
-    public void ARepeatedOption_IsRefusedByTheParameterlessOverload()
-    {
-        Assert.Throws<CliArgumentException>(() => CliOptions.Parse(["--port", "80", "--port=443"]).RejectRepeated());
-        Assert.Throws<CliArgumentException>(() => CliOptions.Parse(["--json", "--json"]).RejectRepeated());
-        CliOptions.Parse(["--port", "80", "--json"]).RejectRepeated();
-    }
-
-    [Fact]
     public void ABareOption_IsAFlag()
     {
         var options = CliOptions.Parse(["--dry-run"]);

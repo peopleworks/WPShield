@@ -9,25 +9,23 @@ de Seguridad con acción Block en una solicitud de bloqueo al filtro de red.
 ## Qué hace
 
 ```text
-Registro de Seguridad 4625 ─► SecurityEventMonitor ─► WP-SEC-001 / WP-SEC-002, hallazgo (Block)
+Registro de Seguridad 4625 (tipos 3 y 10) ─► SecurityEventMonitor ─► WP-SEC-001 / WP-SEC-002, hallazgo (Block)
                                                          │
                                                          ▼
                                         NetworkFilterBlockListSink.Publish
                                                          │  dirección tomada del campo IpAddress del evento
                                                          ▼
-                          NetworkFilterService.RequestBlock(address, rule, EvidenceGrade.Authenticated)
+                          NetworkFilterService.RequestBlock(address, rule)
 ```
 
-El receptor no decide nada. Si una solicitud se convierte en bloqueo lo decide
+El receptor admite hallazgos con acción Block para eventos 4625 de tipo 3 o 10. Si una solicitud se convierte en bloqueo lo decide
 `NetworkFilterService.RequestBlock`, el único lugar donde se crean bloqueos ([ADR 0006](adr/0006-bloqueo-en-capa-de-red.md)):
 
 - El modo Monitor registra `would-block` y no bloquea nada.
 - Una dirección de la lista de permitidos se rechaza, diga lo que diga el hallazgo.
 - Se rechazan el loopback, las direcciones no especificadas y las demás que no pueden bloquearse
   (`127.0.0.1`, `::1`, `-`).
-- La evidencia del registro de Seguridad se clasifica como `Authenticated`: el inicio de sesión falló
-  después de completarse el handshake TCP, así que la dirección respondió a paquetes y no estaba
-  falsificada. Por eso puede añadir un bloqueo en modo Block sin `--syn-rules-may-block`. El bloqueo
+- Una fuente de confianza debe confirmar la dirección en un handshake TCP completo. El bloqueo
   lleva el TTL dinámico (60 minutos por omisión).
 
 ## Por qué no está conectado
@@ -37,8 +35,8 @@ más antiguo y lo reúne todo en una lista en el primer escaneo. En un host con 
 de 2 GB eso es una lectura a memoria sin límite, y cada dirección que alguna vez acumuló suficientes
 inicios de sesión fallidos en una ventana de cinco minutos quedaría bloqueada al arrancar. El ADR 0002
 ya dijo cómo debe consumirse el registro de Seguridad: suscribirse a los eventos nuevos
-(`EventLogWatcher` con `readExistingEvents: false`), no leer el archivo. El receptor se conectará a
-`network-filter` cuando el lector haga eso.
+(`EventLogWatcher` con `readExistingEvents: false`), no leer el archivo. El comando independiente aplica entradas del operador.
+Conectar el motor de decisión del ADR 0009 requiere un ADR propio.
 
 Hay otros dos límites del monitor que importan a quien vaya a conectarlo:
 

@@ -1,14 +1,8 @@
-namespace WPShield.NetworkFilter.Rules;
+namespace WPShield.NetworkFilter;
 
 /// <summary>
 /// Per-source state with a hard ceiling, evicting the least recently seen source.
 /// </summary>
-/// <remarks>
-/// A SYN's source address is whatever its sender wrote. A flood of SYNs from random forged sources
-/// would grow an unbounded dictionary until the process ran out of memory - the observer becoming the
-/// denial of service. The ceiling makes the worst case a forgotten source, never a dead process.
-/// Not thread-safe; the owning rule locks around it.
-/// </remarks>
 internal sealed class BoundedSourceTable<TState>
     where TState : class
 {

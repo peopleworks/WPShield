@@ -25,7 +25,7 @@ public enum NetworkFilterEventLevel
     Error,
 }
 
-/// <summary>Where events go. Implementations must not throw back into the observer.</summary>
+/// <summary>Where events go. Implementations must not throw back into the filter.</summary>
 public interface INetworkFilterEventSink
 {
     void Write(NetworkFilterEvent networkFilterEvent);
@@ -46,17 +46,12 @@ public static class NetworkFilterActions
 {
     public const string Started = "started";
     public const string Stopped = "stopped";
-    public const string SelfTestFailed = "self-test-failed";
-    public const string Observed = "observed";
     public const string WouldBlock = "would-block";
-    public const string NotBlockedSpoofable = "not-blocked-spoofable-evidence";
     public const string Blocked = "blocked";
     public const string Expired = "expired";
     public const string RefusedAllowListed = "refused-allow-listed";
     public const string RefusedFull = "refused-block-set-full";
     public const string RefusedUnblockable = "refused-unblockable-address";
     public const string RefusedRdpClient = "refused-rdp-client";
-    public const string EnforcementUpdated = "enforcement-updated";
     public const string EnforcementFailed = "enforcement-failed";
-    public const string ObserverFailed = "observer-failed";
 }

@@ -13,8 +13,8 @@ La primera entrega de WPShield es el monitor pasivo de flujos en un adaptador. L
 `--rdp-port` de esta rama añade evidencia de inicios de sesión interactivos remotos de Windows.
 El gateway ya inspecciona rutas y cargas HTTP compatibles y aplica límites por sitio. El monitor
 de seguridad registra hallazgos. La biblioteca de integración tiene una lista de bloqueo en
-memoria. La CLI solo informa y rechaza `network-filter`. Las pruebas de prevención en el servidor
-dependen del reemplazo documentado en el [PR #86](https://github.com/peopleworks/WPShield/pull/86).
+memoria. El comando independiente aplica mediante WFP las entradas del operador. Las pruebas de
+prevención se realizan solo en una [VM desechable](validacion-filtro-red-vm.md).
 [Monitor de red](diseno-sensor-red.md) · [Roadmap M2.8](../../ROADMAP.md#m28--security-event-log-monitoring)
 
 | Servicio | Qué documenta RdpGuard | Qué debe demostrar WPShield |
