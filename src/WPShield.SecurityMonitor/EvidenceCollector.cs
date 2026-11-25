@@ -195,7 +195,14 @@ public sealed class EvidenceCollector
         }
     }
 
-    internal void ReportSecurityReadable() => lastUnavailableReason = null;
+    internal void ReportSecurityReadable()
+    {
+        lastUnavailableReason = null;
+        UnavailableInterval = null;
+    }
+
+    /// <summary>The open "Security log unavailable" interval, carried across retries with the same reason.</summary>
+    internal (long Id, string Reason)? UnavailableInterval { get; set; }
 
     private async Task<bool> DelayAsync(TimeSpan delay, CancellationToken cancellationToken)
     {
@@ -277,16 +284,12 @@ internal sealed class CollectorSession
         // Read at every start, never cached: retention is a NextUse setting.
         var limits = settings.Limits();
 
-        // The latest record any channel stored. While the collector runs, every channel is followed
-        // live, so the period after it is the only one that can be missing. Taking the latest rather
-        // than the earliest keeps a channel that has been quiet for days from forcing a re-read of
-        // days on every start.
-        var since = new[] { AttemptPairing.SecurityChannel, AttemptPairing.RdpChannel }
-            .Select(channel => writer.LastRecord(channel))
-            .Where(last => last is not null)
-            .Select(last => last!.Value.Timestamp)
-            .DefaultIfEmpty(now - limits.RawRetention)
-            .Max();
+        // Anchored on the Security channel's last record, because that channel defines "collected".
+        // Remote Desktop's channel can be readable while the Security log is denied - the first run
+        // after an install, before Event Log Readers - and anchoring on whichever channel stored
+        // something last would then skip every 4625 still in the log once access is granted. A host
+        // with no 4625 stored re-reads the raw retention, which is cheap exactly when it is quiet.
+        var since = writer.LastRecord(AttemptPairing.SecurityChannel)?.Timestamp ?? now - limits.RawRetention;
         var window = now - since;
         if (window < EvidenceCollector.CoverageInterval) window = EvidenceCollector.CoverageInterval;
         if (window > limits.RawRetention) window = limits.RawRetention;
@@ -430,8 +433,22 @@ internal sealed class CollectorSession
         {
             // Every failed logon is a 4625. Without it, nothing this session sees is a full count.
             SecurityReadable = false;
-            intervals.Add(writer.BeginCoverage(EvidenceWriter.RawSource, now, now, "unavailable",
-                $"{AttemptPairing.SecurityChannel}: {securityReason}"));
+            var reason = $"{AttemptPairing.SecurityChannel}: {securityReason}";
+
+            // A retry that fails for the same reason continues the interval rather than adding a row
+            // every 15 minutes, which over a long misconfiguration would crowd a wide coverage query.
+            if (owner.UnavailableInterval is { } prior && prior.Reason == reason)
+            {
+                writer.ExtendCoverage(prior.Id, now);
+                intervals.Add(prior.Id);
+            }
+            else
+            {
+                var id = writer.BeginCoverage(EvidenceWriter.RawSource, now, now, "unavailable", reason);
+                intervals.Add(id);
+                owner.UnavailableInterval = (id, reason);
+            }
+
             owner.ReportSecurityUnavailable(securityReason);
             return;
         }

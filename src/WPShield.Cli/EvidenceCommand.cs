@@ -32,8 +32,8 @@ internal static class EvidenceCommand
                            replaced permissions (SYSTEM, Administrators, the service), and this
                            command never creates it.
 
-        It catches up from the Security and Remote Desktop logs since the last stored record, then
-        follows them live, and records which periods it could and could not read.
+        It catches up from the Security and Remote Desktop logs since the last stored Security
+        record, then follows them live, and records which periods it could and could not read.
 
         It refuses to run:
           - without elevation, because the Security log and the store's directory both need it;

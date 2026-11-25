@@ -141,9 +141,10 @@ Desktop's RdpCoreTS event 140 - into the local evidence store of
 [ADR 0007](adr/0007-local-evidence-store.md),
 `C:\ProgramData\WPShield\evidence\wpshield-evidence.db`. It runs inside the gateway's process,
 because there is one WPShield service. On start it catches up from the Windows logs since the last
-record it stored (at most the raw retention, 14 days by default), then follows them live, writes every
-two seconds, prunes hourly, and records **coverage**: which periods it read, which it could not, and
-why. A quiet period and an unrecorded one never look alike.
+Security-log record it stored (at most the raw retention, 14 days by default) - so the days of 4625s
+a denied Security log could not give it are read once access is granted - then follows them live,
+writes every two seconds, prunes hourly, and records **coverage**: which periods it read, which it
+could not, and why. A quiet period and an unrecorded one never look alike.
 
 It is history. It blocks nothing, and nothing it stores is fed to a decision or restores a block.
 

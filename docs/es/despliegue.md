@@ -142,8 +142,9 @@ Seguridad, de cualquier tipo de inicio de sesión, y el evento 140 de RdpCoreTS 
 en el almacén local de evidencia de la [ADR 0007](adr/0007-almacen-local-de-evidencia.md),
 `C:\ProgramData\WPShield\evidence\wpshield-evidence.db`. Corre dentro del proceso del gateway,
 porque hay un solo servicio de WPShield. Al arrancar se pone al día desde los registros de Windows a
-partir del último registro que guardó (como mucho la retención detallada, 14 días por omisión), luego
-los sigue en vivo, escribe cada dos segundos, poda cada hora y registra la **cobertura**: qué
+partir del último evento de Seguridad que guardó (como mucho la retención detallada, 14 días por
+omisión) — así, los días de 4625 que un registro de Seguridad denegado no pudo darle se leen en cuanto
+se concede el acceso —, luego los sigue en vivo, escribe cada dos segundos, poda cada hora y registra la **cobertura**: qué
 periodos leyó, cuáles no pudo leer y por qué. Un periodo tranquilo y uno sin registrar nunca se ven
 iguales.
 

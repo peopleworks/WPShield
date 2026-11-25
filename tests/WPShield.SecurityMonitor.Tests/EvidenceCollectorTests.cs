@@ -61,6 +61,31 @@ public sealed class EvidenceCollectorTests : IDisposable
         Assert.Equal(TimeSpan.FromMinutes(40), feed.Windows[1]);
     }
 
+    /// <summary>
+    /// The documented first run: the Security log is denied while Remote Desktop's channel is not, so
+    /// 140s are stored and that channel's state advances. Once the account is in Event Log Readers,
+    /// the catch-up must still reach back for the 4625s - the Security channel defines "collected",
+    /// so it is the anchor, not whichever channel stored something last.
+    /// </summary>
+    [Fact]
+    public void ASecurityLogThatWasUnreadableIsCaughtUpInFullOnceReadable()
+    {
+        feed.SetupErrors.Add((AuthFailureFeed.SecurityChannel, "access-denied"));
+        feed.Snapshot = (end, window) => new AuthFailureSnapshot(end - window, end,
+            [Failure(-60, "203.0.113.80", channel: AttemptPairing.RdpChannel)],
+            [
+                new ChannelCoverage(AuthFailureFeed.SecurityChannel, "unavailable", "access-denied", null, null, 0),
+                new ChannelCoverage(AuthFailureFeed.RdpCoreChannel, "read", null, null, null, 1)
+            ]);
+        Session().Stop(Now);
+
+        feed.SetupErrors.Clear();
+        feed.Snapshot = (end, window) => Snapshot(end, window, []);
+        Session(Now.AddMinutes(30)).Stop(Now.AddMinutes(30));
+
+        Assert.Equal(TimeSpan.FromDays(14), feed.Windows[1]);
+    }
+
     [Fact]
     public void ReadingTheSameRecordsTwiceStoresThemOnce()
     {
@@ -161,6 +186,24 @@ public sealed class EvidenceCollectorTests : IDisposable
 
         Assert.Equal("security-4625: access-denied", Assert.Single(Coverage()).Reason);
         Assert.Contains("Add-LocalGroupMember", Assert.Single(logger.Entries, e => e.Level == LogLevel.Warning).Message, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A misconfiguration left for weeks must not add a row every 15 minutes: a retry that fails for
+    /// the same reason continues the interval, so a wide coverage query is not crowded out by them.
+    /// </summary>
+    [Fact]
+    public void RetriesThatFailForTheSameReasonContinueOneInterval()
+    {
+        feed.SetupErrors.Add((AuthFailureFeed.SecurityChannel, "access-denied"));
+        var collector = Collector();
+
+        CollectorSession.Start(collector, Now).Stop(Now.AddMinutes(15));
+        CollectorSession.Start(collector, Now.AddMinutes(15).AddSeconds(5)).Stop(Now.AddMinutes(30));
+
+        var unavailable = Assert.Single(Coverage());
+        Assert.Equal(Now, unavailable.From);
+        Assert.Equal(Now.AddMinutes(30), unavailable.To);
     }
 
     [Fact]
