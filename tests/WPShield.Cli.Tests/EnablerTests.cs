@@ -424,6 +424,7 @@ public sealed class EnablerTests : IDisposable
         public DirectoryFacts DescribeDirectory(string path) => new(false, []);
         public bool FileExists(string path) => File.Exists(path);
         public IReadOnlyList<string> ChildDirectories(string path) => [];
+        public GroupMembership EventLogReadersMembership() => new(true);
     }
 
     private sealed class FakeIis : IIisFacts

@@ -1,22 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <LangVersion>latest</LangVersion>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <AnalysisLevel>latest</AnalysisLevel>
 
     <!--
-      WPShield.SecurityMonitor is Windows-only because it reads the Windows Security event
-      log (System.Diagnostics.Eventing.Reader), which requires elevation and is not available
-      on Linux. It references only WPShield.Abstractions, never the reverse. This keeps the
-      platform-independent projects buildable and testable on Linux.
+      WPShield.SecurityMonitor reads the Windows event logs (System.Diagnostics.Eventing.Reader), so
+      it only ever runs on Windows. It targets plain net10.0 rather than net10.0-windows so that the
+      gateway, which is net10.0, can host the evidence collector in the one WPShield service process
+      (AGENTS.md allows exactly one). The Windows-only claim is kept falsifiable a different way: the
+      assembly carries [SupportedOSPlatform("windows")] (PlatformSupport.cs), so the platform
+      analyzer (CA1416, an error here) refuses any caller that reaches this code without an
+      OperatingSystem.IsWindows() guard. The event-log package ships a Windows runtime asset that a
+      win-x64 publish picks up.
 
-      Reading the Security log requires Administrator privileges. The monitor refuses to
-      start if elevation is absent; it never runs in a degraded mode.
+      It references only WPShield.Abstractions and WPShield.Evidence, never the reverse. This keeps
+      the platform-independent projects buildable and testable on Linux.
+
+      Reading the Security log requires Administrator privileges, or membership in Event Log Readers
+      (S-1-5-32-573) for the service account. The monitor refuses to start if elevation is absent;
+      the collector records the period as unavailable instead of pretending it was quiet.
     -->
   </PropertyGroup>
 
@@ -27,6 +29,7 @@
 
   <ItemGroup>
     <PackageReference Include="System.Diagnostics.EventLog" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <InternalsVisibleTo Include="WPShield.SecurityMonitor.Tests" />
   </ItemGroup>
 

@@ -199,7 +199,9 @@ while (!cts.Token.IsCancellationRequested)
 
 ## Pasos siguientes
 
-1. Confirmar que `src/WPShield.SecurityMonitor/` tiene como destino `net10.0-windows` y referencia solo a `WPShield.Abstractions`.
+1. Confirmar que `src/WPShield.SecurityMonitor/` tiene como destino `net10.0` con `[assembly: SupportedOSPlatform("windows")]`
+   — para que el gateway `net10.0` pueda alojar el recolector de evidencia mientras el analizador de plataforma rechaza a
+   quien lo llame sin comprobar — y referencia solo a `WPShield.Abstractions` y `WPShield.Evidence`.
 2. Agregar pruebas unitarias para `RdpBruteForceRule` y `FailedLogonRule`.
 3. Agregar una implementación de ejemplo de `ISecurityEventSink` que publique en `WPShield.NetworkFilter.BlockListRule`.
 4. Escribir `docs/en/security-monitor-design.md` como espejo de este documento.

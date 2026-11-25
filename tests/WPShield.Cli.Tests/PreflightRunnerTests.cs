@@ -286,6 +286,54 @@ public sealed class PreflightRunnerTests
     }
 
     // =============================================================================================
+    //  PRE-020 - the service account must be able to read the Security log.
+    // =============================================================================================
+
+    private static readonly InstalledService Installed =
+        new("Running", @"NT SERVICE\WPShield", @"C:\Program Files\WPShield\WPShield.Gateway.exe");
+
+    [Fact]
+    public void AServiceAccountOutsideEventLogReaders_IsABlockerWithTheBySidCommand()
+    {
+        var check = Find(Run(new FakeHost { Service = Installed, EventLogReaders = new GroupMembership(false) }), "PRE-020");
+
+        Assert.Equal(PreflightStatus.Blocker, check.Status);
+        Assert.Contains(@"Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'", check.Remedy, StringComparison.Ordinal);
+        Assert.Contains("Restart-Service", check.Remedy, StringComparison.Ordinal);
+    }
+
+    /// <summary>"Nobody could look" is not "not a member", and certainly not "a member".</summary>
+    [Fact]
+    public void AnUnreadableMembership_IsABlockerNotAPass()
+    {
+        var check = Find(Run(new FakeHost { Service = Installed, EventLogReaders = new GroupMembership(null, "synthetic") }), "PRE-020");
+
+        Assert.Equal(PreflightStatus.Blocker, check.Status);
+        Assert.Contains("could not be read", check.Title, StringComparison.Ordinal);
+        Assert.Contains("synthetic", check.Detail, StringComparison.Ordinal);
+        Assert.NotEmpty(check.Remedy);
+    }
+
+    [Fact]
+    public void AMemberServiceAccount_Passes()
+    {
+        Assert.Equal(PreflightStatus.Pass, Find(Run(new FakeHost { Service = Installed }), "PRE-020").Status);
+    }
+
+    /// <summary>
+    /// Before the install the account does not resolve, so the remedy could not be applied yet, and
+    /// a blocker here would stop <c>wpshield setup</c> on something nobody can clear at that point.
+    /// </summary>
+    [Fact]
+    public void BeforeTheServiceExists_ItIsInformationWithTheCommandForLater()
+    {
+        var check = Find(Run(new FakeHost { EventLogReaders = new GroupMembership(false) }), "PRE-020");
+
+        Assert.Equal(PreflightStatus.Info, check.Status);
+        Assert.Contains("S-1-5-32-573", check.Detail, StringComparison.Ordinal);
+    }
+
+    // =============================================================================================
     //  Every blocker carries a remedy. Asserted rather than hoped for.
     // =============================================================================================
 
@@ -293,7 +341,16 @@ public sealed class PreflightRunnerTests
     public void EveryBlockerCarriesARemedy()
     {
         var report = Run(
-            new FakeHost { IsElevated = false, UrlRewrite = false, Arr = false, W3svcState = null, Listening = [10000] },
+            new FakeHost
+            {
+                IsElevated = false,
+                UrlRewrite = false,
+                Arr = false,
+                W3svcState = null,
+                Listening = [10000],
+                Service = Installed,
+                EventLogReaders = new GroupMembership(false)
+            },
             new FakeIis { Readable = false, UnreadableReason = "no" });
 
         Assert.NotEmpty(report.Blockers);
@@ -389,6 +446,11 @@ public sealed class PreflightRunnerTests
 
         public IReadOnlyList<string> ChildDirectories(string path) =>
             Children.TryGetValue(path, out var children) ? children : [];
+
+        /// <summary>A member by default, so every other test reads as it did before PRE-020.</summary>
+        public GroupMembership EventLogReaders { get; init; } = new(true);
+
+        public GroupMembership EventLogReadersMembership() => EventLogReaders;
     }
 
     private sealed class FakeIis : IIisFacts

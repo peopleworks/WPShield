@@ -211,7 +211,8 @@ The CLI reads the Windows Security event log and reports RDP brute-force and fai
 findings. The integration library has an in-memory block-list sink. Packet enforcement remains
 pending under M2.7. [Security monitor design](docs/en/security-monitor-design.md)
 
-- [x] `src/WPShield.SecurityMonitor/` — Security event log reader targeting `net10.0-windows`.
+- [x] `src/WPShield.SecurityMonitor/` — Windows-only Security event log reader (`net10.0`, declared
+  `SupportedOSPlatform("windows")`), and the evidence collector the service hosts (ADR 0007).
 - [x] `SecurityInspectionContext`, `SecurityInspectionResult`, `ISecurityInspectionRule`, and
   `ISecurityEventSink` contracts in `WPShield.Abstractions`.
 - [x] `WP-SEC-001` — RDP brute force detection (failed Logon Type 10 per source IP per window).

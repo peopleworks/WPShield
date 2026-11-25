@@ -21,11 +21,21 @@
   <ItemGroup>
     <ProjectReference Include="../WPShield.Core/WPShield.Core.csproj" />
     <!--
-      The only assembly in this solution that opens a file. It is separate so that the structural
-      disk-freedom guard over WPShield.Gateway stays exactly as strict as it was written; see the
-      comment in WPShield.Logging.csproj.
+      The log writer, one of the two assemblies the gateway process opens files through. It is
+      separate so that the structural disk-freedom guard over WPShield.Gateway stays exactly as
+      strict as it was written; see the comment in WPShield.Logging.csproj.
     -->
     <ProjectReference Include="../WPShield.Logging/WPShield.Logging.csproj" />
+    <!--
+      The other one: the evidence collector (ADR 0007), which reads the Windows event logs and
+      writes failed logons into the SQLite store through WPShield.Evidence. It runs here because
+      AGENTS.md allows exactly one WPShield service. It is a separate assembly for the same reason
+      as the log writer - the gateway only registers a hosted service that calls it, so the
+      assembly that handles requests still cannot name a file API - and nothing on the request
+      path reaches it. The assembly is [SupportedOSPlatform("windows")]; the registration sits
+      behind OperatingSystem.IsWindows(), which the platform analyzer checks.
+    -->
+    <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
     <!--
       The reference that makes WPShield a security gateway rather than a reverse proxy with a size
       limit. Until M2 the Gateway could not see a single rule: the rule set executed only from the

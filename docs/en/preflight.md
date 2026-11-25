@@ -66,6 +66,7 @@ Every one of those is a five-minute fix and a very bad twenty minutes if you fin
 | `PRE-017` | **Which other applications ARR already proxies** — the blast radius of the `PRE-008` fix. |
 | `PRE-018` | Catch-all rewrite rules the WPShield rule must be ordered before. |
 | `PRE-019` | **Would any part of WPShield sit inside a directory IIS serves?** |
+| `PRE-020` | **Can the service account read the Security log?** Membership of Event Log Readers, for the evidence collector. |
 
 `PRE-016` is a blocker rather than a warning. `C:\ProgramData` is the conventional place for a log
 directory and its default ACL grants `BUILTIN\Users` read — so a WPShield log holding request paths,
@@ -148,6 +149,31 @@ This check exists because it happened. WPShield was unpacked into `C:\inetpub\ww
 the server this project was built for, and wrote its log there for a day before anyone read the first
 line of it. `wpshield install` now refuses the same layout outright; `--allow-web-root-paths`
 overrides it and warns.
+
+## `PRE-020` — the service account and Event Log Readers
+
+The service records failed Windows logons into the evidence store (ADR 0007), reading the Security
+log as `NT SERVICE\WPShield`. That needs the account in the built-in **Event Log Readers** group,
+`S-1-5-32-573`. Group membership is a server setting, so preflight reports it and prints the command;
+it never adds the account:
+
+```powershell
+Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'
+Restart-Service WPShield
+```
+
+By SID, because the group's name is localized. The restart, because a service reads its group
+memberships when it starts.
+
+| Situation | Status |
+| --- | --- |
+| The service is not installed yet | `Info`, with the command for after the install. The account does not resolve until the service exists, so a blocker here would stop `wpshield setup` on something nobody can clear yet. |
+| Installed, and a member | `Pass` |
+| Installed, and not a member | `Blocker`. The store would record every period as unavailable. |
+| Membership could not be read | `Blocker`. "Nobody could look" is not "not a member". |
+
+Once the service exists this is a blocker, so `wpshield setup` stops at step 1 until the account is
+added.
 
 ## The absence of findings is not a finding
 

@@ -86,7 +86,9 @@ Lo que hace:
 
 - **Se niega a correr si `-InstallPath` o `-LogPath` está dentro de un directorio que IIS sirve**, antes
   de haber creado, copiado o registrado nada. `--allow-web-root-paths` lo permite con advertencia.
-- Crea `C:\Program Files\WPShield` y `C:\ProgramData\WPShield\logs`.
+- Crea `C:\Program Files\WPShield`, `C:\ProgramData\WPShield\logs` y
+  `C:\ProgramData\WPShield\evidence`, el directorio del almacén de evidencia (vea
+  [el recolector de evidencia](#el-recolector-de-evidencia-y-event-log-readers) más abajo).
 - Copia la compilación, y la configuración del operador si le pasa una.
 - **Escribe la ruta de registros en `Logging:File:Directory` del `appsettings.json` instalado.** Crear
   y endurecer un directorio del cual nunca se le habló al gateway no endurece nada; sólo reporta que
@@ -94,10 +96,11 @@ Lo que hace:
 - Registra un servicio llamado `WPShield`, y jamás ningún otro.
 - Le da la **cuenta virtual `NT SERVICE\WPShield`** — sin contraseña que guardar en ningún sitio, sin
   cuenta que administrar, y con una identidad por servicio que sí se puede nombrar en una ACL.
-- Reemplaza los permisos de ambos directorios por tres entradas: SYSTEM y el grupo local de
+- Reemplaza los permisos de los tres directorios por tres entradas: SYSTEM y el grupo local de
   administradores con control total, y la cuenta del servicio con **lectura y ejecución** en los
-  binarios y **modificación** en los registros. La herencia se desactiva y las entradas heredadas se
-  descartan en vez de copiarse, porque copiarlas conserva exactamente el acceso amplio que esto quita.
+  binarios y **modificación** en los registros y en el almacén de evidencia. La herencia se desactiva
+  y las entradas heredadas se descartan en vez de copiarse, porque copiarlas conserva exactamente el
+  acceso amplio que esto quita.
 - Configura el servicio para reiniciarse tras una caída: 5s, 15s, 60s.
 
 Los principales se conceden por SID conocido, no por nombre. `BUILTIN\Administrators` es
@@ -131,6 +134,58 @@ Cambiaron dos cosas. El instalador escribe la ruta que endureció en la configur
 lee, y el gateway **se niega a arrancar** cuando no puede escribir ahí. `Test-WPShieldScripts.ps1`
 ahora comprueba que el valor por omisión de `-LogPath` y el `Logging:File:Directory` publicado nombren
 el mismo directorio, y ejercita la edición contra una copia real del archivo publicado.
+
+### El recolector de evidencia y Event Log Readers
+
+El servicio también registra los **inicios de sesión fallidos de Windows** — el evento 4625 de
+Seguridad, de cualquier tipo de inicio de sesión, y el evento 140 de RdpCoreTS de Escritorio remoto —
+en el almacén local de evidencia de la [ADR 0007](adr/0007-almacen-local-de-evidencia.md),
+`C:\ProgramData\WPShield\evidence\wpshield-evidence.db`. Corre dentro del proceso del gateway,
+porque hay un solo servicio de WPShield. Al arrancar se pone al día desde los registros de Windows a
+partir del último evento de Seguridad que guardó (como mucho la retención detallada, 14 días por
+omisión) — así, los días de 4625 que un registro de Seguridad denegado no pudo darle se leen en cuanto
+se concede el acceso —, luego los sigue en vivo, escribe cada dos segundos, poda cada hora y registra la **cobertura**: qué
+periodos leyó, cuáles no pudo leer y por qué. Un periodo tranquilo y uno sin registrar nunca se ven
+iguales.
+
+Es historia. No bloquea nada, y nada de lo que guarda alimenta una decisión ni restaura un bloqueo.
+
+**Hace falta un paso manual, y nada en WPShield lo hace por usted.** La cuenta del servicio tiene que
+ser miembro del grupo integrado **Event Log Readers** para leer el registro de Seguridad. Añádala por
+SID, porque el nombre del grupo está traducido («Lectores del registro de eventos» en un Windows en
+español), desde un PowerShell elevado:
+
+```powershell
+Add-LocalGroupMember -SID S-1-5-32-573 -Member 'NT SERVICE\WPShield'
+Restart-Service WPShield
+```
+
+El reinicio importa: un servicio lee sus pertenencias a grupos cuando arranca. Hasta entonces el
+recolector registra cada periodo como `unavailable` con el motivo `access-denied`, y lo dice en el
+registro con el comando de arriba. `wpshield preflight` reporta la pertenencia como `PRE-020`, un
+bloqueante una vez que el servicio existe.
+
+El recolector nunca crea su directorio: uno creado por él heredaría los permisos de
+`C:\ProgramData`, que dejan leer a todo usuario local. Si el directorio falta, registra una
+advertencia que nombra `wpshield install` y se queda inactivo hasta que el servicio se reinicie. Un
+fallo del almacén o de una suscripción a un registro se registra y se reintenta con espera creciente;
+nunca detiene el gateway.
+
+`Evidence:Enabled` (activado en el `appsettings.json` publicado) lo apaga; `Evidence:Path` mueve la
+base de datos. Vea [configuración del operador](configuracion-operador.md#almacén-de-evidencia).
+
+Para validar la recolección en un servidor antes de confiársela al servicio, ejecute el mismo
+recolector en primer plano, elevado, con el servicio detenido:
+
+```powershell
+wpshield evidence collect
+wpshield evidence collect --store D:\evidence\wpshield-evidence.db
+```
+
+Se detiene con Ctrl+C, después de escribir lo que tenía en memoria. Se niega a correr mientras el
+servicio `WPShield` está en marcha, porque el servicio es quien escribe la evidencia, y se niega cuando
+el directorio del almacén no existe. Un `--store` en otro sitio debe estar en un directorio restringido
+de la misma forma; nunca se crea.
 
 ## 5. Confirmar que escucha, antes de tocar IIS
 
@@ -222,6 +277,11 @@ anula, para cuando ya confirmó que la regla está desactivada o el sitio ya est
 Los registros **se conservan** por omisión. Son la memoria de lo que el gateway vio, y una
 desinstalación durante un incidente es el peor momento para borrar evidencia. Pase `--remove-logs` cuando
 lo diga en serio.
+
+El **almacén de evidencia se conserva siempre**, y la desinstalación lo dice: no hay opción para
+quitarlo. Es la memoria de lo que pasó, por la misma razón que los registros. Borre
+`C:\ProgramData\WPShield\evidence` a mano si lo quiere así. La pertenencia de la cuenta del servicio
+a Event Log Readers tampoco cambia; quítela usted si la añadió.
 
 La cuenta virtual desaparece con el servicio; no queda ninguna cuenta atrás. Los enlaces y las reglas
 que añadió a mano en IIS siguen ahí — quítelos usted si el gateway no va a volver.

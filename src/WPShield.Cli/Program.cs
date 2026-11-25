@@ -76,6 +76,7 @@ internal static class ProgramMain
                 "iis-login" => IisLoginCommand.RunAsync(options, Console.Out).GetAwaiter().GetResult(),
                 "audit-reference" => AuditReferenceCommand.RunAsync(options, Console.Out, Console.Error).GetAwaiter().GetResult(),
                 "security-monitor" => SecurityMonitorCommand.Run(options, Console.Out),
+                "evidence" => EvidenceCommand.Run(options, Console.Out, rest.FirstOrDefault() ?? string.Empty),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -179,6 +180,10 @@ internal static class ProgramMain
                 Console.WriteLine(SecurityMonitorCommand.Help);
                 return 0;
 
+            case "evidence":
+                Console.WriteLine(EvidenceCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -268,7 +273,11 @@ internal static class ProgramMain
                           [--max-failed-logons <n>] [--window-minutes <n>] [--allow-list <ips>]
                           [--watch] [--interval-seconds <n>] [--output <file>]
 
-              publish     Build a self-contained win-x64 deployment, with a checksum. Runs on a
+              evidence collect
+                          Record failed logons into the evidence store in the foreground, until
+                          Ctrl+C. Elevated; refuses while the WPShield service runs. [--store <file>]
+
+              publish    Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.
                           [--repository <dir>] [--output <dir>] [--skip-archive]
 

@@ -196,7 +196,9 @@ while (!cts.Token.IsCancellationRequested)
 
 ## Next steps
 
-1. Confirm `src/WPShield.SecurityMonitor/` targets `net10.0-windows` and references only `WPShield.Abstractions`.
+1. Confirm `src/WPShield.SecurityMonitor/` targets `net10.0` with `[assembly: SupportedOSPlatform("windows")]` - so the
+   `net10.0` gateway can host the evidence collector while the platform analyzer refuses unguarded callers - and references
+   only `WPShield.Abstractions` and `WPShield.Evidence`.
 2. Add unit tests for `RdpBruteForceRule` and `FailedLogonRule`.
 3. Add an example `ISecurityEventSink` implementation that publishes to `WPShield.NetworkFilter.BlockListRule`.
 4. Write `docs/es/diseno-monitor-seguridad.md` mirroring this document.

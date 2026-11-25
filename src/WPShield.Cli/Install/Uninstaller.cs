@@ -4,6 +4,7 @@ internal sealed record UninstallOptions
 {
     public string InstallPath { get; init; } = @"C:\Program Files\WPShield";
     public string LogPath { get; init; } = @"C:\ProgramData\WPShield\logs";
+    public string EvidencePath { get; init; } = Installer.DefaultEvidencePath;
     public bool RemoveFiles { get; init; }
     public bool RemoveLogs { get; init; }
     public bool Force { get; init; }
@@ -95,6 +96,15 @@ internal sealed class Uninstaller(IInstallEnvironment environment, UninstallOpti
         {
             Do($"delete {_options.LogPath}", () => _environment.DeleteDirectory(_options.LogPath));
         }
+
+        Step("4. The evidence store");
+
+        // Kept, with no flag to remove it (ADR 0007, section 7). It is the record of what happened,
+        // and an uninstall during an incident is the worst moment to delete it.
+        Say(_environment.DirectoryExists(_options.EvidencePath)
+            ? $"kept: {_options.EvidencePath}  (uninstall never removes the evidence store; delete it by hand if you mean to)"
+            : $"nothing at {_options.EvidencePath}");
+        Say("The service account's membership in Event Log Readers is not changed; remove it by hand if you added it.");
 
         Say(string.Empty);
         Say(_options.DryRun ? "--dry-run: nothing above was actually done." : "Removed. IIS was not touched.");

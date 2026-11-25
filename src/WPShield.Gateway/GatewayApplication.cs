@@ -72,6 +72,9 @@ public static class GatewayApplication
         var sites = builder.Configuration.GetSection("Sites").Get<SiteOptions[]>() ?? [];
         GatewayConfigurationValidator.Validate(gatewayOptions, multipartOptions, sites);
         var evidenceIdentity = new EvidenceIdentity();
+        var evidenceCollection = builder.Configuration.GetSection(EvidenceCollectionOptions.SectionName)
+            .Get<EvidenceCollectionOptions>() ?? new EvidenceCollectionOptions();
+        EvidenceCollectionOptions.Validate(evidenceCollection);
 
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
         builder.Logging.AddFilter("Yarp.ReverseProxy", LogLevel.Warning);
@@ -95,6 +98,7 @@ public static class GatewayApplication
         builder.Services.TryAddSingleton(_ => CreateProxyClient());
 
         RegisterInspection(builder.Services);
+        RegisterEvidenceCollection(builder.Services, evidenceCollection);
 
         builder.WebHost.ConfigureKestrel(options =>
             options.Limits.MaxRequestBodySize = GatewayOptions.AbsoluteMaximumRequestBytes);
@@ -116,6 +120,7 @@ public static class GatewayApplication
         LogLogDestination(loggerFactory, logDirectory);
         LogResolvedSites(loggerFactory, sites);
         LogInspectionConfiguration(loggerFactory, gatewayOptions, multipartOptions);
+        LogEvidenceCollection(loggerFactory, evidenceCollection);
 
         // Parsed once at startup rather than per request. The validator has already refused to start
         // on anything that is not an exact IP address, so every entry that reaches here parses.
@@ -614,6 +619,51 @@ public static class GatewayApplication
     /// makes that mistake visible immediately instead of at the first misrouted request.
     /// Destinations are loopback-validated before this runs, so they carry no sensitive topology.
     /// </summary>
+    /// <summary>
+    /// Registers the evidence collector (ADR 0007) as a hosted service, on Windows and when enabled.
+    /// </summary>
+    /// <remarks>
+    /// The collector is the only writer of the evidence store and runs in this process because
+    /// <c>AGENTS.md</c> allows one WPShield service. It is history: nothing it writes is read back by
+    /// anything on the request path or by a decision. The plain <c>if</c> is what the platform
+    /// analyzer recognises as the guard for the Windows-only types it names.
+    /// </remarks>
+    private static void RegisterEvidenceCollection(IServiceCollection services, EvidenceCollectionOptions options)
+    {
+        if (!options.Enabled)
+        {
+            return;
+        }
+
+        if (OperatingSystem.IsWindows())
+        {
+            services.AddSingleton(options);
+            services.AddHostedService<EvidenceCollectorService>();
+        }
+    }
+
+    /// <summary>Says at startup whether failed logons are being recorded, in both states.</summary>
+    private static void LogEvidenceCollection(ILoggerFactory loggerFactory, EvidenceCollectionOptions options)
+    {
+        var logger = loggerFactory.CreateLogger("WPShield.Gateway.Configuration");
+
+        if (!options.Enabled)
+        {
+            logger.LogInformation(
+                "Evidence collection is off (Evidence:Enabled is false). Failed Windows logons are not recorded in the evidence store.");
+            return;
+        }
+
+        if (!OperatingSystem.IsWindows())
+        {
+            logger.LogWarning(
+                "Evidence collection is enabled, but this platform has no Windows event logs. Nothing is recorded.");
+            return;
+        }
+
+        logger.LogInformation("Evidence collection enabled. Store={Store}", options.Path);
+    }
+
     private static void LogResolvedSites(ILoggerFactory loggerFactory, IReadOnlyList<SiteOptions> sites)
     {
         var logger = loggerFactory.CreateLogger("WPShield.Gateway.Configuration");
