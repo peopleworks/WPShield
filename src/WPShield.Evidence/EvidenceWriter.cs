@@ -18,6 +18,9 @@ public sealed record PruneResult(long RawRowsDeleted, long AggregateRowsDeleted,
 {
     /// <summary>IIS log findings removed (ADR 0011). Their hourly counts are in <see cref="AggregateRowsDeleted"/>.</summary>
     public long WebRowsDeleted { get; init; }
+
+    /// <summary>Host-fact snapshots and hourly health removed (ADR 0013). The latest snapshot of every fact is never removed.</summary>
+    public long HostRowsDeleted { get; init; }
 }
 
 /// <summary>
@@ -176,6 +179,7 @@ public sealed class EvidenceWriter
         aggregates += Delete("DELETE FROM web_hourly_sites WHERE hour < $c;", aggregateCutoff / 3_600_000);
         aggregates += Delete("DELETE FROM web_hourly_sources WHERE hour < $c;", aggregateCutoff / 3_600_000);
         decisions += Delete("DELETE FROM decisions WHERE ts < $c;", aggregateCutoff);
+        var host = HostFactsWriter.Prune(store, now);
         store.Execute("DELETE FROM coverage WHERE to_ts < $c;", null, ("$c", aggregateCutoff));
         store.Execute("PRAGMA incremental_vacuum;");
         // The file bound: drop the oldest tenth of the detailed rows until it fits, never the aggregates.
@@ -212,7 +216,7 @@ public sealed class EvidenceWriter
         if (raw > 0 || previous is null || EvidenceStore.ToMs(previous.Value) < rawCutoff)
             store.Execute("INSERT INTO meta(key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
                 null, ("$k", RawPrunedBeforeKey), ("$v", rawCutoff.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        return new(raw, aggregates, decisions, events, EvidenceStore.FromMs(rawCutoff)) { WebRowsDeleted = web };
+        return new(raw, aggregates, decisions, events, EvidenceStore.FromMs(rawCutoff)) { WebRowsDeleted = web, HostRowsDeleted = host };
     }
 
     internal DateTimeOffset? RawPrunedBefore() => EvidenceQueries.RawPrunedBefore(store);

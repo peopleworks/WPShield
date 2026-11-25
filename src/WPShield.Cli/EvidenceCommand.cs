@@ -42,6 +42,13 @@ internal static class EvidenceCommand
         A site whose log cannot be read is recorded as not covered, with the reason and the remedy.
         'wpshield web' shows what it found. Web evidence is never fed to a decision.
 
+        It also takes the host-fact snapshots of ADR 0013, read-only: health every 5 minutes (with
+        unexpected restarts and their bugcheck codes); IIS sites, listening ports with their exposure
+        by the Windows Firewall rules, and RDP sessions every 15 minutes; the audit's posture summary
+        and the inventory of non-Microsoft accounts, services and tasks every 6 hours. Arguments of
+        services and tasks are never stored, only flags. 'wpshield host' shows them. Nothing on the
+        server is changed.
+
         It refuses to run:
           - without elevation, because the Security log and the store's directory both need it;
           - while the WPShield service is running, because the service is the evidence writer.
@@ -119,7 +126,7 @@ internal static class EvidenceCommand
 
         output.WriteLine();
         output.WriteLine($"WPShield evidence collect - {store}");
-        output.WriteLine("Recording failed logons and IIS log evidence until Ctrl+C. Nothing is blocked.");
+        output.WriteLine("Recording failed logons, IIS log evidence and host facts until Ctrl+C. Nothing is blocked or changed.");
         output.WriteLine();
 
         using var cancellation = new CancellationTokenSource();
@@ -149,7 +156,8 @@ internal static class EvidenceCommand
             }
         },
         DirectoryExists: Directory.Exists,
-        Collect: (store, output, token) => new EvidenceCollector(store, new ConsoleLogger(output), Web.IisLogSiteReader.Read).RunAsync(token));
+        Collect: (store, output, token) => new EvidenceCollector(store, new ConsoleLogger(output), Web.IisLogSiteReader.Read,
+            new Host.CliHostFactSource()).RunAsync(token));
 
     private static IDisposable WaitForCtrlC(CancellationTokenSource cancellation)
     {

@@ -57,6 +57,13 @@ preflight: on a host running other people's applications, moving a pool's identi
 folder's permissions can take a site down, and a posture tool that "fixed" the server as a side effect
 of being asked about it would do exactly that.
 
+Its one write is to WPShield itself. After each complete run it records a summary - finding IDs,
+severities and counts, never site, pool or account names - as a posture snapshot in WPShield's own
+evidence store ([ADR 0013](adr/0013-host-facts-and-the-command-center.md)), so `wpshield host posture`
+can show "pools as an administrator: N of M" moving. That is not a change to the server, and the last
+line of the report says whether the summary was recorded. A run that could not look (not elevated, IIS
+unreadable) is never recorded, so it cannot replace a real reading. `--store` names the store.
+
 ## It never reads a password
 
 A pool that runs as a named account keeps that account's password in the IIS configuration, and any

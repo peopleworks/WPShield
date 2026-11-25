@@ -431,12 +431,18 @@ internal static class LocalAdministrators
     private const string AdministratorsSid = "S-1-5-32-544";
     private const int MaxPreferredLength = -1;
 
-    public static IReadOnlySet<string>? ReadMemberSids()
+    public static IReadOnlySet<string>? ReadMemberSids() => ReadMemberSids(AdministratorsSid);
+
+    /// <summary>
+    /// The direct members of any local group named by its well-known SID - Remote Desktop Users
+    /// (<c>S-1-5-32-555</c>) for the host inventory, as well as Administrators. <see langword="null"/> when unreadable.
+    /// </summary>
+    public static IReadOnlySet<string>? ReadMemberSids(string groupSid)
     {
         string groupName;
         try
         {
-            groupName = new SecurityIdentifier(AdministratorsSid).Translate(typeof(NTAccount)).Value;
+            groupName = new SecurityIdentifier(groupSid).Translate(typeof(NTAccount)).Value;
         }
         catch (Exception exception) when (exception is IdentityNotMappedException or SystemException)
         {

@@ -26,10 +26,10 @@ public sealed class EvidenceStore : IDisposable
 {
     /// <summary>
     /// 1: failed logons, decisions, coverage, events, settings. 2 adds the IIS log evidence of ADR 0011
-    /// (<c>web_*</c> tables). Every migration is additive: a store written by an earlier build keeps every
-    /// row it holds and gains the new tables.
+    /// (<c>web_*</c> tables). 3 adds the host facts of ADR 0013 (<c>host_*</c> tables). Every migration is
+    /// additive: a store written by an earlier build keeps every row it holds and gains the new tables.
     /// </summary>
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
     public const string FileName = "wpshield-evidence.db";
 
     private EvidenceStore(SqliteConnection connection, bool readOnly)
@@ -241,6 +241,30 @@ public sealed class EvidenceStore : IDisposable
                 remedy TEXT,
                 proxied INTEGER NOT NULL,
                 updated_ts INTEGER NOT NULL);
+            """, transaction);
+        // Schema 3 (ADR 0013): host facts. Additive only. Snapshots are bounded JSON written by the collector,
+        // and one posture summary by 'wpshield audit'; hourly health draws the trends. Unexpected restarts and
+        // inventory changes are rows of 'events', which needs no change.
+        Execute("""
+            CREATE TABLE IF NOT EXISTS host_snapshots(
+                id INTEGER PRIMARY KEY,
+                fact TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                ts INTEGER NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT,
+                remedy TEXT,
+                payload TEXT CHECK (payload IS NULL OR json_valid(payload)));
+            CREATE INDEX IF NOT EXISTS ix_host_snapshots_fact ON host_snapshots(fact, kind, ts);
+            CREATE TABLE IF NOT EXISTS host_health_hourly(
+                hour INTEGER PRIMARY KEY,
+                samples INTEGER NOT NULL,
+                cpu_sum REAL NOT NULL,
+                cpu_samples INTEGER NOT NULL,
+                cpu_peak REAL,
+                memory_total INTEGER,
+                memory_min_available INTEGER,
+                volumes TEXT NOT NULL CHECK (json_valid(volumes)));
             """, transaction);
         Execute($"PRAGMA user_version = {SchemaVersion};", transaction);
         transaction.Commit();

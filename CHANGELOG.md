@@ -25,6 +25,32 @@ must complete first.
   - `web_findings`: the newest findings, for one site or one address if asked;
   - `address_report`: one address across failed logons, decisions (with the one in force now), web evidence, its label and whether the allow-list or a private range keeps the engine from deciding against it.
   The web tools take the ranges `wpshield web` takes (`1h` to `30d`) and a site by its ID. Site names, request paths, user agents and site remedies leave the host only with `mcp.detailed_records`, wrapped as untrusted; without it an answer carries site IDs, counts and rule and observation IDs. Web evidence stays evidence only: nothing is decided or blocked from it.
+- Host facts (ADR 0013), **read-only**: nothing on the server is changed, and every remedy is text.
+  - `wpshield evidence collect` takes bounded snapshots of the host on fixed cadences and stores them in the evidence store:
+    health every 5 minutes (uptime, CPU, memory, free space per volume, store size); unexpected restarts at start and every 15
+    minutes, from System log events 41, 6008 and 1001, each crash recorded once with its bugcheck code and kept even if the log is
+    cleared (`host.unexpected-restart`); IIS sites, listening ports and RDP sessions every 15 minutes; the audit's posture and the
+    inventory of non-Microsoft accounts, services and tasks at start and every 6 hours. Reads run in the background, one at a time,
+    each within a time budget; failed-logon collection never waits for them, and nothing they read reaches the decision engine.
+  - Listening ports get an exposure verdict **by the Windows Firewall rules** (`open-to-any`, `restricted`, `blocked`,
+    `local-only`, `unknown`), never "reachable". SMB, RPC, SQL Server, MySQL, PostgreSQL, VNC and WinRM open to any address are red.
+  - The inventory never stores arguments: they become flags (`has-arguments`, `encoded-command`, `contains-url`,
+    `user-writable-path`). Microsoft-signed items are left out unless they run a script host or carry one of those flags.
+    Authenticode (embedded and catalog) is checked without revocation, cached, at most 300 per snapshot. Changes between
+    snapshots are recorded as `host.inventory-change`, at most 500 a day per kind, the overflow counted.
+  - The full-name indicator: attempted account names are compared in memory with the local accounts' full names, and only
+    whether any matched, and how many, is stored. The full names are never stored, logged or shown.
+  - RDP sessions take their source address from LocalSessionManager 21 and 25, never from the client-reported address.
+  - `wpshield host [health|sites|posture|ports|sessions|inventory <kind>] [--live] [--json]` shows them, each with its age and
+    status; a stale snapshot is marked, a fact never read says so, and `--live` reads now and writes nothing.
+  - `wpshield audit` records its summary (finding IDs, severities and counts, never names) as a posture snapshot in WPShield's own
+    store, and says so in its last line. An incomplete run is never recorded.
+  - The new audited setting `mcp.host_details` (off by default) will decide whether the MCP tools of the next phase may return
+    the host's names; it changes nothing yet.
+  - The read API `HostFactsQueries`, for the desktop command center and the MCP tools that come next.
+  - The evidence store's schema 3 adds `host_snapshots` and `host_health_hourly`. The migration is additive: a schema-2 store keeps
+    every row, which a test checks against the schema-2 tables written out literally. Like schema 2, it is one-way: update the CLI
+    and the desktop together.
 - `wpshield audit` reports web roots that share a path with an FTP root or virtual directory, or
   where either folder contains the other (`AUDIT-007`). The remedy is to separate the folders or
   verify FTP user isolation by hand.
@@ -1215,6 +1241,11 @@ must complete first.
 
 ### Known limitations
 
+- Host facts do not measure outbound connections from web worker processes yet: a snapshot misses a two-second callback.
+  They get their own ADR and sensor. Host facts run in `evidence collect` only, not yet in the service-hosted collector.
+  The exposure verdict reads the Windows Firewall rules and leans open when unsure (a program-scoped rule whose owner could
+  not be read is taken to apply; a remote-address list other than `*` or `Internet` reads as restricted); WFP filters from
+  other products are not considered.
 - **Web evidence is read by `wpshield evidence collect` only.** The collector the gateway hosts as the service does not read IIS logs yet: the IIS configuration reader lives in the CLI, and the service account would first need the manual read grant on the log folders.
 - **On a site without WordPress, every PHP file that answers is a `WEB-OBS-001` observation, legitimate PHP included.** That is why an observation decides nothing; the first week measures how much it catches.
 - **A request whose attack is in its query string is invisible to the web evidence,** because the query is never read. Inspecting it without storing it is the gateway's job.

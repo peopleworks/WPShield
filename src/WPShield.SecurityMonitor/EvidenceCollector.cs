@@ -92,15 +92,26 @@ public sealed class EvidenceCollector
     /// is the CLI's, not this library's. <see langword="null"/> reads failed logons only.
     /// </summary>
     public EvidenceCollector(string storePath, ILogger logger, Func<IisLogConfiguration>? webSites)
+        : this(storePath, logger, webSites, hostFacts: null)
+    {
+    }
+
+    /// <summary>
+    /// A collector that also takes the host-fact snapshots of ADR 0013. <paramref name="hostFacts"/> reads them;
+    /// the caller supplies it because reading IIS, the firewall and the inventory is the CLI's. Nothing it reads
+    /// changes the host, and nothing it reads reaches the decision engine.
+    /// </summary>
+    public EvidenceCollector(string storePath, ILogger logger, Func<IisLogConfiguration>? webSites, IHostFactSource? hostFacts)
         : this(storePath, logger, TimeProvider.System, (end, window) => AuthFailureFeed.ReadRecent(end, window), AuthFailureFeed.Watch,
-            HostProbes.Protection(), web: webSites is null ? null : new WebLogSensor(webSites, HostProbes.OwnAddresses, logger))
+            HostProbes.Protection(), web: webSites is null ? null : new WebLogSensor(webSites, HostProbes.OwnAddresses, logger),
+            hostFacts: hostFacts is null ? null : new HostFactsSensor(hostFacts, logger))
     {
     }
 
     internal EvidenceCollector(string storePath, ILogger logger, TimeProvider time,
         Func<DateTimeOffset, TimeSpan, AuthFailureSnapshot> readRecent,
         Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, AddressProtection protection,
-        DecisionEngineLimits? limits = null, WebLogSensor? web = null)
+        DecisionEngineLimits? limits = null, WebLogSensor? web = null, HostFactsSensor? hostFacts = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(storePath);
         StorePath = storePath;
@@ -112,6 +123,7 @@ public sealed class EvidenceCollector
         // subscription must not forget the decisions in force or the repeat offenders.
         Engine = new DecisionEngine(protection ?? throw new ArgumentNullException(nameof(protection)), limits);
         Web = web;
+        HostFacts = hostFacts;
     }
 
     /// <summary>
@@ -119,6 +131,12 @@ public sealed class EvidenceCollector
     /// <see cref="Engine"/>, whose only input is a failed logon.
     /// </summary>
     internal WebLogSensor? Web { get; }
+
+    /// <summary>
+    /// The host-fact snapshots (ADR 0013), or <see langword="null"/>. Evidence only, like <see cref="Web"/>: nothing
+    /// it reads reaches <see cref="Engine"/>.
+    /// </summary>
+    internal HostFactsSensor? HostFacts { get; }
 
     public string StorePath { get; }
 
@@ -301,6 +319,8 @@ internal sealed class CollectorSession
     private long reportedDropped;
     private WebLogSession? web;
     private DateTimeOffset webRetryAt;
+    private HostFactsSession? host;
+    private DateTimeOffset hostRetryAt;
 
     /// <summary>How long a failed web sensor waits before it starts again. Failed-logon collection never waits for it.</summary>
     internal static readonly TimeSpan WebRetryInterval = TimeSpan.FromMinutes(1);
@@ -372,6 +392,7 @@ internal sealed class CollectorSession
         Prune(now);
         AnnounceEngine(now);
         StartWeb(now);
+        StartHost(now);
 
         owner.Logger.LogInformation(
             "Evidence collection started. Store={Store} CatchUpFrom={CatchUpFrom:O} CatchUpRead={CatchUpRead} Inserted={Inserted} " +
@@ -426,6 +447,7 @@ internal sealed class CollectorSession
         }
 
         RunWeb(now);
+        RunHost(now);
 
         // An unreadable Security log rarely fixes itself (group membership reaches a service's token
         // at the next start), but a failed query can. Trying again is one failed read.
@@ -444,6 +466,8 @@ internal sealed class CollectorSession
         ReportDropped(now);
         if (final) Decide("end", () => owner.Engine.EndAll(now));
         Extend(now);
+        host?.Stop();
+        host = null;
         if (web is not null)
         {
             try { web.Stop(now); }
@@ -646,6 +670,50 @@ internal sealed class CollectorSession
     }
 
     /// <summary>
+    /// Starts the host-fact snapshots (ADR 0013) on this session's store. Evidence only; a failure is logged and
+    /// retried, and failed-logon collection never waits for it.
+    /// </summary>
+    private void StartHost(DateTimeOffset now)
+    {
+        if (owner.HostFacts is null) return;
+        try
+        {
+            host = owner.HostFacts.Start(store, owner.StorePath, now);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            host = null;
+            hostRetryAt = now + WebRetryInterval;
+            owner.Logger.LogError(
+                "Host facts could not start ({ErrorType}). Failed logons are still recorded; they start again in {RetrySeconds} s.",
+                exception.GetType().Name, (int)WebRetryInterval.TotalSeconds);
+        }
+    }
+
+    private void RunHost(DateTimeOffset now)
+    {
+        if (owner.HostFacts is null) return;
+        if (host is null)
+        {
+            if (now >= hostRetryAt) StartHost(now);
+            return;
+        }
+        try
+        {
+            host.Tick(now);
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            host.Stop();
+            host = null;
+            hostRetryAt = now + WebRetryInterval;
+            owner.Logger.LogError(
+                "Host facts failed ({ErrorType}). Failed logons are still recorded; they start again in {RetrySeconds} s.",
+                exception.GetType().Name, (int)WebRetryInterval.TotalSeconds);
+        }
+    }
+
+    /// <summary>
     /// Runs one engine step and records what it decided. Nothing in it may stop collection: a failure is
     /// logged with its type and collection continues; the attempts are already stored.
     /// </summary>
@@ -702,7 +770,7 @@ internal sealed class CollectorSession
         var result = writer.Prune(now, settings.Limits());
         lastPrune = now;
         if (result.RawRowsDeleted + result.AggregateRowsDeleted + result.DecisionRowsDeleted + result.EventRowsDeleted +
-            result.WebRowsDeleted == 0)
+            result.WebRowsDeleted + result.HostRowsDeleted == 0)
         {
             owner.Logger.LogDebug("Evidence pruning found nothing past its bounds.");
             return;
@@ -710,9 +778,9 @@ internal sealed class CollectorSession
 
         owner.Logger.LogInformation(
             "Evidence pruned. RawRows={RawRows} AggregateRows={AggregateRows} DecisionRows={DecisionRows} EventRows={EventRows} " +
-            "WebRows={WebRows} DetailedFrom={DetailedFrom:O}",
+            "WebRows={WebRows} HostRows={HostRows} DetailedFrom={DetailedFrom:O}",
             result.RawRowsDeleted, result.AggregateRowsDeleted, result.DecisionRowsDeleted, result.EventRowsDeleted,
-            result.WebRowsDeleted, result.RawNowStartsAt);
+            result.WebRowsDeleted, result.HostRowsDeleted, result.RawNowStartsAt);
     }
 
     private static int Specificity(string reason) => reason switch

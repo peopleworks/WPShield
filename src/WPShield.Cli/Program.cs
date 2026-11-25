@@ -81,6 +81,8 @@ internal static class ProgramMain
                 "attacks" => AttacksCommand.Run(options, Console.Out, Console.Error),
                 "decisions" => DecisionsCommand.Run(options, Console.Out, Console.Error),
                 "web" => WebCommand.Run(options, Console.Out, Console.Error),
+                // 'host' takes a section word and an inventory kind; it parses its own arguments.
+                "host" => HostCommand.Run(rest, Console.Out, Console.Error),
                 "settings" => SettingsCommand.Run(rest, Console.Out, Console.Error),
                 "mcp" => McpCommand.Run(options),
                 "analyst" => AnalystCommand.Run(rest, Console.Out, Console.Error),
@@ -207,6 +209,10 @@ internal static class ProgramMain
                 Console.WriteLine(WebCommand.Help);
                 return 0;
 
+            case "host":
+                Console.WriteLine(HostCommand.Help);
+                return 0;
+
             case "settings":
                 Console.WriteLine(SettingsCommand.Help);
                 return 0;
@@ -330,6 +336,12 @@ internal static class ProgramMain
                           addresses rules and observations flagged, recent findings. Reads only;
                           needs an elevated prompt.
                           [--range 1h|6h|24h|7d|30d] [--site <id|name>] [--source <ip>] [--store <path>] [--json]
+
+              host        What this server is (ADR 0013): health and unexpected restarts, IIS sites,
+                          posture, listening ports with their exposure by the Windows Firewall rules,
+                          RDP sessions, non-Microsoft accounts, services and tasks. From the collector's
+                          snapshots, read-only; --live reads now and writes nothing.
+                          [health|sites|posture|ports|sessions|inventory <kind>] [--live] [--json]
 
               settings    The evidence store's settings: retention, labels, the attacks range.
                           list | get <key> | history [<key>] read only; set <key> <value> and

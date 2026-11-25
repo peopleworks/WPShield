@@ -186,6 +186,10 @@ desktop, the CLI and a future MCP server answer from, so these rules protect eve
 - **Settings come from the catalog.** A new setting is a `SettingCatalog` entry with a type, bounds and
   its effect (`NextUse` or `NextStart`); unknown keys are refused and every change is audited in
   `settings_history`. A label describes an address; it never allows or blocks one.
+- **`wpshield audit` is the second exception, for one row.** After a complete run it records its posture
+  summary - finding IDs, severities and counts, never names - as one `iis_posture` snapshot, through
+  `EvidenceAccess.OpenForSettings`. An incomplete run is never recorded: it would replace a real reading
+  with "nobody could look".
 - **New kinds of evidence go to `events`** with a lowercase kind and a bounded JSON detail. A dedicated
   table is added only when a query needs it, with a migration that bumps `EvidenceStore.SchemaVersion`.
   **A migration is additive:** a store written by an earlier build keeps every row, and a test builds the
@@ -198,6 +202,16 @@ desktop, the CLI and a future MCP server answer from, so these rules protect eve
   amendment to ADR 0009 says so.
 - **The gateway and the sensor run one rule catalog,** `RequestPathRuleCatalog`. A path rule is added
   there, once; both registration tests compare it with the rules the packages contain.
+- **Host facts (ADR 0013) are snapshots the collector takes; readers never trigger a live read.** Only
+  `wpshield host --live` reads the host directly, and it writes nothing. Schema 3 added the `host_*` tables.
+  Every fact carries its status, and anything but `ok` names a reason and a remedy: unknown is never shown
+  as none. Reads run in the background within a time budget; nothing they read reaches the decision engine.
+- **The inventory never stores a command line's arguments, a password, a description or a full name.**
+  Arguments become flags (`has-arguments`, `encoded-command`, `contains-url`, `user-writable-path`) and are
+  dropped. Local full names are compared in memory with attempted account names, and only the count of
+  matches is stored. A test searches the database files and the log output for a full name.
+- **An exposure verdict is "by the Windows Firewall rules", never "reachable"**, and it leans open when
+  unsure. Other WFP filters decide too; the label says where the verdict comes from.
 
 ## Operator scripts
 
@@ -229,7 +243,8 @@ there.
   account name in the IIS configuration; the audit reads the name and never the password, its data
   has no field for one, and a test scans its source for any read of the attribute. Its documentation describes these weaknesses in general
   terms and never as the state of a named server: a public repository must not publish the open
-  weaknesses of a host that still has them.
+  weaknesses of a host that still has them. Its one write is to WPShield, never to the server: a posture
+  summary in WPShield's own evidence store (ADR 0013), which its last line reports.
 - **A preflight blocker carries a remedy, and the absence of a finding is never rendered as a
   finding.** When IIS cannot be read, say so as a blocker rather than printing an empty site list:
   on a readiness check "there are no sites" and "nobody could look" must not look alike, because the
