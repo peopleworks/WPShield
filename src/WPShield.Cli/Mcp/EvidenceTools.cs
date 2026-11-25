@@ -74,7 +74,10 @@ internal sealed partial class EvidenceTools
         "Account names and single records are withheld: the operator has not enabled mcp.detailed_records. Counts are complete.";
 
     private const string PrunedFromStore =
-        "Account names and single attempts for this period are no longer in the store (detailed rows were pruned). Counts come from hourly aggregates and are exact.";
+        "Account names and single attempts for this period are no longer in the store (detailed rows were pruned). Counts come from hourly aggregates, which count whole hours: if the range does not start on the hour, its first hour may include attempts from just before it.";
+
+    private const string OperatorNamesWithheld =
+        "Who requested a decision or changed a setting is withheld: it can name an operator's own account, and mcp.detailed_records is false.";
 
     private static readonly TimeSpan TrailingTolerance = TimeSpan.FromMinutes(2);
 
@@ -228,8 +231,7 @@ internal sealed partial class EvidenceTools
     public ToolAnswer AttackTimeline(string? range = null, string? bucket = null, string? from = null, string? to = null) =>
         Guard("attack_timeline", () =>
         {
-            var period = ParseRange(range, from, to, Now);
-            var (bucketName, size) = ParseBucket(bucket, period);
+            var (bucketName, size, period) = ParseBucket(bucket, ParseRange(range, from, to, Now));
             return Answer("attack_timeline", period, (store, body, notes) =>
             {
                 var queries = new EvidenceQueries(store);
@@ -294,12 +296,13 @@ internal sealed partial class EvidenceTools
                         ["rule_id"] = Code(d.RuleId),
                         ["mode"] = Code(d.Mode),
                         ["reason"] = Untrusted(d.Reason, 200),
-                        ["requested_by"] = d.RequestedBy is null ? null : Untrusted(d.RequestedBy, 64),
+                        ["requested_by"] = OperatorName(d.RequestedBy),
                         ["expires"] = d.ExpiresAt is { } expires ? Iso(expires) : null
                     }).ToArray()),
                     ["truncated"] = decisions.Count > limit
                 };
                 notes.Add("This is an audit trail, not the current state. A 'block' here is not necessarily in force: blocks live only as long as the process that made them, and WPShield never restores one from this history (ADR 0007, section 5).");
+                if (!access.DetailedRecords && decisions.Any(d => d.RequestedBy is not null)) notes.Add(OperatorNamesWithheld);
             });
         });
 
@@ -390,7 +393,7 @@ internal sealed partial class EvidenceTools
                 ["is_default"] = setting.IsDefault,
                 ["version"] = setting.Version,
                 ["updated_at"] = setting.UpdatedAt is { } at ? Iso(at) : null,
-                ["updated_by"] = setting.UpdatedBy is null ? null : Untrusted(setting.UpdatedBy, 64),
+                ["updated_by"] = OperatorName(setting.UpdatedBy),
                 ["takes_effect"] = setting.Effect == SettingEffect.NextStart ? "next-start" : "next-use",
                 ["description"] = setting.Description
             };
@@ -405,6 +408,7 @@ internal sealed partial class EvidenceTools
         }
         body["coverage"] = "not-applicable: settings are configuration, not evidence";
         body["result"] = new JsonObject { ["settings"] = items };
+        if (!access.DetailedRecords && items.Any(i => i!["updated_by"] is not null)) notes.Add(OperatorNamesWithheld);
         notes.Add("This server only reads settings. They are changed by an elevated operator tool, never through an assistant.");
     }));
 
@@ -439,7 +443,15 @@ internal sealed partial class EvidenceTools
                 ["generated_at"] = Iso(Now)
             };
             if (period is { } p)
-                answer["range"] = new JsonObject { ["name"] = p.Name, ["from"] = Iso(p.From), ["to"] = Iso(p.To) };
+            {
+                var node = new JsonObject { ["name"] = p.Name, ["from"] = Iso(p.From), ["to"] = Iso(p.To) };
+                if (p.RequestedFrom is { } requested)
+                {
+                    node["requested_from"] = Iso(requested);
+                    node["starts_on_the_hour"] = "Hourly aggregates count whole hours, so the range starts on the hour and every count in this answer covers the same period.";
+                }
+                answer["range"] = node;
+            }
             var notes = new List<string>();
             fill(store, answer, notes);
             answer["notes"] = new JsonArray(notes.Select(n => (JsonNode)n).ToArray());
@@ -598,9 +610,32 @@ internal sealed partial class EvidenceTools
     //  Arguments
     // ---------------------------------------------------------------------------------------------
 
-    internal readonly record struct TimeRange(DateTimeOffset From, DateTimeOffset To, string Name);
+    /// <param name="RequestedFrom">Set when <see cref="From"/> was moved back to the hour; the start the caller asked for.</param>
+    internal readonly record struct TimeRange(DateTimeOffset From, DateTimeOffset To, string Name, DateTimeOffset? RequestedFrom = null);
 
+    /// <summary>
+    /// Hourly aggregates count whole hours, and the query library selects every hour that touches the
+    /// range. A range they answer must therefore start on the hour, or the first bucket would count
+    /// attempts from before the start while a count from detailed rows would not, and two numbers in
+    /// one answer would disagree. The effective start is returned, with the one that was asked for.
+    /// </summary>
+    internal static TimeRange AlignToHour(TimeRange range)
+    {
+        var floored = new DateTimeOffset(range.From.UtcTicks - range.From.UtcTicks % TimeSpan.TicksPerHour, TimeSpan.Zero);
+        return floored == range.From ? range : range with { From = floored, RequestedFrom = range.RequestedFrom ?? range.From };
+    }
+
+    /// <summary>
+    /// Parses a named or explicit range. Ranges longer than six hours are answered, somewhere, from hourly
+    /// buckets (timelines, source histories, aggregates), so they start on the hour.
+    /// </summary>
     internal static TimeRange ParseRange(string? range, string? from, string? to, DateTimeOffset now, string defaultRange = "24h")
+    {
+        var parsed = ParseRequestedRange(range, from, to, now, defaultRange);
+        return parsed.To - parsed.From > TimeSpan.FromHours(6) ? AlignToHour(parsed) : parsed;
+    }
+
+    private static TimeRange ParseRequestedRange(string? range, string? from, string? to, DateTimeOffset now, string defaultRange)
     {
         if (from is not null || to is not null)
         {
@@ -629,25 +664,32 @@ internal sealed partial class EvidenceTools
         throw new ToolArgumentException(parameter, $"{parameter} is an ISO-8601 time such as 2026-11-24T08:00:00Z.", value);
     }
 
-    private static (string Name, TimeSpan Size) ParseBucket(string? bucket, TimeRange period)
+    /// <summary>
+    /// Chooses the bucket, and moves the range to the hour when the bucket is an hour or more, because
+    /// those buckets are read from hourly aggregates.
+    /// </summary>
+    private static (string Name, TimeSpan Size, TimeRange Period) ParseBucket(string? bucket, TimeRange period)
     {
-        var span = period.To - period.From;
+        // Chosen from the span that was asked for: a "24h" moved back to the hour still gets hourly buckets.
+        var span = period.To - (period.RequestedFrom ?? period.From);
+        (string Name, TimeSpan Size) chosen;
         if (bucket is null || bucket.Trim().Equals("auto", StringComparison.OrdinalIgnoreCase))
         {
-            var chosen = span <= TimeSpan.FromHours(1) ? "5m" : span <= TimeSpan.FromHours(6) ? "15m"
+            var name = span <= TimeSpan.FromHours(1) ? "5m" : span <= TimeSpan.FromHours(6) ? "15m"
                 : span <= TimeSpan.FromHours(24) ? "1h" : span <= TimeSpan.FromDays(7) ? "6h" : "1d";
-            return Buckets.First(b => b.Name == chosen);
+            chosen = Buckets.First(b => b.Name == name);
         }
-        var name = bucket.Trim().ToLowerInvariant();
-        foreach (var candidate in Buckets)
+        else
         {
-            if (candidate.Name != name) continue;
-            var count = Math.Ceiling(span / candidate.Size);
-            if (count > MaxBuckets)
-                throw new ToolArgumentException("bucket", $"That makes {count:0} buckets; at most {MaxBuckets}. Use a larger bucket or 'auto'.", bucket);
-            return candidate;
+            var name = bucket.Trim().ToLowerInvariant();
+            chosen = Buckets.FirstOrDefault(b => b.Name == name);
+            if (chosen.Name is null) throw new ToolArgumentException("bucket", "bucket is auto, 5m, 15m, 1h, 6h or 1d.", bucket);
         }
-        throw new ToolArgumentException("bucket", "bucket is auto, 5m, 15m, 1h, 6h or 1d.", bucket);
+        if (chosen.Size >= TimeSpan.FromHours(1)) period = AlignToHour(period);
+        var count = Math.Ceiling((period.To - period.From) / chosen.Size);
+        if (count > MaxBuckets)
+            throw new ToolArgumentException("bucket", $"That makes {count:0} buckets; at most {MaxBuckets}. Use a larger bucket or 'auto'.", bucket);
+        return (chosen.Name, chosen.Size, period);
     }
 
     private static void CheckLimit(int limit)
@@ -683,6 +725,14 @@ internal sealed partial class EvidenceTools
     // ---------------------------------------------------------------------------------------------
 
     internal static JsonObject Untrusted(string? text, int max) => new() { ["untrusted"] = EvidenceText.Clean(text, max) };
+
+    /// <summary>
+    /// Who asked for a decision or changed a setting. It can be an operator's own account name, which
+    /// leaves the host like any other answer, so it follows <c>mcp.detailed_records</c>. The plain string
+    /// <c>withheld</c> cannot be mistaken for a stored value, which always arrives wrapped.
+    /// </summary>
+    private JsonNode? OperatorName(string? name) =>
+        name is null ? null : access.DetailedRecords ? Untrusted(name, 64) : JsonValue.Create("withheld");
 
     /// <summary>A stored code (a channel, a reason, a rule ID). Anything that does not look like one is wrapped.</summary>
     private static JsonNode Code(string? value) =>
