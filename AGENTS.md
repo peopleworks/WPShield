@@ -156,7 +156,9 @@ desktop, the CLI and a future MCP server answer from, so these rules protect eve
 - **One writer for evidence at a time: the WPShield service.** `wpshield evidence collect` runs the
   same collector in the foreground for validation, and refuses unless the service is stopped. Readers
   open the store read-only. Settings are the one exception: an elevated operator tool may write them
-  through `EvidenceSettings`, never a reader.
+  through `EvidenceSettings`, never a reader. `wpshield settings set` and the desktop's elevated
+  **Settings** window are such tools; both open the store through `EvidenceAccess.OpenForSettings`,
+  which never creates the file, and only for the length of one change.
 - **The writer never creates the directory.** `wpshield install` creates it with replaced permissions
   (SYSTEM, Administrators, the service SID, by SID); a directory created by the writer would inherit
   `ProgramData`, which every local user can read.

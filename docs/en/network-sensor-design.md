@@ -76,7 +76,8 @@ the shorter ranges work as before.
 **Labels.** The `labels.addresses` setting names addresses and networks you know: your office, your
 own connection, a scanner network you have already reported. A label appears next to a matching
 address in the table, in the detail and among the neighbours, in every range. An exact address
-wins over a network, and a longer prefix over a shorter one. Labels are set with
+wins over a network, and a longer prefix over a shorter one. Labels are set in the
+[Settings window](#settings-window) or with
 [`wpshield settings`](#attack-history-from-the-command-line). **A label describes an address; it
 never allows or blocks one.**
 
@@ -109,6 +110,47 @@ What the view will not do:
 - **Decide or block anything.** It reads and shows. Decisions are made by the service's engine, in
   Monitor, and the view only reads them. Live records are applied once a second and memory holds at
   most 100,000 records, dropping the oldest and moving the "no data" line with them.
+
+### Settings window
+
+Open **Settings** to read and change the evidence store's [settings](#settings) without a JSON file
+or a path on the server. The list is the catalog this build of WPShield knows - every setting,
+including ones added after this page was written - with its value and whether it is the default.
+Select one to see what it does, its current value, who changed it last and when, its default, when
+it takes effect, and its history: when, who, the old and new value, and the reason.
+
+Each setting is edited with a control that fits its type: a check box for on and off, a box for a
+number or a word, a table of **Address or network** and **Label** for `labels.addresses`, and a list
+of entries for a list of addresses. Any other shape is edited as JSON. Whether a value is acceptable
+is decided by the same check `wpshield settings set` uses, and its answer appears under the editor.
+**Save** stays disabled until the value is valid, differs from the current one, and has a
+**reason**. **Reset to default** removes the stored value and needs a reason too. Every change is
+recorded with your Windows user name and the reason, exactly as the command line records it.
+
+**Saving applies nothing.** Each setting says when it takes effect: at its next use (the next pruning
+pass, query or view that reads it), or the next time the process that reads it starts. The window
+restarts nothing.
+
+**My current connection** adds a row with the address Windows reports for the client of this Remote
+Desktop session. Microsoft documents that this address is reported by the Remote Desktop client
+itself: behind NAT it is usually your own network's private address, through a VPN it can be another
+one, and through a Remote Desktop Gateway or the Store app there is none. Compare it with the Attacks
+view before relying on it. The button is disabled, with the reason in its tooltip, in a console
+session, when Windows has no address, and for an IPv6 client, whose layout Windows documents
+inconsistently; type the address instead.
+
+What the window will not do:
+
+- **Change anything without elevation.** The store's folder admits only administrators and the
+  service. Without elevation the window is read-only, and when it cannot open the store at all it
+  shows every value as unknown, never as its default. **Reopen as administrator** relaunches it
+  elevated on this view.
+- **Create the store.** When the evidence folder or the store file does not exist, the window says
+  so and names `wpshield install`; the service creates the store once it runs.
+- **Hold the store open, or overwrite a change it has not seen.** It opens the store for writing only
+  for one change, while the service keeps writing. If the value was changed elsewhere after the
+  window read it (the command line, another window), the save is refused with who changed it;
+  **Refresh** shows that change. A save that fails says why and keeps your edit.
 
 ### Adapter traffic
 
@@ -212,6 +254,9 @@ replaces the whole value: to add one label, `get labels.addresses`, edit it, and
 **The command applies nothing.** Each setting takes effect at its next use (the next pruning pass,
 query or view that reads it) or at the next start of the process that reads it, and the command
 prints which.
+
+The desktop's [Settings window](#settings-window) makes the same changes, through the same checks and
+the same history, with an editor for each setting instead of a JSON file.
 
 Values are JSON, and a text setting also takes a bare word (`7d`). Windows PowerShell 5.1 drops the
 quotes inside an argument on its way to a program, so give an object such as the labels in a file

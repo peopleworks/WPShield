@@ -163,7 +163,9 @@ Reglas que añade:
 
 - **Los ajustes los escribe una herramienta de operador elevada o el servicio, nunca un lector.** El
   escritorio y un servidor MCP los leen. Una herramienta MCP que cambie un ajuste es una acción y queda
-  bajo la sección 6.
+  bajo la sección 6. (Nota, 2026-11-24: la ventana **Ajustes** del monitor de escritorio, cuando se
+  ejecuta elevada, es una herramienta de operador en este sentido y escribe mediante
+  `EvidenceSettings`; las demás vistas del monitor solo leen.)
 - **Una etiqueta describe; nunca permite ni bloquea.** La lista de permitidos y los umbrales de
   bloqueo solo pasan a ser ajustes mediante el ADR propio del motor de decisión, con su validación.
 - **Los ajustes que solo se aplican al arrancar lo dicen** cuando se cambian, la misma regla de
