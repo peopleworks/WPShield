@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 225" role="img" aria-labelledby="title">
+  <title id="title">A read-only query over recorded evidence</title>
+  <rect width="900" height="225" rx="16" fill="#eef5f8"/>
+  <g font-family="Segoe UI, system-ui, sans-serif">
+    <rect x="30" y="46" width="244" height="133" rx="10" fill="#ffffff" stroke="#c7dce6"/>
+    <text x="47" y="80" fill="#486474" font-size="17" font-weight="600">Assistant</text>
+    <text x="47" y="117" fill="#122b3c" font-family="Consolas, monospace" font-size="19">203.0.113.10</text>
+    <text x="47" y="151" fill="#0369a1" font-size="16">Seen before?</text>
+    <rect x="328" y="46" width="244" height="133" rx="10" fill="#e1f2fb" stroke="#c7dce6"/>
+    <text x="345" y="80" fill="#486474" font-size="17" font-weight="600">wpshield mcp</text>
+    <text x="345" y="117" fill="#122b3c" font-family="Consolas, monospace" font-size="19">source_history</text>
+    <text x="345" y="151" fill="#0369a1" font-size="16">Read-only query</text>
+    <rect x="626" y="46" width="244" height="133" rx="10" fill="#ffffff" stroke="#c7dce6"/>
+    <text x="643" y="80" fill="#486474" font-size="17" font-weight="600">Local evidence store</text>
+    <text x="643" y="117" fill="#122b3c" font-family="Consolas, monospace" font-size="19">History returned</text>
+    <text x="643" y="151" fill="#0369a1" font-size="16">Coverage included</text>
+    <path d="M282 111h37m-8-7 8 7-8 7M580 111h37m-8-7 8 7-8 7" fill="none" stroke="#0369a1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>
