@@ -111,8 +111,9 @@ public sealed class AddressProtection(Func<IReadOnlyCollection<IPAddress>?> host
             return sessions.For(target) switch
             {
                 RemoteDesktopState.Connected => new(ProtectionVerdict.Protected, "holds a Remote Desktop session"),
+                // Short on purpose: a reason is stored at most 200 characters, and the trigger comes first.
                 RemoteDesktopState.Unknown => new(ProtectionVerdict.Refused,
-                    $"the Remote Desktop connections could not be read ({EvidenceText.Clean(sessions.Problem, 40)}); nobody could look is not nobody connected"),
+                    $"the Remote Desktop connections could not be read ({EvidenceText.Clean(sessions.Problem, 24)})"),
                 _ => Protection.None
             };
         }

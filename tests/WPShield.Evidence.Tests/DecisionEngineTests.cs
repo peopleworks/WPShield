@@ -633,6 +633,71 @@ public sealed class DecisionEngineTests
         Assert.Contains("threshold 5 in 10 minutes", decision.Reason, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The store keeps 200 characters of a reason, and the trigger comes first. The longest reason each
+    /// action can carry, with every setting at its widest, must come back from the store whole.
+    /// </summary>
+    [Fact]
+    public void TheLongestReasonsFitWhatTheStoreKeeps()
+    {
+        var window = TimeSpan.FromMinutes(1439);
+        var widest = new DefenseOptions
+        {
+            RepeatedFailures = new(100, window, TimeSpan.FromMinutes(6000)),
+            NonexistentAccounts = new(50, window, TimeSpan.FromMinutes(10080)),
+            Network = new(64, window, TimeSpan.FromMinutes(10080)),
+            SharedAccount = new(100, window, TimeSpan.Zero)
+        };
+        AuthFailure At(DateTimeOffset start, double minutes, string ip, string account, string reason = "bad-password") =>
+            new(start.AddMinutes(minutes), AttemptPairing.SecurityChannel, IPAddress.Parse(ip), null, account, reason, 10, ++record);
+        IEnumerable<AuthFailure> Network(DateTimeOffset start) =>
+            Enumerable.Range(1, 64).Select(i => At(start, (i - 1) * 1438.0 / 63, $"2001:db8:ffff:ffff::{i:x}", $"user{i}"));
+        var records = new List<DecisionRecord>();
+
+        rdpProblem = new string('x', 64);
+        records.AddRange(Engine().Observe(Network(Now), widest, Now.AddDays(1)));
+        rdpProblem = null;
+        AddressRanges.TryParseCanonical("2001:db8:ffff:ffff:ffff:ffff:ffff:fff0", out var allowed);
+        records.AddRange(Engine().Observe(Network(Now), widest with { Allow = [allowed] }, Now.AddDays(1)));
+
+        var engine = Engine();
+        var start = Now;
+        for (var round = 0; round < 2; round++)
+        {
+            var decided = engine.Observe(Enumerable.Range(0, 100).Select(i => At(start, i * 1438.0 / 99, "2001:db8:ffff:fffe:ffff:ffff:ffff:ffff", "admin")),
+                widest, start.AddDays(1));
+            records.AddRange(decided);
+            start = decided.Single(d => d.Action == DecisionActions.WouldBlock).ExpiresAt!.Value;
+            records.AddRange(engine.Expire(start));
+        }
+        records.AddRange(Engine().Observe(Enumerable.Range(1, 100).Select(i => At(Now, (i - 1) * 1438.0 / 99, $"2001:db8:{i:x}::ffff", "administrador")),
+            widest, Now.AddDays(1)));
+        records.AddRange(Engine().Observe(Enumerable.Range(1, 50).Select(i => At(Now, (i - 1) * 1438.0 / 49, "2001:db8:ffff:fffd:ffff:ffff:ffff:ffff",
+            $"name{i}", "unknown-account")), widest, Now.AddDays(1)));
+
+        Assert.Contains(records, r => r.Action == DecisionActions.Refused && r.RuleId == DecisionRules.Network);
+        Assert.Contains(records, r => r.Action == DecisionActions.Protected && r.RuleId == DecisionRules.Network);
+        Assert.Contains(records, r => r.Reason.Contains("capped at 7 days", StringComparison.Ordinal));
+        Assert.Contains(records, r => r.Action == DecisionActions.Report);
+        Assert.Contains(records, r => r.Action == DecisionActions.Expire);
+        Assert.Contains(records, r => r.RuleId == DecisionRules.NonexistentAccounts);
+        var directory = Path.Combine(Path.GetTempPath(), "wpshield-engine-tests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            using var store = EvidenceStore.OpenForWriting(Path.Combine(directory, EvidenceStore.FileName));
+            var writer = new EvidenceWriter(store);
+            foreach (var decision in records) writer.RecordDecision(decision);
+            var stored = new EvidenceQueries(store).Decisions(Now.AddDays(-1), Now.AddDays(30), 1000).Select(d => d.Reason).ToHashSet(StringComparer.Ordinal);
+
+            Assert.All(records, r => Assert.True(r.Reason.Length <= 200, $"{r.Reason.Length} characters: {r.Reason}"));
+            Assert.All(records, r => Assert.Contains(r.Reason, stored));
+        }
+        finally
+        {
+            try { Directory.Delete(directory, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
     [Fact]
     public void EveryRecordIsMonitorMode()
     {
