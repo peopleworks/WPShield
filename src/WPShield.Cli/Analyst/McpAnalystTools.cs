@@ -1,0 +1,150 @@
+using System.Globalization;
+using System.Reflection;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using ModelContextProtocol.Protocol;
+using ModelContextProtocol.Server;
+using WPShield.Analyst;
+using WPShield.Cli.Mcp;
+
+namespace WPShield.Cli.Analyst;
+
+/// <summary>
+/// The analyst's tools: the MCP server's tool functions, called in-process (ADR 0010, section 3).
+/// </summary>
+/// <remarks>
+/// <para>
+/// <b>Defined once.</b> The tools are found by reflection over <see cref="WPShieldMcpTools"/>, the class
+/// <c>wpshield mcp</c> serves, and each call goes through the same attributed method, so the name, the
+/// description, the <c>{"untrusted": ...}</c> wrapping, the bounds and the <c>mcp.detailed_records</c>
+/// gate (frozen in <see cref="McpEvidenceAccess"/> when the store first opens) are the MCP server's own.
+/// A tool added there reaches the analyst without a change here, and nothing else does: no shell, file,
+/// web or code tool exists to add.
+/// </para>
+/// <para>
+/// <b>Strict schemas.</b> The analyst's tools are declared with <c>strict: true</c>, whose schemas take
+/// <c>additionalProperties: false</c>, no numeric bounds, at most 24 optional parameters across all tools
+/// and at most 16 union-typed ones. The MCP schema is reduced to that: each property keeps its type and
+/// description, a nullable type becomes the plain type of an optional property, and the explicit
+/// <c>from</c>/<c>to</c> range is kept only on the tools a digest needs it for - comparing a period with
+/// the one before. The other tools take named ranges, which they already accept.
+/// </para>
+/// </remarks>
+internal static class McpAnalystTools
+{
+    /// <summary>The tools whose explicit <c>from</c>/<c>to</c> range the analyst keeps.</summary>
+    internal static readonly IReadOnlySet<string> ExplicitRangeTools =
+        new HashSet<string>(["attacks_summary", "top_sources", "attack_timeline", "coverage"], StringComparer.Ordinal);
+
+    private static readonly string[] ExplicitRange = ["from", "to"];
+
+    public static IReadOnlyList<IAnalystTool> Create(EvidenceTools tools)
+    {
+        ArgumentNullException.ThrowIfNull(tools);
+        var target = new WPShieldMcpTools(tools);
+        var result = new List<IAnalystTool>();
+        foreach (var method in typeof(WPShieldMcpTools).GetMethods(BindingFlags.Public | BindingFlags.Instance))
+        {
+            if (!method.IsDefined(typeof(McpServerToolAttribute), inherit: false)) continue;
+            var protocol = McpServerTool.Create(method, target).ProtocolTool;
+            result.Add(new Tool(target, method, protocol.Name, protocol.Description ?? "", StrictSchema(protocol.Name, protocol.InputSchema)));
+        }
+        return [.. result.OrderBy(t => t.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>The MCP input schema, reduced to what strict tool use accepts. See the remarks above.</summary>
+    internal static JsonObject StrictSchema(string tool, JsonElement inputSchema)
+    {
+        var source = JsonNode.Parse(inputSchema.GetRawText()) as JsonObject
+            ?? throw new InvalidOperationException($"The MCP schema of {tool} is not an object.");
+        var keep = ExplicitRangeTools.Contains(tool);
+        var properties = new JsonObject();
+        foreach (var (name, node) in source["properties"] as JsonObject ?? [])
+        {
+            if (!keep && ExplicitRange.Contains(name, StringComparer.Ordinal)) continue;
+            var property = new JsonObject { ["type"] = PlainType(tool, name, node?["type"]) };
+            if (node?["description"] is JsonValue description) property["description"] = description.DeepClone();
+            properties[name] = property;
+        }
+        var required = (source["required"] as JsonArray ?? [])
+            .Select(n => n!.GetValue<string>()).Where(n => properties.ContainsKey(n)).ToArray();
+        return new JsonObject
+        {
+            ["type"] = "object",
+            ["properties"] = properties,
+            ["required"] = new JsonArray([.. required.Select(r => (JsonNode)r)]),
+            ["additionalProperties"] = false
+        };
+    }
+
+    private static string PlainType(string tool, string name, JsonNode? type)
+    {
+        switch (type)
+        {
+            case JsonValue value when value.TryGetValue<string>(out var single):
+                return single;
+            case JsonArray types:
+                var concrete = types.Select(t => t?.GetValue<string>()).Where(t => t is not null and not "null").ToArray();
+                if (concrete.Length == 1) return concrete[0]!;
+                break;
+        }
+        throw new InvalidOperationException($"{tool}.{name} has a type the analyst's strict schemas cannot express.");
+    }
+
+    /// <summary>One MCP tool function, bound to the instance <c>wpshield mcp</c> would serve.</summary>
+    private sealed class Tool(WPShieldMcpTools target, MethodInfo method, string name, string description, JsonObject schema) : IAnalystTool
+    {
+        public string Name { get; } = name;
+
+        public string Description { get; } = description;
+
+        public JsonObject InputSchema { get; } = schema;
+
+        public AnalystToolResult Invoke(JsonObject arguments, CancellationToken cancellationToken)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var properties = (JsonObject)InputSchema["properties"]!;
+            var unknown = arguments.Select(a => a.Key).FirstOrDefault(k => !properties.ContainsKey(k));
+            if (unknown is not null) return Invalid($"{Name} has no argument '{ReportText.Line(unknown, 40)}'.");
+
+            var parameters = method.GetParameters();
+            var values = new object?[parameters.Length];
+            for (var i = 0; i < parameters.Length; i++)
+            {
+                var parameter = parameters[i];
+                var given = properties.ContainsKey(parameter.Name!) ? arguments[parameter.Name!] : null;
+                if (given is null)
+                {
+                    if (!parameter.HasDefaultValue) return Invalid($"{Name} needs the argument '{parameter.Name}'.");
+                    values[i] = parameter.DefaultValue;
+                    continue;
+                }
+                if (Bind(parameter.ParameterType, given) is not { } bound)
+                    return Invalid($"{Name}: '{parameter.Name}' must be {(parameter.ParameterType == typeof(int) ? "a whole number" : "text")}.");
+                values[i] = bound;
+            }
+            var answer = (CallToolResult)method.Invoke(target, values)!;
+            var text = answer.Content.OfType<TextContentBlock>().FirstOrDefault()?.Text
+                ?? EvidenceTools.Failure(Name, "internal-error", "The tool returned no text.").ToJson();
+            return new AnalystToolResult(text, answer.IsError == true);
+        }
+
+        private static object? Bind(Type type, JsonNode node)
+        {
+            if (node is not JsonValue value) return null;
+            if (type == typeof(string)) return value.TryGetValue<string>(out var text) ? text : null;
+            if (type == typeof(int))
+            {
+                if (value.TryGetValue<int>(out var number)) return number;
+                if (value.TryGetValue<double>(out var real) && real == Math.Floor(real) && real is >= int.MinValue and <= int.MaxValue)
+                    return (int)real;
+                return value.TryGetValue<string>(out var digits) && int.TryParse(digits, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+                    ? parsed : null;
+            }
+            return null;
+        }
+
+        private AnalystToolResult Invalid(string message) =>
+            new(EvidenceTools.Failure(Name, "invalid-argument", message).ToJson(), IsError: true);
+    }
+}

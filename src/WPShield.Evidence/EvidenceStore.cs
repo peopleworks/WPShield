@@ -48,13 +48,19 @@ public sealed class EvidenceStore : IDisposable
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(path));
         if (directory is null || !Directory.Exists(directory))
-            throw new DirectoryNotFoundException(
-                $"The evidence directory '{directory}' does not exist. 'wpshield install' creates it with restricted permissions.");
+            throw new DirectoryNotFoundException(MissingDirectoryMessage(directory));
         var connection = Open(path, SqliteOpenMode.ReadWriteCreate);
         var store = new EvidenceStore(connection, readOnly: false);
         store.Migrate();
         return store;
     }
+
+    /// <summary>
+    /// What a writer says when the evidence directory is missing. Shared with the analyst's report store,
+    /// which lives in the same directory and, like the evidence store, never creates it.
+    /// </summary>
+    public static string MissingDirectoryMessage(string? directory) =>
+        $"The evidence directory '{directory}' does not exist. 'wpshield install' creates it with restricted permissions.";
 
     public static EvidenceStore OpenReadOnly(string path)
     {

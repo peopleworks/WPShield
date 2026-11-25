@@ -69,6 +69,11 @@
     <ProjectReference Include="../WPShield.SecurityMonitor/WPShield.SecurityMonitor.csproj" />
     <!-- The evidence store's read-only queries (ADR 0007), for 'wpshield mcp'. -->
     <ProjectReference Include="../WPShield.Evidence/WPShield.Evidence.csproj" />
+    <!--
+      'wpshield analyst' (ADR 0010): the optional AI analyst. The CLI hands it the MCP tool functions
+      in-process; the gateway never references it, so the service opens no connection to a provider.
+    -->
+    <ProjectReference Include="../WPShield.Analyst/WPShield.Analyst.csproj" />
   </ItemGroup>
 
   <ItemGroup>
