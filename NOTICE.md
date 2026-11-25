@@ -68,6 +68,7 @@ packages the repository references:
 | [`Spectre.Console`](https://www.nuget.org/packages/Spectre.Console/0.57.2) | 0.57.2 | [MIT](https://licenses.nuget.org/MIT) | `WPShield.Cli` | Renders the live `wpshield watch` console. |
 | [`QuestPDF`](https://www.nuget.org/packages/QuestPDF/2024.12.3) | 2024.12.3 | [QuestPDF Community MIT License](https://github.com/QuestPDF/QuestPDF/blob/ffa497de7d6b590f8988344ac6e302924af5e9ea/Source/QuestPDF/Resources/PackageLicense.md#questpdf-community-mit-license) | `WPShield.Cli` | Generates PDFs for `wpshield report`. See the eligibility terms below. |
 | [`Microsoft.Web.Administration`](https://www.nuget.org/packages/Microsoft.Web.Administration/11.1.0) | 11.1.0 | [Microsoft Software License Terms for the Microsoft .NET Library](https://dotnet.microsoft.com/en-us/dotnet_library_license.htm) | `WPShield.Cli` | Reads IIS configuration and applies operator-initiated changes to the named site. |
+| [`Anthropic`](https://github.com/anthropics/anthropic-sdk-csharp) | 13.7.0 | Apache-2.0 | `WPShield.Analyst` | The optional `wpshield analyst` (ADR 0010): the Anthropic Messages API, and the PeopleWorks Relay's `/v1/messages` lane. Brings `Microsoft.Extensions.AI.Abstractions`, `System.Net.ServerSentEvents` and `System.Text.Json` (MIT). |
 | [`Microsoft.AspNetCore.TestHost`](https://asp.net/) | 10.0.0 | MIT | `WPShield.Gateway.Tests` | In-process host for the gateway integration suite. |
 | [`Microsoft.NET.Test.Sdk`](https://github.com/microsoft/vstest) | 17.14.1 | MIT | all test projects | Test platform. |
 | [`xunit`](https://github.com/xunit/xunit) | 2.9.3 | Apache-2.0 | all test projects | Test framework. |
@@ -87,8 +88,8 @@ terms. The license shipped with each release governs that release unless the use
 later terms. [Current Community License](https://www.questpdf.com/license/community.html)
 
 `Yarp.ReverseProxy` is the only third-party component in the gateway's request path. `Microsoft.Data.Sqlite`
-ships wherever the evidence store is read or written, and `ModelContextProtocol` ships with the CLI - and, because
-the desktop references the CLI, beside the desktop too. The test packages are build-time and test-time
+ships wherever the evidence store is read or written, and `ModelContextProtocol` and `Anthropic` ship with the CLI - and,
+because the desktop references the CLI, beside the desktop too. Neither reaches the gateway. The test packages are build-time and test-time
 dependencies only.
 
 `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`
