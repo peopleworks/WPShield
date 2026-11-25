@@ -226,6 +226,7 @@ internal static class SettingsCommand
         output.WriteLine($"Recorded in the settings history: {NetworkMonitorCommand.ConsoleLabel(change.ChangedBy)}, " +
             $"{change.At.ToUniversalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} UTC, \"{NetworkMonitorCommand.ConsoleLabel(change.Reason)}\".");
         output.WriteLine(EffectSentence(change.Effect));
+        AnalystCommand.AfterSettingChange(key, store, output);
         return 0;
     }
 

@@ -19,6 +19,11 @@
       read-only 'wpshield mcp' server of ADR 0008. Only its stdio transport is used: no listener.
     -->
     <PackageVersion Include="ModelContextProtocol" Version="2.4.0" />
+    <!--
+      The official Anthropic .NET SDK (Apache-2.0), referenced only by WPShield.Analyst for the optional
+      analyst of ADR 0010, never by WPShield.Gateway: the service opens no connection to a model provider.
+    -->
+    <PackageVersion Include="Anthropic" Version="13.7.0" />
     <PackageVersion Include="Spectre.Console" Version="0.57.2" />
     <PackageVersion Include="QuestPDF" Version="2024.12.3" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.12.0" />

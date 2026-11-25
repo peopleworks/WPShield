@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    The optional AI analyst (ADR 0010). It reads the evidence store through the MCP server's tool
+    functions, which the CLI hands it in-process, and writes reports to its own SQLite file. It never
+    acts: nothing here blocks, unblocks, allows or changes a setting.
+
+    The CLI references this assembly; WPShield.Gateway never does, so the service never opens a
+    connection to a model provider, and a test asserts it. It is not one of the portable projects
+    either: it carries a provider SDK the rule packages have no reason to see.
+  -->
+  <ItemGroup>
+    <!--
+      The official Anthropic .NET SDK (Apache-2.0), for the Anthropic provider and, pointed at
+      analyst.relay_url, for the PeopleWorks Relay's /v1/messages lane.
+    -->
+    <PackageReference Include="Anthropic" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../WPShield.Evidence/WPShield.Evidence.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="WPShield.Analyst.Tests" />
+    <!-- The CLI's assembly is named wpshield. -->
+    <InternalsVisibleTo Include="wpshield" />
+    <InternalsVisibleTo Include="WPShield.Cli.Tests" />
+  </ItemGroup>
+</Project>

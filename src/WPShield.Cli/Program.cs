@@ -82,6 +82,7 @@ internal static class ProgramMain
                 "decisions" => DecisionsCommand.Run(options, Console.Out, Console.Error),
                 "settings" => SettingsCommand.Run(rest, Console.Out, Console.Error),
                 "mcp" => McpCommand.Run(options),
+                "analyst" => AnalystCommand.Run(rest, Console.Out, Console.Error),
                 _ => Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.")
             };
         }
@@ -209,6 +210,10 @@ internal static class ProgramMain
                 Console.WriteLine(McpCommand.Help);
                 return 0;
 
+            case "analyst":
+                Console.WriteLine(AnalystCommand.Help);
+                return 0;
+
             default:
                 return Fail($"Unknown command: {command}. Run 'wpshield --help' for the command list.");
         }
@@ -322,6 +327,11 @@ internal static class ProgramMain
 
               mcp         A read-only MCP server over the evidence store, for an assistant to start
                           on stdio. Opens no port; changes nothing. Needs elevation. [--store <path>]
+
+              analyst     An optional AI analyst over the evidence store: reads and recommends, never
+                          acts. Off by default; your key from the environment, bounded per run and day.
+                          status | test | digest [--since 24h] | investigate <ip|net> | ask "<q>"
+                          | reports [--last N] | show <id>
 
               publish    Build a self-contained win-x64 deployment, with a checksum. Runs on a
                           build machine, not on a server.

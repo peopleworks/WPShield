@@ -39,6 +39,7 @@ Usa este índice para encontrar las guías del operador y las referencias técni
 | Request evidence · Evidencia de solicitudes | [Traceability and completeness](en/request-evidence.md) | [Trazabilidad y completitud](es/evidencia-solicitudes.md) |
 | Offline policy preview · Vista previa offline | [Policy preview](en/policy-preview.md) | [Vista previa de políticas](es/vista-previa-politicas.md) |
 | MCP server · Servidor MCP | [Ask an assistant about the evidence](en/mcp-server.md) | [Preguntarle a un asistente por la evidencia](es/servidor-mcp.md) |
+| AI analyst · Analista de IA | [An AI analyst over the evidence](en/analyst.md) | [Un analista de IA sobre la evidencia](es/analista.md) |
 | TelltaleDNS evaluation (proposal) · Evaluación (propuesta) | [Evaluation](en/telltaledns-evaluation.md) | [Evaluación](es/evaluacion-telltaledns.md) |
 | Reader-1 evaluation plan (proposal) · Plan de evaluación (propuesta) | [Evaluation plan](en/reader-1-evaluation-plan.md) | [Plan de evaluación](es/plan-evaluacion-reader-1.md) |
 | ADR 0001 — production traffic path · Ruta de tráfico en producción | [Production traffic path](en/adr/0001-production-traffic-path.md) | [Ruta de tráfico en producción](es/adr/0001-ruta-de-trafico-en-produccion.md) |
