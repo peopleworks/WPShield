@@ -64,6 +64,13 @@ Llegar al almacén desde otra máquina es otra decisión, con autenticación, y 
 | `evidence_events` | Eventos de un tipo; eventos sueltos solo si se permite | `EvidenceEvents.Query` |
 | `list_settings` | Cada ajuste, su valor y cuándo surte efecto | `EvidenceSettings.List` |
 | `address_labels` | Los nombres que el operador dio a direcciones conocidas | `EvidenceSettings.Get` |
+| `web_summary` | Evidencia de los logs de IIS (ADR 0011): sitios leídos y no leídos, solicitudes, hallazgos y observaciones por regla | `WebEvidenceQueries.Sites`, `.Summary`, `.RuleCounts` |
+| `web_top_sources` | Las direcciones que guardó la evidencia web, las más señaladas primero | `WebEvidenceQueries.TopSources` |
+| `web_findings` | Los hallazgos web más recientes; nombres de sitio, rutas y agentes de usuario solo si se permite | `WebEvidenceQueries.Findings` |
+| `address_report` | Una dirección en los inicios de sesión fallidos, las decisiones, la evidencia web, su etiqueta y la lista de permitidos | `EvidenceQueries.SourceHistory`, `.DecisionsAbout`, `.ActiveDecisions`, `WebEvidenceQueries`, `DefenseOptions.Read` |
+
+Las cuatro últimas filas se añadieron el 2026-11-25, con la evidencia de los logs de IIS del ADR 0011;
+las reglas de abajo se les aplican sin cambios.
 
 El almacén se abre con `EvidenceStore.OpenReadOnly`. Ninguna herramienta deja pasar SQL, y ninguna
 bloquea, desbloquea, permite ni cambia un ajuste. Todas llevan las anotaciones `readOnlyHint: true`,

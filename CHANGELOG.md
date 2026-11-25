@@ -19,7 +19,12 @@ must complete first.
   totals, a timeline and an address table. A red `WEB-OBS-001` card flags 2xx PHP responses outside
   WordPress entry points. Address details show cleaned paths and reuse the audited **Label…** and
   **Allow…** actions. Web evidence produces no decisions or blocks.
-
+- Four read-only tools in `wpshield mcp`, which the AI analyst gets too (ADR 0008 table, ADR 0011 as built):
+  - `web_summary`: the IIS log evidence of a range, coverage first (every site the sensor knows, read or not and why), then requests, findings and the observations `WEB-OBS-001` to `-003`, per rule and observation;
+  - `web_top_sources`: the addresses the web evidence kept, most flagged first;
+  - `web_findings`: the newest findings, for one site or one address if asked;
+  - `address_report`: one address across failed logons, decisions (with the one in force now), web evidence, its label and whether the allow-list or a private range keeps the engine from deciding against it.
+  The web tools take the ranges `wpshield web` takes (`1h` to `30d`) and a site by its ID. Site names, request paths, user agents and site remedies leave the host only with `mcp.detailed_records`, wrapped as untrusted; without it an answer carries site IDs, counts and rule and observation IDs. Web evidence stays evidence only: nothing is decided or blocked from it.
 - `wpshield audit` reports web roots that share a path with an FTP root or virtual directory, or
   where either folder contains the other (`AUDIT-007`). The remedy is to separate the folders or
   verify FTP user isolation by hand.
@@ -120,6 +125,7 @@ must complete first.
 
 ### Changed
 
+- The AI analyst is offered fewer optional tool parameters than an MCP client, so fourteen tools fit the strict-schema budget of 24 (23 used): `limit` only on `top_sources`, no timeline `bucket`, no `site` on the web tools and no address filter on `web_findings`. The tool's own default applies to what is left out, and MCP clients still see every parameter.
 - `wpshield audit` leads the `AUDIT-002` remedy with the HTTP 503 risk of changing a password before
   moving every pool that uses it. `AUDIT-004` lists the WordPress sites that should keep PHP and
   checks effective site mappings even after the server-level handler is removed. Sites without

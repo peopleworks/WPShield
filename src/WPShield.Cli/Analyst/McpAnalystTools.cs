@@ -29,6 +29,16 @@ namespace WPShield.Cli.Analyst;
 /// <c>from</c>/<c>to</c> range is kept only on the tools a digest needs it for - comparing a period with
 /// the one before. The other tools take named ranges, which they already accept.
 /// </para>
+/// <para>
+/// <b>Server defaults instead of optional parameters.</b> Fourteen tools with every optional parameter
+/// would need 32 optional parameters, over the budget of 24. The analyst's schemas therefore leave out a
+/// few parameters whose MCP default is what a digest or an investigation wants, listed in
+/// <see cref="ServerDefaults"/>: <c>limit</c> on every tool but <c>top_sources</c> (20 rows), the timeline's
+/// <c>bucket</c> (chosen from the range), the web tools' <c>site</c> (every site; each row names its site
+/// ID) and the address filter of <c>web_findings</c> (<c>address_report</c> answers one address). That
+/// leaves 23. MCP clients still see every parameter: only what the analyst is offered is reduced, and the
+/// tool's own default applies to what it is not offered.
+/// </para>
 /// </remarks>
 internal static class McpAnalystTools
 {
@@ -36,7 +46,24 @@ internal static class McpAnalystTools
     internal static readonly IReadOnlySet<string> ExplicitRangeTools =
         new HashSet<string>(["attacks_summary", "top_sources", "attack_timeline", "coverage"], StringComparer.Ordinal);
 
+    /// <summary>
+    /// Parameters the analyst's schema leaves out, by tool. The MCP tool's own default applies to them.
+    /// See the remarks above for why each one.
+    /// </summary>
+    internal static readonly IReadOnlyDictionary<string, IReadOnlySet<string>> ServerDefaults =
+        new Dictionary<string, IReadOnlySet<string>>(StringComparer.Ordinal)
+        {
+            ["attack_timeline"] = Names("bucket"),
+            ["decisions"] = Names("limit"),
+            ["evidence_events"] = Names("limit"),
+            ["web_summary"] = Names("site"),
+            ["web_top_sources"] = Names("site", "limit"),
+            ["web_findings"] = Names("site", "address", "limit")
+        };
+
     private static readonly string[] ExplicitRange = ["from", "to"];
+
+    private static HashSet<string> Names(params string[] names) => new(names, StringComparer.Ordinal);
 
     public static IReadOnlyList<IAnalystTool> Create(EvidenceTools tools)
     {
@@ -74,10 +101,12 @@ internal static class McpAnalystTools
         var source = JsonNode.Parse(inputSchema.GetRawText()) as JsonObject
             ?? throw new InvalidOperationException($"The MCP schema of {tool} is not an object.");
         var keep = ExplicitRangeTools.Contains(tool);
+        var omitted = ServerDefaults.GetValueOrDefault(tool);
         var properties = new JsonObject();
         foreach (var (name, node) in source["properties"] as JsonObject ?? [])
         {
             if (!keep && ExplicitRange.Contains(name, StringComparer.Ordinal)) continue;
+            if (omitted?.Contains(name) == true) continue;
             var property = new JsonObject { ["type"] = PlainType(tool, name, node?["type"]) };
             if (node?["description"] is JsonValue description) property["description"] = description.DeepClone();
             properties[name] = property;
@@ -135,8 +164,9 @@ internal static class McpAnalystTools
                     values[i] = parameter.DefaultValue;
                     continue;
                 }
-                if (Bind(parameter.ParameterType, given) is not { } bound)
-                    return Invalid($"{Name}: '{parameter.Name}' must be {(parameter.ParameterType == typeof(int) ? "a whole number" : "text")}.");
+                var type = Nullable.GetUnderlyingType(parameter.ParameterType) ?? parameter.ParameterType;
+                if (Bind(type, given) is not { } bound)
+                    return Invalid($"{Name}: '{parameter.Name}' must be {(type == typeof(int) ? "a whole number" : "text")}.");
                 values[i] = bound;
             }
             var answer = (CallToolResult)method.Invoke(target, values)!;

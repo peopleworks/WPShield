@@ -64,6 +64,13 @@ made here.
 | `evidence_events` | Events of one kind; single events only if allowed | `EvidenceEvents.Query` |
 | `list_settings` | Every setting, its value and when it takes effect | `EvidenceSettings.List` |
 | `address_labels` | The operator's names for known addresses | `EvidenceSettings.Get` |
+| `web_summary` | IIS log evidence (ADR 0011): sites read and not read, requests, findings and observations per rule | `WebEvidenceQueries.Sites`, `.Summary`, `.RuleCounts` |
+| `web_top_sources` | The addresses the web evidence kept, most flagged first | `WebEvidenceQueries.TopSources` |
+| `web_findings` | The newest web findings; site names, paths and user agents only if allowed | `WebEvidenceQueries.Findings` |
+| `address_report` | One address across failed logons, decisions, web evidence, its label and the allow-list | `EvidenceQueries.SourceHistory`, `.DecisionsAbout`, `.ActiveDecisions`, `WebEvidenceQueries`, `DefenseOptions.Read` |
+
+The four last rows were added on 2026-11-25, with the IIS log evidence of ADR 0011; the rules below
+apply to them unchanged.
 
 The store is opened with `EvidenceStore.OpenReadOnly`. No tool passes SQL through, and no tool
 blocks, unblocks, allows or changes a setting. Every tool is annotated `readOnlyHint: true`,

@@ -217,4 +217,10 @@ nothing. The first week measures how much legitimate traffic it catches.
 - **No web record reaches the decision engine**, live or catch-up, and a test asserts it. The `live`
   flag on a finding is kept for the ADR 0009 amendment that may one day use it.
 - **The desktop Web tab** reads through `WebEvidenceQueries`.
-  The planned MCP tools must keep site names from leaving the host unless the operator allows it.
+- **The MCP tools, as built (2026-11-25).** `web_summary`, `web_top_sources` and `web_findings` read
+  `WebEvidenceQueries` only and take the ranges `wpshield web` takes. A fourth tool, `address_report`,
+  joins one address's failed logons, decisions, web evidence, label and allow-list status in one
+  answer. Without `mcp.detailed_records` they return site IDs, counts, rule and observation IDs,
+  methods and statuses; with it they add site names, normalized paths, user agents and site remedies,
+  each wrapped as untrusted. The analyst gets all four, with fewer optional parameters than an MCP
+  client sees, to stay within the strict-schema budget (see `docs/en/analyst.md`).

@@ -161,11 +161,17 @@ Un informe impreso:
 
 - **Las mismas herramientas que el servidor MCP, dentro del proceso.** `attacks_summary`,
   `top_sources`, `source_history`, `attack_timeline`, `coverage`, `decisions`, `evidence_kinds`,
-  `evidence_events`, `list_settings` y `address_labels`, a través de las propias funciones del servidor
-  MCP, así que el envoltorio `{"untrusted": ...}` del texto del atacante, la compuerta
-  `mcp.detailed_records` y los límites se definen una sola vez. El rango explícito `from`/`to` se ofrece
-  solo en `attacks_summary`, `top_sources`, `attack_timeline` y `coverage` (las demás aceptan de `1h` a
-  `90d`): los esquemas estrictos de herramientas admiten 24 parámetros opcionales en total.
+  `evidence_events`, `list_settings`, `address_labels`, `web_summary`, `web_top_sources`,
+  `web_findings` y `address_report`, a través de las propias funciones del servidor MCP, así que el
+  envoltorio `{"untrusted": ...}` del texto del atacante, la compuerta `mcp.detailed_records` y los
+  límites se definen una sola vez. Los esquemas estrictos de herramientas admiten 24 parámetros
+  opcionales entre todas las herramientas, así que al analista se le ofrecen menos que a un cliente
+  MCP y para el resto se aplica el valor por defecto de la herramienta: el rango explícito `from`/`to`
+  solo en `attacks_summary`, `top_sources`, `attack_timeline` y `coverage` (las demás aceptan rangos
+  con nombre); `limit` solo en `top_sources` (20 filas en las demás); sin `bucket` en la línea de tiempo
+  (se elige según el rango); sin `site` en las herramientas web (todos los sitios, y cada fila nombra el
+  ID de su sitio); y sin filtro de dirección en `web_findings`, porque `address_report` responde sobre
+  una dirección. En total son 23 parámetros opcionales.
 - **Ninguna otra herramienta.** Ni consola, ni archivos, ni web, ni ejecución de código, ni
   herramientas de servidor del proveedor. El proceso corre elevado, así que cualquiera de ellas pondría
   una capacidad elevada al alcance de un texto inyectado.
