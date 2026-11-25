@@ -134,6 +134,14 @@ not read as more than they claim:
 - [x] Run before the body is touched, so a refusal costs no buffer, no parse and no sample.
 - [x] Prove on real gateway traffic that Block refuses and Monitor forwards, and that ordinary
       WordPress, Elementor and Site Kit paths stay untouched in Block mode.
+- [x] **The exposure family**, chosen against a week of real IIS logs: `.env` (`EXPOSE-PATH-001`),
+      version control (`002`), credential stores (`003`), backup copies (`004`) and database dumps
+      (`005`, observes), IIS and ASP.NET configuration (`IIS-PATH-002`), ASP.NET Core settings
+      (`NET-PATH-001`, observes), PHPUnit (`PHP-PATH-001`) and `phpinfo` pages (`PHP-PATH-002`,
+      observes). Every one a shape in any segment, never a scanner catalogue's list of paths, and
+      ordinary .NET and Blazor traffic asserted to score zero. `/admin` is deliberately not a rule.
+- [x] Assert that every rule the packages ship is a rule the gateway runs, so a forgotten
+      registration fails a test instead of shipping a rule that never evaluates.
 
 ### What M2.5 does not cover
 

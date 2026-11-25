@@ -20,17 +20,27 @@ public sealed class RequestPathRuleTests
         return new InspectionContext("site", "example.test", method, path);
     }
 
+    /// <summary>
+    /// Every request-path rule both packages ship, found by reflection rather than listed by hand.
+    /// </summary>
+    /// <remarks>
+    /// A hand-written list is how a new rule escapes the ordinary-traffic corpus below: it is added to
+    /// the gateway, never added here, and the one test that would have caught it scoring a real page
+    /// never runs it. Discovered, a new rule is in the corpus the moment it exists.
+    /// </remarks>
+    private static readonly IRequestPathRule[] AllPathRules =
+    [
+        .. new[] { typeof(ExecutableRequestUnderUploadsRule).Assembly, typeof(UnsafeRequestPathRule).Assembly }
+            .SelectMany(assembly => assembly.GetTypes())
+            .Where(type => type is { IsClass: true, IsAbstract: false } && typeof(IRequestPathRule).IsAssignableFrom(type))
+            .OrderBy(type => type.FullName, StringComparer.Ordinal)
+            .Select(type => (IRequestPathRule)Activator.CreateInstance(type)!)
+    ];
+
     private static async Task<int> ScoreAsync(string path)
     {
-        var rules = new IRequestPathRule[]
-        {
-            new ExecutableRequestUnderUploadsRule(),
-            new ExecutableRequestInAssetDirectoryRule(),
-            new UnsafeRequestPathRule()
-        };
-
         var total = 0;
-        foreach (var rule in rules)
+        foreach (var rule in AllPathRules)
         {
             if (await rule.EvaluateAsync(Request(path)) is { } finding)
             {
@@ -191,6 +201,87 @@ public sealed class RequestPathRuleTests
     public async Task OrdinaryWordPressTraffic_ScoresZero(string path)
     {
         Assert.Equal(0, await ScoreAsync(path));
+    }
+
+    /// <summary>
+    /// The family covers far more than WordPress now, so the corpus does too: what an ASP.NET Core
+    /// site, a Blazor WebAssembly client, an API and a certificate renewal ask for on an ordinary day.
+    /// </summary>
+    [Theory]
+    [InlineData("/_framework/blazor.boot.json")]
+    [InlineData("/_framework/blazor.webassembly.js")]
+    [InlineData("/_framework/dotnet.native.wasm")]
+    [InlineData("/_blazor/negotiate")]
+    [InlineData("/_content/Component.Library/styles.css")]
+    [InlineData("/css/app.css")]
+    [InlineData("/Error")]
+    [InlineData("/health")]
+    [InlineData("/swagger/index.html")]
+    [InlineData("/swagger/v1/swagger.json")]
+    [InlineData("/api/v1.1/items")]
+    [InlineData("/api/orders/42")]
+    [InlineData("/login")]
+    [InlineData("/admin")]
+    [InlineData("/.well-known/acme-challenge/token-value")]
+    [InlineData("/sitemap.xml.gz")]
+    [InlineData("/downloads/brochure.zip")]
+    [InlineData("/manifest.webmanifest")]
+    public async Task OrdinaryDotNetTraffic_ScoresZero(string path)
+    {
+        Assert.Equal(0, await ScoreAsync(path));
+    }
+
+    /// <summary>
+    /// A Blazor WebAssembly client loads its settings file on every page load, by design. The family
+    /// observes it - an operator learns the file is public - and never reaches the block threshold,
+    /// because blocking it would break every such application.
+    /// </summary>
+    [Theory]
+    [InlineData("/appsettings.json")]
+    [InlineData("/appsettings.Production.json")]
+    public async Task ABlazorSettingsFile_IsObservedAndNeverBlocked(string path)
+    {
+        var score = await ScoreAsync(path);
+
+        Assert.True(score is >= 30 and < 80, $"'{path}' scored {score}.");
+    }
+
+    /// <summary>
+    /// The probes that reach every site on a shared host, whatever runs on it - the reason this family
+    /// exists. Each reaches the default block threshold from the request line alone.
+    /// </summary>
+    [Theory]
+    [InlineData("/.env")]
+    [InlineData("/backend/.env.production")]
+    [InlineData("/.git/config")]
+    [InlineData("/.aws/credentials")]
+    [InlineData("/wp-config.php.bak")]
+    [InlineData("/web.config")]
+    [InlineData("/vendor/phpunit/phpunit/src/Util/PHP/eval-stdin.php")]
+    public async Task ExposureProbes_ReachTheBlockThreshold(string path)
+    {
+        Assert.True(await ScoreAsync(path) >= 80, $"'{path}' scored below the default block threshold.");
+    }
+
+    /// <summary>
+    /// <c>/admin</c> is probed from hundreds of addresses and is deliberately not a rule. It is a real
+    /// route on many real sites, and a rule that scored it would be scoring a page, not a probe.
+    /// </summary>
+    [Theory]
+    [InlineData("/admin")]
+    [InlineData("/dashboard")]
+    [InlineData("/signin")]
+    public async Task CommonlyProbedRealRoutes_AreDeliberatelyNotRules(string path)
+    {
+        Assert.Equal(0, await ScoreAsync(path));
+    }
+
+    [Fact]
+    public void TheCorpusRunsEveryShippedPathRule()
+    {
+        // Positive control for the reflection above: the three rules this file started with, and the
+        // nine the exposure family added.
+        Assert.Equal(12, AllPathRules.Length);
     }
 
     /// <summary>

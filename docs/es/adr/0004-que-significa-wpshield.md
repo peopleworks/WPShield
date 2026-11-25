@@ -59,6 +59,12 @@ registro.
   <img alt="Sesenta y seis sitios en un Windows Server: dos son WordPress, sesenta y cuatro son aplicaciones .NET. Un escaneo manda las mismas siete peticiones a cada uno. Cuatro — GET /.env, GET /.git/config, GET /db-backup.sql y GET /admin — no encuentran ninguna regla. Tres sí: GET /dist/shell.php la atiende WP-PATH-002, una subida de invoice.php.jpg la atienden WP-UPLOAD-001 y 002, y una subida de web.config la atiende IIS-CONFIG-001. Once reglas leen subidas y rutas de petición, diez de ellas disparan en un sitio que nunca corrió WordPress, y ninguna lee un dotfile, un respaldo olvidado ni una ruta de administración expuesta. La brecha es cobertura y empaquetado, no que las reglas sean solo de WordPress." src="../../assets/estate-light.svg">
 </picture>
 
+*La figura es el estado del 2026-09-09, conservada como el registro contra el que se hizo esta
+corrección. Tres de sus cuatro peticiones sin respuesta ya la tienen: `/.env` la atiende
+`EXPOSE-PATH-001`, `/.git/config` la atiende `EXPOSE-PATH-002`, y `/db-backup.sql` la atiende
+`EXPOSE-PATH-005`, que observa. `/admin` sigue sin respuesta a propósito; véase la nota de avance de la
+condición de salida 1.*
+
 ## Contexto
 
 El nombre se eligió la primera semana, para un proyecto que inspeccionaba subidas de WordPress detrás
@@ -179,6 +185,23 @@ condición 3 pedía algo que una regla publicada ya estaba violando.*
    superficie .NET, se está eligiendo contra los propios logs de IIS del servidor, que registraron
    93.120 sondeos de `.env` en una sola semana y mostraron que una lista de rutas tomada de un
    catálogo público de escáneres se perdería el 84 % de ellos.
+
+   **Avance, 2026-09-23: la segunda mitad, la cobertura, está hecha.** Nueve reglas de ruta leen ya lo que un
+   escaneo le pide a todos los sitios: `EXPOSE-PATH-001` a `005`, `IIS-PATH-002`, `NET-PATH-001`,
+   `PHP-PATH-001` y `002`. Cada una coincide con una forma en cualquier segmento, no con la lista de
+   rutas de un catálogo, y cada una se puntúa según si la forma puede tener un llamador legítimo, no
+   según cuántas veces se vio: seis bloquean solas y tres observan. Contra la misma semana de logs,
+   junto con las tres reglas de ruta anteriores, llevan cerca de 110.000 peticiones al umbral de
+   bloqueo, y ninguna de las respuestas del sitio entre ellas era una página legítima. Véase la
+   [inspección de la ruta de la solicitud](../m2-5-inspeccion-ruta-solicitud.md#la-familia-de-exposición).
+
+   **Una ruta de administración expuesta no se cubre, a propósito.** `/admin`, `/login`,
+   `/dashboard` y `/signin` se sondearon desde cientos de direcciones, y todas son rutas reales en
+   sitios reales: una regla que las puntuara puntuaría páginas, no sondas. Las pruebas comprueban que
+   las cuatro puntúan cero, así que cubrir una más adelante es una decisión y no una deriva. Con eso,
+   esta condición se cumple. La condición 2 la cumple el README y todavía la debe el sitio web; queda la
+   condición 3: el prefijo de `WP-PATH-002`, y ahora un paquete llamado `Rules.Windows` que contiene
+   reglas sobre `.env` y PHPUnit.
 
 2. **El README y el sitio dicen qué se cubre hoy.** Un lector debe poder enterarse, sin desplazarse,
    de qué superficie alcanzan las reglas — las subidas de WordPress, y la superficie de Windows, IIS,
