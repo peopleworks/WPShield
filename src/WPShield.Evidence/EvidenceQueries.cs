@@ -229,8 +229,12 @@ public sealed class EvidenceQueries
         return covering.From > from ? covering.From : from;
     }
 
+    /// <summary>
+    /// Intervals the failed-logon collector vouches for. Another source's coverage (a future HTTP or SQL
+    /// collector) must not make a failed-logon bucket look covered.
+    /// </summary>
     private List<EvidenceCoverage> Collected(DateTimeOffset from, DateTimeOffset to) =>
-        Coverage(from, to).Where(c => c.Status == "collected").ToList();
+        Coverage(from, to).Where(c => c.Status == "collected" && c.Source == EvidenceWriter.RawSource).ToList();
 
     private bool Detailed(DateTimeOffset from)
     {

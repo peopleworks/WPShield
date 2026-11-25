@@ -136,6 +136,33 @@ public sealed class EvidenceStoreTests : IDisposable
     }
 
     [Fact]
+    public void AnotherSourcesCoverageDoesNotCoverFailedLogons()
+    {
+        using var store = EvidenceStore.OpenForWriting(DbPath);
+        var writer = new EvidenceWriter(store);
+        writer.BeginCoverage("http-gateway", Now.AddHours(-1), Now);
+
+        var buckets = new EvidenceQueries(store).Timeline(Now.AddHours(-1), Now, TimeSpan.FromMinutes(10));
+
+        Assert.All(buckets, b => Assert.False(b.Covered));
+    }
+
+    [Fact]
+    public void AFloodInOneInstantStaysBoundedAndStillPairsNeighbours()
+    {
+        var flood = Enumerable.Range(0, 20_000)
+            .Select(i => Failure(1, $"203.0.113.{i % 250 + 1}", channel: AttemptPairing.SecurityChannel, type: 10, id: i + 1))
+            .Append(Failure(1, null, type: 3, id: 30_000))
+            .Append(Failure(1, "198.51.100.4", channel: AttemptPairing.RdpChannel, seconds: 0.5, id: 30_001));
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+
+        var paired = AttemptPairing.Pair(flood);
+
+        Assert.True(timer.Elapsed < TimeSpan.FromSeconds(5), $"pairing took {timer.Elapsed}");
+        Assert.Equal(20_001, paired.Count);
+    }
+
+    [Fact]
     public void AfterPruningOldPeriodsAnswerFromTheHourlyAggregatesAndSaySo()
     {
         using var store = EvidenceStore.OpenForWriting(DbPath);
