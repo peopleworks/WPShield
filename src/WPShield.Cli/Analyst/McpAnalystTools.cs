@@ -46,10 +46,26 @@ internal static class McpAnalystTools
         foreach (var method in typeof(WPShieldMcpTools).GetMethods(BindingFlags.Public | BindingFlags.Instance))
         {
             if (!method.IsDefined(typeof(McpServerToolAttribute), inherit: false)) continue;
+            RequireReadOnly(method);
             var protocol = McpServerTool.Create(method, target).ProtocolTool;
             result.Add(new Tool(target, method, protocol.Name, protocol.Description ?? "", StrictSchema(protocol.Name, protocol.InputSchema)));
         }
         return [.. result.OrderBy(t => t.Name, StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Refuses a tool that is not declared read-only and non-destructive. Every MCP tool reaches the analyst
+    /// without a change here, so this is what keeps an action tool - which ADR 0008, section 2 says needs its
+    /// own ADR and a confirmation outside the model - from reaching a model that reads attacker text
+    /// (ADR 0010, section 2). It throws rather than skipping: a silently missing tool would hide the change.
+    /// </summary>
+    internal static void RequireReadOnly(MethodInfo method)
+    {
+        var tool = method.GetCustomAttribute<McpServerToolAttribute>(inherit: false)
+            ?? throw new InvalidOperationException($"{method.Name} is not an MCP tool.");
+        if (!tool.ReadOnly || tool.Destructive)
+            throw new InvalidOperationException(
+                $"The MCP tool {tool.Name ?? method.Name} is not declared read-only and non-destructive, so the analyst refuses it (ADR 0010, section 2).");
     }
 
     /// <summary>The MCP input schema, reduced to what strict tool use accepts. See the remarks above.</summary>

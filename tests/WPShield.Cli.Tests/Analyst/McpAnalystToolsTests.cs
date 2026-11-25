@@ -1,5 +1,7 @@
 using System.Net;
+using System.Reflection;
 using System.Text.Json.Nodes;
+using ModelContextProtocol.Server;
 using WPShield.Analyst;
 using WPShield.Cli.Analyst;
 using WPShield.Cli.Mcp;
@@ -33,6 +35,34 @@ public sealed class McpAnalystToolsTests : IDisposable
     }
 
     private IReadOnlyList<IAnalystTool> Tools() => McpAnalystTools.Create(Evidence());
+
+    [Fact]
+    public void EveryToolTheAnalystGetsIsDeclaredReadOnlyAndNonDestructive()
+    {
+        var methods = typeof(WPShieldMcpTools).GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(m => m.IsDefined(typeof(McpServerToolAttribute), inherit: false)).ToArray();
+        Assert.NotEmpty(methods);
+        Assert.All(methods, McpAnalystTools.RequireReadOnly);
+        Assert.Equal(methods.Length, Tools().Count);
+    }
+
+    [Theory]
+    [InlineData(nameof(ActionTools.Unblock))]
+    [InlineData(nameof(ActionTools.Undeclared))]
+    public void AToolThatIsNotDeclaredReadOnlyIsRefusedLoudly(string method)
+    {
+        var error = Assert.Throws<InvalidOperationException>(() => McpAnalystTools.RequireReadOnly(typeof(ActionTools).GetMethod(method)!));
+        Assert.Contains("ADR 0010", error.Message, StringComparison.Ordinal);
+    }
+
+    private sealed class ActionTools
+    {
+        [McpServerTool(Name = "unblock", ReadOnly = false, Destructive = true)]
+        public string Unblock(string address) => address;
+
+        [McpServerTool(Name = "undeclared")]
+        public string Undeclared() => "";
+    }
 
     private void Seed(bool detailed)
     {
