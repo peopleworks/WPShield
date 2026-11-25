@@ -64,13 +64,16 @@ packages the repository references:
 | --- | --- | --- | --- | --- |
 | [`Yarp.ReverseProxy`](https://github.com/dotnet/yarp) | 2.3.0 | MIT | `WPShield.Gateway` | The forwarding engine. The only third-party component in the request path. |
 | [`Microsoft.Data.Sqlite`](https://github.com/dotnet/efcore) | 10.0.14 | MIT | `WPShield.Evidence` | The local evidence store (ADR 0007). Brings `SQLitePCLRaw` (Apache-2.0) and its native SQLite build (public domain). |
+| [`ModelContextProtocol`](https://github.com/modelcontextprotocol/csharp-sdk) | 2.4.0 | Apache-2.0 | `WPShield.Cli` | The read-only `wpshield mcp` server (ADR 0008), stdio transport only. Brings `ModelContextProtocol.Core` (Apache-2.0) and `Microsoft.Extensions.AI.Abstractions`, `Microsoft.Extensions.Hosting.Abstractions` and `Microsoft.Extensions.Caching.Abstractions` (MIT). |
 | [`Microsoft.AspNetCore.TestHost`](https://asp.net/) | 10.0.0 | MIT | `WPShield.Gateway.Tests` | In-process host for the gateway integration suite. |
 | [`Microsoft.NET.Test.Sdk`](https://github.com/microsoft/vstest) | 17.14.1 | MIT | all test projects | Test platform. |
 | [`xunit`](https://github.com/xunit/xunit) | 2.9.3 | Apache-2.0 | all test projects | Test framework. |
 | [`xunit.runner.visualstudio`](https://github.com/xunit/visualstudio.xunit) | 3.1.4 | Apache-2.0 | all test projects | Test adapter. Referenced with `PrivateAssets="all"`. |
 
-Only `Yarp.ReverseProxy` ships in a runtime artifact. Everything else is a build-time or test-time
-dependency.
+`Yarp.ReverseProxy` is the only third-party component in the gateway's request path. `Microsoft.Data.Sqlite`
+ships wherever the evidence store is read or written, and `ModelContextProtocol` ships with the CLI - and, because
+the desktop references the CLI, beside the desktop too. The test packages are build-time and test-time
+dependencies only.
 
 `WPShield.Abstractions`, `WPShield.Core`, `WPShield.Rules.Windows` and `WPShield.Rules.WordPress`
 reference no NuGet package at all. That is deliberate: those four projects are platform-independent and are verified on Linux in
