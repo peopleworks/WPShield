@@ -65,7 +65,7 @@ internal sealed class WPShieldMcpTools(EvidenceTools tools)
         Result("coverage", () => tools.Coverage(range, from, to));
 
     [McpServerTool(Name = "decisions", Title = "Block decisions: audit trail", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
-    [Description("The audit trail of block decisions (would-block, block, expire, unblock, allow) with rule, mode, reason and expiry, newest first. History only: a past block is not necessarily in force now." + Safety)]
+    [Description("The audit trail of block decisions (would-block, protected, refused, report, expire; block, unblock and allow are reserved for Block mode, which does not exist yet) with rule, mode, reason and expiry, newest first. History only: a past decision is not necessarily in force now." + Safety)]
     public CallToolResult Decisions(
         [Description(Range)] string? range = null,
         [Description(Limit)] int limit = EvidenceTools.DefaultLimit,
