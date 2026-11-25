@@ -241,7 +241,7 @@ public sealed class StoredAttacksTests : IDisposable
             Decision(10, DecisionActions.Report, "203.0.113.11", lastsMinutes: null, rule: DecisionRules.SharedAccount));
 
         var status = Store().Probe(Now);
-        var view = AttackDecisions.Apply(StoredAttackBoard.View(Store().Read(AttackRange.Week, Now), ""), status.Decisions, spanish: false);
+        var view = AttackDecisions.Apply(StoredAttackBoard.View(Store().Read(AttackRange.Week, Now), ""), status.Decisions, spanish: false, Now);
 
         Assert.Equal(2, status.Decisions.Decisions.Count);
         // The network decision covers both of its addresses; a report is never "in force".
@@ -256,9 +256,9 @@ public sealed class StoredAttacksTests : IDisposable
         Decided(Decision(30, DecisionActions.WouldBlock, "198.51.100.7"));
         var active = Store().Probe(Now).Decisions;
 
-        Assert.Equal(StoredAttackBoard.NotAsked, AttackDecisions.Mark(null, "203.0.113.10", spanish: false));
-        Assert.Equal("", AttackDecisions.Mark(active, "203.0.113.10", spanish: false));
-        Assert.Equal("bloquearía", AttackDecisions.Mark(active, "198.51.100.7", spanish: true));
+        Assert.Equal(StoredAttackBoard.NotAsked, AttackDecisions.Mark(null, "203.0.113.10", spanish: false, Now));
+        Assert.Equal("", AttackDecisions.Mark(active, "203.0.113.10", spanish: false, Now));
+        Assert.Equal("bloquearía", AttackDecisions.Mark(active, "198.51.100.7", spanish: true, Now));
     }
 
     [Fact]
@@ -270,13 +270,25 @@ public sealed class StoredAttacksTests : IDisposable
         // The week's coverage ends a minute before Now: recording. An hour later, it is not.
         var stopped = Store().Probe(Now.AddHours(1)).Decisions;
 
-        Assert.Contains("never run", AttackDecisions.Status(never, spanish: false), StringComparison.Ordinal);
-        Assert.Contains("not recording", AttackDecisions.Status(stopped, spanish: false), StringComparison.Ordinal);
-        Assert.Contains("no está registrando", AttackDecisions.Status(stopped, spanish: true), StringComparison.Ordinal);
-        Assert.Contains("not read", AttackDecisions.Status(null, spanish: false), StringComparison.Ordinal);
-        Assert.Contains("Monitor: nothing is blocked", AttackDecisions.Status(Store().Probe(Now).Decisions, spanish: false), StringComparison.Ordinal);
+        Assert.Contains("never run", AttackDecisions.Status(never, spanish: false, Now), StringComparison.Ordinal);
+        Assert.Contains("was not recording at 13:00 UTC", AttackDecisions.Status(stopped, spanish: false, Now.AddHours(1)), StringComparison.Ordinal);
+        Assert.Contains("no estaba registrando", AttackDecisions.Status(stopped, spanish: true, Now.AddHours(1)), StringComparison.Ordinal);
+        Assert.Contains("not read", AttackDecisions.Status(null, spanish: false, Now), StringComparison.Ordinal);
+        Assert.Contains("decisions in force: 0, read at 12:00 UTC (Monitor: nothing is blocked)",
+            AttackDecisions.Status(Store().Probe(Now).Decisions, spanish: false, Now), StringComparison.Ordinal);
     }
 
+    /// <summary>The decisions are read once per load and the rows update live: an expiry passed since is drawn as passed.</summary>
+    [Fact]
+    public void ADecisionThatExpiredSinceItWasReadIsNoLongerMarked()
+    {
+        Decided(Decision(50, DecisionActions.WouldBlock, "198.51.100.7"));
+        var read = Store().Probe(Now).Decisions;
+
+        Assert.Equal("would block", AttackDecisions.Mark(read, "198.51.100.7", spanish: false, Now));
+        Assert.Equal("", AttackDecisions.Mark(read, "198.51.100.7", spanish: false, Now.AddMinutes(11)));
+        Assert.Contains("decisions in force: 0, read at 12:00 UTC", AttackDecisions.Status(read, spanish: false, Now.AddMinutes(11)), StringComparison.Ordinal);
+    }
     [Fact]
     public void ASourcesDecisionsIncludeItsNetworksAndSayWouldNeverBlocked()
     {

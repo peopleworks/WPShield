@@ -146,20 +146,30 @@ internal static class StoredAttackBoard
 /// </summary>
 /// <remarks>
 /// A store that could not be read marks every source "—": nobody could look, which is not the same as
-/// no decision. A readable store with nothing in force leaves the cell empty.
+/// no decision. A readable store with nothing in force leaves the cell empty. The decisions are read with
+/// each load while the rows update live, so a decision is checked against its expiry when it is drawn,
+/// and the footer says when they were read.
 /// </remarks>
 internal static class AttackDecisions
 {
     internal const int DetailRows = 50;
     internal static readonly TimeSpan DetailSpan = TimeSpan.FromDays(30);
 
-    internal static string Mark(ActiveDecisions? decisions, string address, bool spanish) =>
+    /// <summary>The decision in force about an address or its /24 or /64 at <paramref name="now"/>, if it has not expired since it was read.</summary>
+    internal static DecisionRecord? InForce(ActiveDecisions decisions, string address, DateTimeOffset now)
+    {
+        var network = EvidenceQueries.Network(address);
+        return decisions.Decisions.FirstOrDefault(d => d.Target == address && d.ExpiresAt > now)
+            ?? decisions.Decisions.FirstOrDefault(d => d.Target == network && d.ExpiresAt > now);
+    }
+
+    internal static string Mark(ActiveDecisions? decisions, string address, bool spanish, DateTimeOffset now) =>
         decisions is null ? StoredAttackBoard.NotAsked
-        : decisions.For(address) is { } decision ? Action(decision.Action, spanish)
+        : InForce(decisions, address, now) is { } decision ? Action(decision.Action, spanish)
         : "";
 
-    internal static AttackView Apply(AttackView view, ActiveDecisions? decisions, bool spanish) =>
-        view with { Rows = view.Rows.Select(r => r with { Decision = Mark(decisions, r.Address, spanish) }).ToArray() };
+    internal static AttackView Apply(AttackView view, ActiveDecisions? decisions, bool spanish, DateTimeOffset now) =>
+        view with { Rows = view.Rows.Select(r => r with { Decision = Mark(decisions, r.Address, spanish, now) }).ToArray() };
 
     internal static string Action(string action, bool spanish) => action switch
     {
@@ -183,16 +193,20 @@ internal static class AttackDecisions
     }
 
     /// <summary>What the footer says about decisions, so an empty column is never read as "the engine looked and found nothing".</summary>
-    internal static string Status(ActiveDecisions? decisions, bool spanish)
+    internal static string Status(ActiveDecisions? decisions, bool spanish, DateTimeOffset now)
     {
         if (decisions is null)
             return spanish ? "decisiones: sin lectura (almacén de evidencia no disponible)" : "decisions: not read (evidence store unavailable)";
         if (decisions.EngineStarted is null)
             return spanish ? "decisiones: el motor de decisiones nunca se ejecutó" : "decisions: the decision engine has never run";
+        var read = decisions.At.ToUniversalTime().ToString("HH:mm", System.Globalization.CultureInfo.InvariantCulture);
         if (!decisions.CollectorCurrent)
-            return spanish ? "decisiones: ninguna vigente, el servicio no está registrando" : "decisions: none in force, the service is not recording";
+            return spanish
+                ? $"decisiones: ninguna vigente, el servicio no estaba registrando a las {read} UTC"
+                : $"decisions: none in force, the service was not recording at {read} UTC";
+        var count = decisions.Decisions.Count(d => d.ExpiresAt > now);
         return spanish
-            ? $"decisiones vigentes: {decisions.Decisions.Count:N0} (Monitor: no se bloquea nada)"
-            : $"decisions in force: {decisions.Decisions.Count:N0} (Monitor: nothing is blocked)";
+            ? $"decisiones vigentes: {count:N0}, leídas a las {read} UTC (Monitor: no se bloquea nada)"
+            : $"decisions in force: {count:N0}, read at {read} UTC (Monitor: nothing is blocked)";
     }
 }

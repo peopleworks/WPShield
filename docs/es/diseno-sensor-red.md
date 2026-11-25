@@ -91,8 +91,10 @@ una dirección; nunca la permite ni la bloquea.**
 [decisión](#decisiones-monitor) vigente sobre él o sobre su /24 o /64: **bloquearía** o **protegida**.
 Lo hace en todos los rangos, también en los cortos. La celda queda vacía si no hay nada vigente, y
 muestra `—` si no se pudo leer el almacén: nadie pudo mirar, que no es lo mismo que no haber
-decisión. El pie dice cuál de los casos es: cuántas decisiones hay vigentes, que el motor nunca se
-ejecutó, o que el servicio no está registrando, y entonces no hay nada vigente. El panel de un origen
+decisión. El pie dice cuál de los casos es: cuántas decisiones hay vigentes y cuándo se leyeron, que el
+motor nunca se ejecutó, o que el servicio no está registrando, y entonces no hay nada vigente. Las
+decisiones se leen con cada carga o con **Actualizar** mientras las filas se actualizan en vivo, así
+que cada marca se compara con su vencimiento al dibujarla. El panel de un origen
 enumera las decisiones sobre él y sobre su red de los últimos 30 días, con la regla, el vencimiento
 y el motivo que escribió el motor. **Solo Monitor: no se bloquea nada.** La vista nunca dice
 "bloqueada".

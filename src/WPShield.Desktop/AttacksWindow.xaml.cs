@@ -402,7 +402,7 @@ public partial class AttacksWindow : Window
             return;
         }
         // Nobody could look is "—", never an empty cell that would read as "no decision".
-        view = AttackDecisions.Apply(view, storeProblem is null ? decisions : null, spanish);
+        view = AttackDecisions.Apply(view, storeProblem is null ? decisions : null, spanish, DateTimeOffset.UtcNow);
         RenderCards(view);
         RenderChart(view.Buckets);
         var previous = selected;
@@ -427,7 +427,7 @@ public partial class AttacksWindow : Window
                 $"{view.Rows.Count:N0} de {view.MatchingRows:N0} orígenes · {board.Count:N0} registros en memoria");
         Footer.Text += " · " + (probing && store is not null
             ? L("decisions: reading…", "decisiones: leyendo…")
-            : AttackDecisions.Status(storeProblem is null && store is not null ? decisions : null, spanish));
+            : AttackDecisions.Status(storeProblem is null && store is not null ? decisions : null, spanish, DateTimeOffset.UtcNow));
         if (selected is not null) RenderDetail(selected);
     }
 

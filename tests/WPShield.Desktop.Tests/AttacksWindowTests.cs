@@ -239,7 +239,8 @@ public sealed class AttacksWindowTests
                 await window.LoadAsync();
                 // 24 h, from the Security log: the mark comes from the store all the same.
                 Assert.Equal("would block", Assert.IsType<AttackSource>(window.Rows.Items[0]).Decision);
-                Assert.Contains("decisions in force: 1 (Monitor: nothing is blocked)", window.Footer.Text, StringComparison.Ordinal);
+                Assert.Contains("decisions in force: 1, read at", window.Footer.Text, StringComparison.Ordinal);
+                Assert.Contains("(Monitor: nothing is blocked)", window.Footer.Text, StringComparison.Ordinal);
                 Assert.Equal("Decision", window.Rows.Columns[^2].Header);
 
                 window.RangeWeek.IsChecked = true;

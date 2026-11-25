@@ -84,8 +84,10 @@ never allows or blocks one.**
 [decision](#decisions-monitor) in force about it or about its /24 or /64: **would block** or
 **protected**. In every range, the short ones included. The cell is empty when nothing is in force,
 and `—` when the store could not be read: nobody could look, which is not the same as no decision.
-The footer says which: how many decisions are in force, that the engine has never run, or that the
-service is not recording, in which case nothing is in force. A source's detail lists the decisions
+The footer says which: how many decisions are in force and when they were read, that the engine has
+never run, or that the service is not recording, in which case nothing is in force. The decisions are
+read with each load or **Refresh** while the rows update live, so each mark is checked against its
+expiry when it is drawn. A source's detail lists the decisions
 about it and its network over the last 30 days, with rule, expiry and the reason the engine wrote.
 **Monitor only: nothing is blocked.** The view never says "blocked".
 
