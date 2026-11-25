@@ -141,9 +141,10 @@ says which connection is yours, and it is used only if that address is connected
 connection and no such record, that connection is offered and the tooltip says so. Nothing is offered,
 and the tooltip says why, in a console session, when the connections cannot be read, when several
 people are connected and nothing says which one is you (the tooltip lists them so you can type the
-right one), and when your record names an address that is not connected now, as through a Remote
-Desktop Gateway. The window reads all this when it opens and on **Refresh**; the tooltip gives the
-time.
+right one), when your record names an address that is not connected now, as through a Remote Desktop
+Gateway, and when your record says `LOCAL`: that session did not arrive over the network (a virtual
+machine's enhanced session, for example), so the one connection there is belongs to someone else. The
+window reads all this when it opens and on **Refresh**; the tooltip gives the time.
 
 The address your Remote Desktop client reports about itself is never offered. Microsoft documents that
 the client reports it: behind NAT it is your own network's private address, which never matches

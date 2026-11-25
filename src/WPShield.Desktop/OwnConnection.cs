@@ -32,6 +32,8 @@ internal sealed record OwnConnection(string? Address, string Code, IReadOnlyList
     internal const string Ambiguous = "ambiguous";
     /// <summary>The record names an address that is not connected now: a Remote Desktop Gateway, or an older record.</summary>
     internal const string RecordNotConnected = "record-not-connected";
+    /// <summary>The record says <c>LOCAL</c>: this session did not arrive over the network, so no connection is it.</summary>
+    internal const string RecordLocal = "record-local";
     /// <summary>This server sees no Remote Desktop connection at all.</summary>
     internal const string NoConnection = "no-connection";
     /// <summary>The connection table, or whether this is a Remote Desktop session, could not be read.</summary>
@@ -56,7 +58,8 @@ internal sealed record OwnConnection(string? Address, string Code, IReadOnlyList
 /// <para>
 /// Never a guess: with several connections and no record that matches one, nothing is offered and the
 /// connections are listed so the operator can type the right one. A record whose address is not
-/// connected now (a Remote Desktop Gateway, or an older record) is not offered either.
+/// connected now (a Remote Desktop Gateway, or an older record) is not offered either, and neither is
+/// the only connection when the session's own record says <c>LOCAL</c>.
 /// </para>
 /// </remarks>
 internal static class ConnectionResolver
@@ -79,6 +82,10 @@ internal static class ConnectionResolver
                 ? new(text, OwnConnection.ThisSession, shown, text, clientReported, null, readAt)
                 : new(null, OwnConnection.RecordNotConnected, shown, text, clientReported, null, readAt);
         }
+        // A session whose own newest record says LOCAL did not come over TCP (the console, or a
+        // virtual machine's enhanced session); the one connection there is belongs to someone else.
+        if (string.Equals(record?.Address.Trim(), "LOCAL", StringComparison.OrdinalIgnoreCase))
+            return new(null, OwnConnection.RecordLocal, shown, null, clientReported, null, readAt);
         return peers.Length switch
         {
             0 => new(null, OwnConnection.NoConnection, shown, null, clientReported, recordProblem, readAt),

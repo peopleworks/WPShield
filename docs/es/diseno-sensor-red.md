@@ -155,8 +155,9 @@ esa conexión y la información emergente lo dice. No se ofrece nada, y la infor
 por qué, en una sesión de consola, cuando no se pueden leer las conexiones, cuando hay varias personas
 conectadas y nada indica cuál es usted (se enumeran para que escriba la correcta) y cuando su registro
 indica una dirección que no está conectada ahora, como a través de una puerta de enlace de Escritorio
-remoto. La ventana lee todo esto al abrirse y con **Actualizar**; la información emergente indica la
-hora.
+remoto, y cuando su registro indica `LOCAL`: esa sesión no llegó por la red (por ejemplo, la sesión
+mejorada de una máquina virtual), así que la conexión que haya es de otra persona. La ventana lee todo
+esto al abrirse y con **Actualizar**; la información emergente indica la hora.
 
 Nunca se ofrece la dirección que su cliente de Escritorio remoto comunica sobre sí mismo. Microsoft
 documenta que la comunica el cliente: detrás de NAT es la dirección privada de su propia red, que nunca

@@ -134,7 +134,7 @@ public partial class SettingsWindow : Window
         try
         {
             // The connection is read alongside the store: the session log may take up to two seconds.
-            var own = Task.Run(remote);
+            var own = Task.Run(ReadConnection);
             var read = await Task.Run(store.Read);
             connection = await own;
             if (closed) return;
@@ -161,6 +161,19 @@ public partial class SettingsWindow : Window
         finally
         {
             RefreshButton.IsEnabled = true;
+        }
+    }
+
+    /// <summary>The connection, or "unknown" with the reason: a failed read must never hide the settings.</summary>
+    private OwnConnection ReadConnection()
+    {
+        try
+        {
+            return remote();
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            return OwnConnection.None(OwnConnection.Unknown, ex.GetType().Name);
         }
     }
 
@@ -391,6 +404,10 @@ public partial class SettingsWindow : Window
                 $"El registro de inicio de esta sesión indica {DisplayText.Clean(connection.Recorded, 64)}, pero este servidor no ve ahora " +
                     $"ninguna conexión de Escritorio remoto desde ella (una puerta de enlace de Escritorio remoto, o un registro antiguo), así " +
                     $"que no se rellena. Conexiones ahora: {peers}. Escriba la dirección."),
+            OwnConnection.RecordLocal => L($"This session's logon record says LOCAL: it did not arrive over the network (the console, or a " +
+                    $"virtual machine's session), so none of this server's Remote Desktop connections ({peers}) is it. Type the address instead.",
+                $"El registro de inicio de esta sesión indica LOCAL: no llegó por la red (la consola, o la sesión de una máquina virtual), " +
+                    $"así que ninguna de las conexiones de Escritorio remoto de este servidor ({peers}) es ella. Escriba la dirección."),
             OwnConnection.NoConnection => L("This server sees no established Remote Desktop connection now, so there is nothing to add. " +
                     "Type the address instead.",
                 "Este servidor no ve ahora ninguna conexión de Escritorio remoto establecida, así que no hay nada que añadir. " +

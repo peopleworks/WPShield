@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Net;
 using WPShield.Evidence.Decisions;
 using Xunit;
@@ -40,7 +41,7 @@ public sealed class OwnConnectionTests
         Assert.Null(ambiguous.Address);
         Assert.Equal(OwnConnection.Ambiguous, ambiguous.Code);
 
-        var notConnected = Resolve(Record("LOCAL"), Peers(), client: "192.0.2.10");
+        var notConnected = Resolve(null, Peers(), client: "192.0.2.10");
         Assert.Null(notConnected.Address);
         Assert.Equal(OwnConnection.NoConnection, notConnected.Code);
     }
@@ -53,7 +54,7 @@ public sealed class OwnConnectionTests
         Assert.Equal("203.0.113.40", only.Address);
         Assert.Equal("channel-missing", only.Problem);
 
-        var several = Resolve(Record("LOCAL"), Peers("203.0.113.40", "198.51.100.7"));
+        var several = Resolve(Record(""), Peers("203.0.113.40", "198.51.100.7"));
         Assert.Equal(OwnConnection.Ambiguous, several.Code);
         Assert.Null(several.Address);
         Assert.Equal(2, several.Peers.Count);
@@ -71,6 +72,17 @@ public sealed class OwnConnectionTests
         Assert.Null(own.Address);
         Assert.Equal("198.51.100.200", own.Recorded);
         Assert.Equal(["203.0.113.1"], own.Peers);
+    }
+
+    [Fact]
+    public void ASessionWhoseRecordSaysLocalIsNotTheOnlyConnection()
+    {
+        // A virtual machine's enhanced session is RDP without TCP; the one TCP connection is a colleague's.
+        var own = Resolve(Record("LOCAL"), Peers("198.51.100.7"));
+
+        Assert.Equal(OwnConnection.RecordLocal, own.Code);
+        Assert.Null(own.Address);
+        Assert.Equal(["198.51.100.7"], own.Peers);
     }
 
     [Fact]
@@ -139,6 +151,29 @@ public sealed class OwnConnectionTests
         // Session numbers start again after a restart; a record from before it belongs to someone else.
         SessionRecord[] beforeBoot = [Record("198.51.100.7", session: 4, hoursAgo: 1), Record("203.0.113.40", session: 3, hoursAgo: 72)];
         Assert.Null(SessionLog.Newest(beforeBoot, 3, boot));
+    }
+
+    [Fact]
+    public void ARealRecordInThisMachinesLogIsParsed()
+    {
+        // Whatever session the newest 21 or 25 record belongs to, the reader must find it: a property of
+        // another type would drop every record silently and turn every case into "ambiguous".
+        uint? newest = null;
+        try
+        {
+            var query = new EventLogQuery(SessionLog.Channel, PathType.LogName, SessionLog.Filter) { ReverseDirection = true };
+            using var reader = new EventLogReader(query);
+            using var record = reader.ReadEvent(TimeSpan.FromSeconds(2));
+            if (record?.Properties.Count >= 3 && record.Properties[1].Value is uint session) newest = session;
+        }
+        catch (EventLogException) { }
+        catch (UnauthorizedAccessException) { }
+        if (newest is null) return;
+
+        var (found, problem) = SessionLog.Read(newest.Value, DateTimeOffset.MinValue);
+        Assert.Null(problem);
+        Assert.NotNull(found);
+        Assert.Equal(newest.Value, found.SessionId);
     }
 
     [Fact]

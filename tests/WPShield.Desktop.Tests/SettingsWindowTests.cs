@@ -485,6 +485,29 @@ public sealed class SettingsWindowTests
         });
 
     [Fact]
+    public Task AConnectionReadThatFailsLeavesTheSettingsListed() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = TempStore();
+            var window = new SettingsWindow(false, new EvidenceSettingsStore(path, () => true, () => Operator),
+                () => throw new InvalidOperationException("synthetic failure"));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                Assert.Equal(SettingCatalog.All.Count, window.Keys.Items.Count);
+                await window.Select(AddressLabels.SettingKey);
+                Assert.False(window.ConnectionButton.IsEnabled);
+                Assert.Contains("InvalidOperationException", (string)window.ConnectionButton.ToolTip, StringComparison.Ordinal);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
     public Task TypingIntoTheRowsUpdatesTheValueAndEveryBoxIsLabelled() =>
         DesktopDispatcher.RunAsync(async () =>
         {
