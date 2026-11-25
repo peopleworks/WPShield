@@ -14,7 +14,11 @@ public sealed record DecisionRecord(DateTimeOffset Timestamp, string Action, str
 
 /// <summary>What one pruning pass removed, so the caller can log it and the views can show it.</summary>
 public sealed record PruneResult(long RawRowsDeleted, long AggregateRowsDeleted, long DecisionRowsDeleted,
-    long EventRowsDeleted, DateTimeOffset? RawNowStartsAt);
+    long EventRowsDeleted, DateTimeOffset? RawNowStartsAt)
+{
+    /// <summary>IIS log findings removed (ADR 0011). Their hourly counts are in <see cref="AggregateRowsDeleted"/>.</summary>
+    public long WebRowsDeleted { get; init; }
+}
 
 /// <summary>
 /// The only code that writes evidence. It accepts typed records and nothing else: there is no method a
@@ -139,7 +143,7 @@ public sealed class EvidenceWriter
     /// </summary>
     public PruneResult Prune(DateTimeOffset now, EvidenceLimits limits)
     {
-        long raw = 0, aggregates = 0, decisions = 0, events = 0;
+        long raw = 0, aggregates = 0, decisions = 0, events = 0, web = 0;
         events += Delete("DELETE FROM events WHERE ts < $c;", EvidenceStore.ToMs(now - limits.EventRetention));
         var eventCount = store.Scalar<long>("SELECT COUNT(*) FROM events;");
         if (eventCount > limits.MaxEventRows)
@@ -155,8 +159,22 @@ public sealed class EvidenceWriter
             raw += Delete("DELETE FROM auth_failures WHERE ts < $c;", boundary);
             rawCutoff = Math.Max(rawCutoff, boundary);
         }
+        // The IIS log evidence (ADR 0011) follows the same bounds: findings are detailed rows, the hourly
+        // counts are aggregates, and a read position outlives its file only as long as the detailed rows.
+        var webCutoff = EvidenceStore.ToMs(now - limits.RawRetention);
+        web += Delete("DELETE FROM web_findings WHERE ts < $c;", webCutoff);
+        var webCount = store.Scalar<long>("SELECT COUNT(*) FROM web_findings;");
+        var webBounded = false;
+        if (webCount > limits.MaxRawRows)
+        {
+            web += Delete("DELETE FROM web_findings WHERE id IN (SELECT id FROM web_findings ORDER BY ts LIMIT $c);", webCount - limits.MaxRawRows);
+            webBounded = true;
+        }
+        WebEvidenceWriter.PrunePositions(store, webCutoff);
         var aggregateCutoff = EvidenceStore.ToMs(now - limits.AggregateRetention);
         aggregates += Delete("DELETE FROM hourly_sources WHERE hour < $c;", aggregateCutoff / 3_600_000);
+        aggregates += Delete("DELETE FROM web_hourly_sites WHERE hour < $c;", aggregateCutoff / 3_600_000);
+        aggregates += Delete("DELETE FROM web_hourly_sources WHERE hour < $c;", aggregateCutoff / 3_600_000);
         decisions += Delete("DELETE FROM decisions WHERE ts < $c;", aggregateCutoff);
         store.Execute("DELETE FROM coverage WHERE to_ts < $c;", null, ("$c", aggregateCutoff));
         store.Execute("PRAGMA incremental_vacuum;");
@@ -164,18 +182,37 @@ public sealed class EvidenceWriter
         for (var round = 0; round < 10 && store.SizeInBytes > limits.MaxBytes; round++)
         {
             var remaining = store.Scalar<long>("SELECT COUNT(*) FROM auth_failures;");
-            if (remaining == 0) break;
-            var boundary = store.Scalar<long>("SELECT ts FROM auth_failures ORDER BY ts LIMIT 1 OFFSET $n;", null,
-                ("$n", Math.Max(1, remaining / 10) - 1)) + 1;
-            raw += Delete("DELETE FROM auth_failures WHERE ts < $c;", boundary);
-            rawCutoff = Math.Max(rawCutoff, boundary);
+            var webRemaining = store.Scalar<long>("SELECT COUNT(*) FROM web_findings;");
+            if (remaining == 0 && webRemaining == 0) break;
+            if (remaining > 0)
+            {
+                var boundary = store.Scalar<long>("SELECT ts FROM auth_failures ORDER BY ts LIMIT 1 OFFSET $n;", null,
+                    ("$n", Math.Max(1, remaining / 10) - 1)) + 1;
+                raw += Delete("DELETE FROM auth_failures WHERE ts < $c;", boundary);
+                rawCutoff = Math.Max(rawCutoff, boundary);
+            }
+            if (webRemaining > 0)
+            {
+                web += Delete("DELETE FROM web_findings WHERE id IN (SELECT id FROM web_findings ORDER BY ts LIMIT $c);",
+                    Math.Max(1, webRemaining / 10));
+                webBounded = true;
+            }
             store.Execute("PRAGMA incremental_vacuum;");
+        }
+        if (web > 0)
+        {
+            // Where web findings now start, so a reader says "findings before this were pruned" instead of "none".
+            // A bound on rows or on the file size cut later than the age did: findings start at the oldest one kept.
+            var boundary = webBounded ? store.Scalar<long?>("SELECT MIN(ts) FROM web_findings;") ?? EvidenceStore.ToMs(now) : webCutoff;
+            store.Execute("INSERT INTO meta(key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = excluded.value;", null,
+                ("$k", WebEvidenceQueries.WebPrunedBeforeKey),
+                ("$v", Math.Max(boundary, webCutoff).ToString(System.Globalization.CultureInfo.InvariantCulture)));
         }
         var previous = RawPrunedBefore();
         if (raw > 0 || previous is null || EvidenceStore.ToMs(previous.Value) < rawCutoff)
             store.Execute("INSERT INTO meta(key, value) VALUES ($k, $v) ON CONFLICT(key) DO UPDATE SET value = excluded.value;",
                 null, ("$k", RawPrunedBeforeKey), ("$v", rawCutoff.ToString(System.Globalization.CultureInfo.InvariantCulture)));
-        return new(raw, aggregates, decisions, events, EvidenceStore.FromMs(rawCutoff));
+        return new(raw, aggregates, decisions, events, EvidenceStore.FromMs(rawCutoff)) { WebRowsDeleted = web };
     }
 
     internal DateTimeOffset? RawPrunedBefore() => EvidenceQueries.RawPrunedBefore(store);

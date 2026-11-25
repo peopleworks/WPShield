@@ -597,26 +597,16 @@ public static class GatewayApplication
         services.AddSingleton<IInspectionRule, FileTypeMismatchRule>();
         services.AddSingleton<IInspectionRule, PhpPolyglotUploadRule>();
 
-        // The request-path family. Registered against IRequestPathRule rather than IInspectionRule,
-        // which is what keeps the two passes apart: an upload rule would be asked to decide with no
-        // sample, and a path rule registered into the per-file pass would be evaluated once per
-        // uploaded file and contribute its score several times for one path.
-        services.AddSingleton<IRequestPathRule, ExecutableRequestUnderUploadsRule>();
-        services.AddSingleton<IRequestPathRule, ExecutableRequestInAssetDirectoryRule>();
-        services.AddSingleton<IRequestPathRule, UnsafeRequestPathRule>();
-
-        // The exposure family: files a web root gives away when a project folder is copied up whole.
-        // Chosen against a week of real IIS logs rather than a threat model, and each matched by shape
-        // - a .env segment anywhere, a .git folder anywhere - never by a scanner's enumerated path list.
-        services.AddSingleton<IRequestPathRule, DotEnvRequestRule>();
-        services.AddSingleton<IRequestPathRule, VersionControlRequestRule>();
-        services.AddSingleton<IRequestPathRule, CredentialStoreRequestRule>();
-        services.AddSingleton<IRequestPathRule, BackupCopyRequestRule>();
-        services.AddSingleton<IRequestPathRule, DatabaseDumpRequestRule>();
-        services.AddSingleton<IRequestPathRule, IisConfigurationRequestRule>();
-        services.AddSingleton<IRequestPathRule, AppSettingsRequestRule>();
-        services.AddSingleton<IRequestPathRule, PhpUnitRequestRule>();
-        services.AddSingleton<IRequestPathRule, PhpInfoRequestRule>();
+        // The request-path family, from the one catalog the IIS log sensor evaluates too (ADR 0011), so
+        // the gateway and the sensor can never disagree about which rules exist. Registered against
+        // IRequestPathRule rather than IInspectionRule, which is what keeps the two passes apart: an
+        // upload rule would be asked to decide with no sample, and a path rule registered into the
+        // per-file pass would be evaluated once per uploaded file and contribute its score several
+        // times for one path.
+        foreach (var rule in RequestPathRuleCatalog.Create())
+        {
+            services.AddSingleton(rule);
+        }
 
         services.AddSingleton<InspectionEngine>();
         services.AddSingleton<RequestPathEngine>();

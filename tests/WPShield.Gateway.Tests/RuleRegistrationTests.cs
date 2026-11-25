@@ -42,6 +42,23 @@ public sealed class RuleRegistrationTests
         Assert.Equal(shipped.OrderBy(Name), registered.OrderBy(Name));
     }
 
+    /// <summary>
+    /// The gateway runs exactly the catalog the IIS log sensor evaluates (ADR 0011), in its order, so a
+    /// request judged live and the same request read back from the IIS log meet the same rules.
+    /// </summary>
+    [Fact]
+    public async Task TheGatewaysPathRules_AreExactlyTheSharedCatalog()
+    {
+        await using var application = Build();
+
+        var registered = application.Services.GetRequiredService<RequestPathEngine>().Rules
+            .Select(rule => rule.GetType())
+            .ToArray();
+        var catalog = RequestPathRuleCatalog.Create().Select(rule => rule.GetType()).ToArray();
+
+        Assert.Equal(catalog, registered);
+    }
+
     [Fact]
     public async Task EveryShippedUploadRule_IsRegisteredForTheUploadPass()
     {

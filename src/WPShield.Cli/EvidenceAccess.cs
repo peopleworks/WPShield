@@ -190,12 +190,13 @@ internal sealed record CoverageReport(string State, IReadOnlyList<CoverageGap> G
     internal const int MaxGaps = 10;
 
     /// <summary>
-    /// The gaps in the failed-logon collector's coverage of a range. Only that collector's rows count:
-    /// another source's interval says nothing about whether failed logons were being read.
+    /// The gaps in one source's coverage of a range - the failed-logon collector's unless another is named.
+    /// Only that source's rows count: another source's interval says nothing about whether it was reading.
     /// </summary>
-    internal static CoverageReport Analyse(IReadOnlyList<EvidenceCoverage> rows, DateTimeOffset from, DateTimeOffset to)
+    internal static CoverageReport Analyse(IReadOnlyList<EvidenceCoverage> rows, DateTimeOffset from, DateTimeOffset to,
+        string source = EvidenceWriter.RawSource)
     {
-        var mine = rows.Where(r => r.Source == EvidenceWriter.RawSource).ToArray();
+        var mine = rows.Where(r => r.Source == source).ToArray();
         var collected = new List<(DateTimeOffset From, DateTimeOffset To)>();
         foreach (var interval in mine.Where(r => r.Status == "collected" && r.To > from && r.From < to).OrderBy(r => r.From))
         {

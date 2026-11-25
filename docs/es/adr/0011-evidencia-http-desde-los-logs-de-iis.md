@@ -1,6 +1,6 @@
 # ADR 0011 — Evidencia HTTP desde los logs de IIS
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada el 2026-11-25, con la enmienda 1 de abajo
 - **Deciden:** Pedro Hernández (mantenedor)
 - **Afecta a:** el recolector de evidencia, `WPShield.Evidence`, las reglas de ruta de solicitud,
   `wpshield`, el escritorio y las herramientas MCP
@@ -153,3 +153,87 @@ porque su IP de cliente es la del proxy.
   0009 para las reglas web.
 - Cuando el gateway esté delante de un sitio (M3): decidir si se siguen leyendo los logs de ese sitio
   o si la evidencia del propio gateway la sustituye.
+
+## Enmienda 1 - observaciones, y como se construyó (2026-11-25)
+
+### Por qué no bastan las reglas
+
+Las reglas de ruta no ven el incidente del que parte este ADR. Su botnet manejaba webshells con
+peticiones POST a archivos PHP en carpetas que contienen PHP legítimamente: las plantillas de un
+tema, los módulos de administración de un plugin, un archivo del núcleo de WordPress modificado. Es la
+laguna conocida que ninguna regla de ruta puede cerrar sin rechazar plugins legítimos. El 2026-11-19,
+ya borrados los plugins, `php-cgi` volvió a llamar al atacante desde ese servidor. Una regla de ruta
+nunca ve el código de estado, y fue el código de estado lo que delató a los shells: respondían.
+
+### Observaciones
+
+El sensor añade **observaciones**, que son solo evidencia. Una observación no tiene puntuación, no es
+una regla y nunca basta para decidir nada por sí sola. Sus ID son estables, sin traducir y de familia
+propia:
+
+- **`WEB-OBS-001`:** una respuesta 2xx a una ruta `.php` que no es un punto de entrada de WordPress. El
+  script es el primer segmento que termina en `.php`, path-info incluido. Los puntos de entrada son,
+  por nombre y a cualquier profundidad de instalación:
+  - `index.php`, `wp-login.php`, `xmlrpc.php`, `wp-cron.php`, `wp-comments-post.php`,
+    `wp-trackback.php`, `wp-signup.php`, `wp-activate.php`, `wp-mail.php`, `wp-links-opml.php`;
+  - además, `wp-admin/*.php`, `wp-admin/network/*.php` y `wp-admin/user/*.php`.
+
+  Nada bajo `wp-content` o `wp-includes` es nunca un punto de entrada. Cada petición así se guarda como
+  fila de hallazgo con su método, para distinguir un POST de un GET.
+- **`WEB-OBS-002`:** un POST a `wp-login.php`.
+- **`WEB-OBS-003`:** un POST a `xmlrpc.php`.
+
+`002` y `003` se cuentan por sitio, dirección y hora, y nunca se guardan una a una: la fuerza bruta
+llega a miles de peticiones por hora. Las tres cuentan para el umbral del agregado por dirección de la
+sección 4.
+
+En un sitio sin WordPress, toda respuesta PHP es una observación. Es a propósito: en un sitio así, un
+archivo PHP que responde es justo lo que el incidente parecía. Por eso mismo una observación no decide
+nada. La primera semana medirá cuánto tráfico legítimo atrapa.
+
+### Como se construyó
+
+- **El stem es la ruta decodificada una vez.** HTTP.sys decodifica la URL una vez antes de que IIS la
+  registre. La API del servidor HTTP escribe un `+` en lugar de un carácter que rompería la línea, entre
+  ellos el espacio. Así que el stem es la misma ruta que el gateway ve como `Request.Path`, con el `+`
+  leído de nuevo como espacio. Windows quita un espacio final al abrir el archivo, y un más literal no
+  significa nada para ninguna regla de ruta. La ruta normalizada, con la vista de la segunda
+  decodificación, se construye a partir de él exactamente como en el gateway: un `%252e` doblemente
+  codificado llega al log como `%2e`, igual que llega al gateway.
+- **Un solo catálogo de reglas.** `RequestPathRuleCatalog`, en `Rules.WordPress`, es lo que el gateway
+  registra y lo que el sensor evalúa. Una prueba demuestra que el conjunto del gateway es igual a él.
+- **Dónde vive el código.**
+  - El análisis, las reglas, las observaciones y la lectura de los archivos están en un proyecto
+    portable nuevo, `WPShield.WebEvidence`, que se prueba en la rama Linux.
+  - El almacén sigue siendo solo SQLite.
+  - La configuración de IIS la lee la CLI, que pasa la lista de sitios.
+- **Esquema 2, aditivo.** Cuatro tablas:
+  - `web_findings`;
+  - `web_hourly_sites`;
+  - `web_hourly_sources`;
+  - `web_sites`, el estado de cada sitio con motivo y remedio.
+
+  Un almacén de esquema 1 conserva todas sus filas. Las posiciones de lectura se guardan en
+  `collector_state`, una por sitio y archivo, en la misma transacción que lo leído hasta ellas.
+- **Límites añadidos.**
+  - Como mucho 200 filas de hallazgo por dirección, sitio y hora; pasado eso se cuentan y no se
+    guardan.
+  - Como mucho 200 000 direcciones contadas por hora en memoria; pasado eso el periodo queda como
+    limitado.
+  - Una puesta al día sin posición en un archivo busca dónde empieza la ventana de 15 minutos con una
+    búsqueda binaria sobre las horas de las propias líneas: lee unas pocas muestras, no el archivo. Si
+    no puede leer las horas, recurre a los últimos 32 MB, y lo dice si eso recortó la ventana.
+- **Protección.** Un hallazgo de una dirección protegida se registra con el motivo, y la dirección
+  nunca se lista en contra. Las direcciones protegidas son este servidor, la lista de permitidos,
+  loopback, link-local y los rangos privados. La dirección de un sitio en `http.proxied_sites` (nombres
+  de sitio de IIS) recibe el mismo trato.
+- **Aún no está conectado al servicio.** `wpshield evidence collect` lee los logs de IIS. El
+  recolector que el gateway aloja como servicio todavía no: el lector de la configuración de IIS es de
+  la CLI, y la cuenta del servicio necesitaría primero el permiso manual de lectura sobre las carpetas
+  de logs, que se imprime como remedio de un sitio `access-denied`.
+- **Ningún registro web llega al motor de decisiones**, ni en vivo ni de la puesta al día, y una prueba
+  lo comprueba. El indicador `live` de un hallazgo se conserva para la enmienda del ADR 0009 que algún
+  día pueda usarlo.
+- **Las herramientas MCP y la pestaña del escritorio vienen después**, sobre la API de lectura que
+  esto añade (`WebEvidenceQueries`). Las herramientas MCP deben impedir que los nombres de sitio salgan
+  del servidor si el operador no lo permite.

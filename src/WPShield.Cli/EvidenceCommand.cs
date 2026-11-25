@@ -35,6 +35,13 @@ internal static class EvidenceCommand
         It catches up from the Security and Remote Desktop logs since the last stored Security
         record, then follows them live, and records which periods it could and could not read.
 
+        It also reads the IIS W3C log of every site (ADR 0011): the request-path rules and the
+        observations run on each logged request, and findings and hourly counts are stored. It reads
+        the IIS configuration and the log files only; it never reads the query string, the referer
+        or the user name of a request. At start it reads the last 15 minutes of each log as history.
+        A site whose log cannot be read is recorded as not covered, with the reason and the remedy.
+        'wpshield web' shows what it found. Web evidence is never fed to a decision.
+
         It refuses to run:
           - without elevation, because the Security log and the store's directory both need it;
           - while the WPShield service is running, because the service is the evidence writer.
@@ -112,7 +119,7 @@ internal static class EvidenceCommand
 
         output.WriteLine();
         output.WriteLine($"WPShield evidence collect - {store}");
-        output.WriteLine("Recording failed logons until Ctrl+C. Nothing is blocked.");
+        output.WriteLine("Recording failed logons and IIS log evidence until Ctrl+C. Nothing is blocked.");
         output.WriteLine();
 
         using var cancellation = new CancellationTokenSource();
@@ -142,7 +149,7 @@ internal static class EvidenceCommand
             }
         },
         DirectoryExists: Directory.Exists,
-        Collect: (store, output, token) => new EvidenceCollector(store, new ConsoleLogger(output)).RunAsync(token));
+        Collect: (store, output, token) => new EvidenceCollector(store, new ConsoleLogger(output), Web.IisLogSiteReader.Read).RunAsync(token));
 
     private static IDisposable WaitForCtrlC(CancellationTokenSource cancellation)
     {

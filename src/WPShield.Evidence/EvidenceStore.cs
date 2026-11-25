@@ -24,7 +24,12 @@ public sealed record EvidenceLimits
 /// </remarks>
 public sealed class EvidenceStore : IDisposable
 {
-    public const int SchemaVersion = 1;
+    /// <summary>
+    /// 1: failed logons, decisions, coverage, events, settings. 2 adds the IIS log evidence of ADR 0011
+    /// (<c>web_*</c> tables). Every migration is additive: a store written by an earlier build keeps every
+    /// row it holds and gains the new tables.
+    /// </summary>
+    public const int SchemaVersion = 2;
     public const string FileName = "wpshield-evidence.db";
 
     private EvidenceStore(SqliteConnection connection, bool readOnly)
@@ -179,6 +184,63 @@ public sealed class EvidenceStore : IDisposable
                 changed_by TEXT NOT NULL,
                 reason TEXT NOT NULL);
             CREATE INDEX IF NOT EXISTS ix_settings_history_key ON settings_history(key, ts);
+            """, transaction);
+        // Schema 2 (ADR 0011): evidence from the IIS W3C logs. Additive only - nothing above changes, so a
+        // schema-1 store keeps its rows. Paths are normalized and user agents cleaned before they get here;
+        // no column exists for a query string, a referer or a user name.
+        Execute("""
+            CREATE TABLE IF NOT EXISTS web_findings(
+                id INTEGER PRIMARY KEY,
+                ts INTEGER NOT NULL,
+                site_id INTEGER NOT NULL,
+                address TEXT NOT NULL,
+                method TEXT NOT NULL,
+                path TEXT NOT NULL,
+                status INTEGER NOT NULL,
+                rules TEXT NOT NULL,
+                score INTEGER NOT NULL,
+                user_agent TEXT NOT NULL,
+                live INTEGER NOT NULL,
+                proxied INTEGER NOT NULL,
+                protection TEXT);
+            CREATE INDEX IF NOT EXISTS ix_web_findings_ts ON web_findings(ts);
+            CREATE INDEX IF NOT EXISTS ix_web_findings_address_ts ON web_findings(address, ts);
+            CREATE INDEX IF NOT EXISTS ix_web_findings_site_ts ON web_findings(site_id, ts);
+            CREATE TABLE IF NOT EXISTS web_hourly_sites(
+                hour INTEGER NOT NULL,
+                site_id INTEGER NOT NULL,
+                requests INTEGER NOT NULL,
+                client_errors INTEGER NOT NULL,
+                server_errors INTEGER NOT NULL,
+                findings INTEGER NOT NULL,
+                observations INTEGER NOT NULL,
+                login_posts INTEGER NOT NULL,
+                xmlrpc_posts INTEGER NOT NULL,
+                bytes_received INTEGER NOT NULL,
+                PRIMARY KEY(hour, site_id)) WITHOUT ROWID;
+            CREATE TABLE IF NOT EXISTS web_hourly_sources(
+                hour INTEGER NOT NULL,
+                site_id INTEGER NOT NULL,
+                address TEXT NOT NULL,
+                requests INTEGER NOT NULL,
+                client_errors INTEGER NOT NULL,
+                findings INTEGER NOT NULL,
+                observations INTEGER NOT NULL,
+                login_posts INTEGER NOT NULL,
+                xmlrpc_posts INTEGER NOT NULL,
+                first_ts INTEGER NOT NULL,
+                last_ts INTEGER NOT NULL,
+                protection TEXT,
+                PRIMARY KEY(hour, site_id, address)) WITHOUT ROWID;
+            CREATE INDEX IF NOT EXISTS ix_web_hourly_sources_address ON web_hourly_sources(address, hour);
+            CREATE TABLE IF NOT EXISTS web_sites(
+                site_id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT,
+                remedy TEXT,
+                proxied INTEGER NOT NULL,
+                updated_ts INTEGER NOT NULL);
             """, transaction);
         Execute($"PRAGMA user_version = {SchemaVersion};", transaction);
         transaction.Commit();

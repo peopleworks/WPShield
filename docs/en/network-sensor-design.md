@@ -460,6 +460,86 @@ settings with `wpshield settings set`, and they apply at the next evaluation. Kn
 that sends one attempt per address triggers no per-address rule, and `HOST-AUTH-003` catches it only
 when its addresses share a /24 or /64.
 
+## Web evidence from the IIS logs
+
+[ADR 0011](adr/0011-http-evidence-from-iis-logs.md). `wpshield evidence collect` reads each site's IIS
+W3C log as it is written, besides the Security log, and runs two things on every logged request:
+
+- **The request-path rules,** the same catalog the gateway runs (`WP-PATH-001`, `IIS-PATH-001`, the
+  exposure family...).
+- **Three observations,** which see the status code no path rule sees:
+
+| ID | What | Kept |
+| --- | --- | --- |
+| `WEB-OBS-001` | A 2xx answer to a `.php` file that is not a WordPress entry point (`index.php`, `wp-login.php`, `xmlrpc.php`, `wp-cron.php`, `wp-comments-post.php`, `wp-trackback.php`, `wp-signup.php`, `wp-activate.php`, `wp-mail.php`, `wp-links-opml.php`, `wp-admin/*.php`). Never anything under `wp-content` or `wp-includes`. | One finding row per request, with its method |
+| `WEB-OBS-002` | A POST to `wp-login.php` | Counted per address and hour |
+| `WEB-OBS-003` | A POST to `xmlrpc.php` | Counted per address and hour |
+
+**Evidence only.** An observation has no score and is never a rule. Nothing from the web logs reaches
+the decision engine; web rules for it come from a week of this evidence, in an amendment to ADR 0009.
+
+**What is never read:** the URI query, the referer and the user name. Their columns are skipped by
+position before any string exists for them. The path is stored normalized, never as logged; the user
+agent cleaned and bounded at 256 characters.
+
+**What is kept:**
+
+- every request is counted per site and hour: requests, 4xx, 5xx and bytes received;
+- an address is kept per hour only when a rule or an observation flagged it, or it sent more than 50
+  client errors;
+- findings are kept like detailed failed logons (`retention.raw_days`), and the hourly counts like the
+  other aggregates.
+
+**At start** it reads the last 15 minutes of each log, as history. Then it follows each file, reads
+about every 10 seconds, and picks up a new site within 15 minutes. HTTP.sys flushes its buffer about
+once a minute, so evidence is up to a minute late.
+
+**Coverage, per site.** `evidence collect` logs one line per site it cannot read, with the reason and
+the remedy, and the store keeps each site's state. For example:
+
+```text
+The IIS log of site 7 is not read (access-denied). From an elevated prompt: icacls "C:\inetpub\logs\LogFiles" /grant "NT SERVICE\WPShield:(OI)(CI)RX" - then restart the service. A server setting, so WPShield does not make it.
+```
+
+| Reason | Meaning |
+| --- | --- |
+| `access-denied` | The log folder refuses this account. The remedy is the manual grant above. |
+| `no-log-folder`, `no-log-file` | IIS has not logged a request for the site yet. |
+| `missing-field: <field>` | The site's W3C fields lack one the sensor needs (`date`, `time`, `c-ip`, `cs-method`, `cs-uri-stem`, `sc-status`). |
+| `logging-disabled`, `log-format-not-w3c` | Set in IIS Manager, Logging, by hand. |
+| `no-http-binding` | An FTP-only site: ignored, never counted as unread. |
+| `central-logging-mode` | IIS writes one file for every site, which this version does not read. |
+| `iis-configuration-unreadable` | Run elevated; the IIS configuration is read, never written. |
+
+Every few minutes `evidence collect` logs the counts, never a path, an address or an agent:
+
+```text
+Web evidence recorded (evidence only - nothing is decided from it). Requests=18234 Findings=12 Observations=40 LoginPosts=310 XmlrpcPosts=95 Malformed=0 LongLinesSkipped=0
+```
+
+**Protection.** A finding from this host, the allow-list, loopback, link-local or a private range is
+recorded with that reason and never listed against the address. The same goes for a site named in
+`http.proxied_sites`, whose client address is a proxy's:
+
+```powershell
+Set-Content proxied.json '["shop.example"]'   # Windows PowerShell 5.1 drops quotes inside an argument
+wpshield settings set http.proxied_sites --value-file proxied.json --reason "behind ARR"
+```
+
+### `wpshield web`
+
+```powershell
+wpshield web                         # last 24 hours, every site
+wpshield web --range 7d --site 4     # one site, by ID or by name
+wpshield web --source 203.0.113.7    # one address
+wpshield web --json                  # paths and agents wrapped as untrusted
+```
+
+The answer starts with which sites were read and which were not, and why. Then come the totals over
+the whole hours that overlap the range, the rules and observations with their counts, the addresses
+kept, and the newest findings. Paths are labelled untrusted text and cleaned for the console. Exit 2
+means the sensor recorded nothing for the range: no data, never zero.
+
 ## Local listener inventory
 
 Use this local command to see TCP listeners and bound UDP endpoints before choosing ports for a
