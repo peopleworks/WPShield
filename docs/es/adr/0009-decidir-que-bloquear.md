@@ -1,6 +1,6 @@
 # ADR 0009 — Decidir qué bloquear
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada el 2026-11-25, con la enmienda de cómo se construyó, abajo
 - **Deciden:** Pedro Hernández (mantenedor)
 - **Afecta a:** `WPShield.Evidence`, el recolector de evidencia, el catálogo de ajustes, `wpshield`, la
   vista Ataques del escritorio y un futuro panel de Protección, y la herramienta MCP `decisions`

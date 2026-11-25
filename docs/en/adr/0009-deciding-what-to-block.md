@@ -1,6 +1,6 @@
 # ADR 0009 — Deciding what to block
 
-- **Status:** Proposed
+- **Status:** Accepted on 2026-11-25, with the as-built amendment below
 - **Deciders:** Pedro Hernández (maintainer)
 - **Affects:** `WPShield.Evidence`, the evidence collector, the settings catalog, `wpshield`, the
   desktop's Attacks view and a future Protection panel, the MCP `decisions` tool

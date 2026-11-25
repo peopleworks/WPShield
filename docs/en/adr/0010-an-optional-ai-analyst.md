@@ -1,6 +1,6 @@
 # ADR 0010 — An optional AI analyst
 
-- **Status:** Proposed
+- **Status:** Accepted on 2026-11-25; phase 1 in progress
 - **Deciders:** Pedro Hernández (maintainer)
 - **Affects:** a new `WPShield.Analyst` assembly, `wpshield`, the desktop, the settings catalog,
   `NOTICE.md`, the operator documentation

@@ -1,6 +1,6 @@
 # ADR 0010 — Un analista de IA opcional
 
-- **Estado:** Propuesta
+- **Estado:** Aceptada el 2026-11-25; fase 1 en curso
 - **Deciden:** Pedro Hernández (mantenedor)
 - **Afecta a:** un ensamblado nuevo, `WPShield.Analyst`; `wpshield`, el escritorio, el catálogo de
   ajustes, `NOTICE.md` y la documentación del operador
