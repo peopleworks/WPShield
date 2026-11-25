@@ -93,6 +93,25 @@ public sealed class SettingsWindowTests
         });
 
     [Fact]
+    public Task OpenedFromProtectionItSelectsTheDefenseSettings() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = TempStore();
+            var window = new SettingsWindow(false, new EvidenceSettingsStore(path, () => true, () => Operator), () => Console, DefenseSettings.Allow);
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                Assert.Equal(DefenseSettings.Allow, Assert.IsType<SettingRow>(window.Keys.SelectedItem).Key);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
     public Task SaveStaysDisabledWithoutAReasonAndRecordsWhoAndWhy() =>
         DesktopDispatcher.RunAsync(async () =>
         {

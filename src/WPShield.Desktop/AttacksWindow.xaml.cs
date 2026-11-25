@@ -2,6 +2,7 @@ using System.Collections.Concurrent;
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json.Nodes;
 using System.Windows;
 using System.Windows.Automation;
 using System.Windows.Controls;
@@ -40,6 +41,13 @@ namespace WPShield.Desktop;
 /// decision in force about it or its network - "—" when the store could not be read, empty when nothing
 /// is in force - and a source's detail lists its decisions. Monitor only: the words say "would block".
 /// </para>
+/// <para>
+/// A source's detail can <b>label</b> the address or <b>allow</b> it (<see cref="AddressActions"/>). Both
+/// write a setting through the Settings window's door (<see cref="ISettingsStore"/>): elevated only, one
+/// change per open, read-modify-write against the stamp read when the editor opened, validated by the
+/// catalog and recorded with who and why. Without elevation or a readable store both are disabled and the
+/// panel says why. Allow writes the exact address, never its network, and says first what it gives up.
+/// </para>
 /// </remarks>
 public partial class AttacksWindow : Window
 {
@@ -53,6 +61,7 @@ public partial class AttacksWindow : Window
     private readonly Func<DateTimeOffset, AuthFailureSnapshot> read;
     private readonly Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch;
     private readonly IAttackStore? store;
+    private readonly ISettingsStore? settings;
     private readonly AttackBoard board = new();
     private readonly ConcurrentQueue<AuthFailure> pending = new();
     private readonly DispatcherTimer flush = new() { Interval = TimeSpan.FromSeconds(1) };
@@ -73,6 +82,14 @@ public partial class AttacksWindow : Window
     private DecisionDetail? decisionDetail;
     private Task? decisionDetailRead;
     private bool probing;
+    private SettingsSnapshot? settingsRead;
+    private AttackSource? detailSource;
+    private AddressAction? editing;
+    private string? editingAddress;
+    private SettingValue? editingValue;
+    private string? statusAddress;
+    private bool actionBusy;
+    private Task? actionRead;
     private bool securityReadable;
     private bool reading;
     private bool closed;
@@ -85,22 +102,29 @@ public partial class AttacksWindow : Window
     private sealed record DecisionDetail(string Address, IReadOnlyList<DecisionRecord>? Rows, bool Loading, string? Error);
 
     public AttacksWindow(bool spanish) : this(spanish, end => AuthFailureFeed.ReadRecent(end, TimeSpan.FromHours(24)),
-        AuthFailureFeed.Watch, new EvidenceAttackStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated))
+        AuthFailureFeed.Watch, new EvidenceAttackStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated),
+        new EvidenceSettingsStore(EvidenceStore.DefaultPath, EvidenceAccess.IsElevated, EvidenceAccess.CurrentUser))
     {
     }
 
     internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
-        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch) : this(spanish, read, watch, null)
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch) : this(spanish, read, watch, null, null)
     {
     }
 
     internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
-        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store)
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store) : this(spanish, read, watch, store, null)
+    {
+    }
+
+    internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
+        Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store, ISettingsStore? settings)
     {
         this.spanish = spanish;
         this.read = read;
         this.watch = watch;
         this.store = store;
+        this.settings = settings;
         InitializeComponent();
         Title = "WPShield | " + L("Attacks", "Ataques");
         SourceLabel.Text = L("Security  /  Windows", "Seguridad  /  Windows");
@@ -121,6 +145,11 @@ public partial class AttacksWindow : Window
         SearchLabel.Content = L("_Search", "_Buscar");
         Search.ToolTip = L("Address, network, label or account", "Dirección, red, etiqueta o cuenta");
         CopyAddress.Content = L("Copy address", "Copiar dirección");
+        LabelButton.Content = L("Label…", "Etiquetar…");
+        AllowButton.Content = L("Allow…", "Permitir…");
+        LabelCaption.Content = L("_Label (1 to 64 characters)", "_Etiqueta (de 1 a 64 caracteres)");
+        ActionReasonCaption.Content = L("_Reason (required, recorded in the history)", "_Motivo (obligatorio, queda en el historial)");
+        ActionCancel.Content = L("Cancel", "Cancelar");
         DetailCaption.Text = L("Source", "Origen");
         DetailTimelineLabel.Text = L("Attempts over time", "Intentos en el tiempo");
         DetailAccountsLabel.Text = L("Accounts tried", "Cuentas probadas");
@@ -192,6 +221,7 @@ public partial class AttacksWindow : Window
             return;
         }
         probing = true;
+        var access = ReadSettingsAsync();
         try
         {
             var status = await Task.Run(() => store.Probe(DateTimeOffset.UtcNow));
@@ -219,6 +249,7 @@ public partial class AttacksWindow : Window
         {
             probing = false;
         }
+        await access;
         if (closed || !IsLoaded) return;
         if (StoredAttackBoard.IsStored(range)) await LoadStoredAsync();
         // Only redraw a board that was drawn: after a failed live read the footer holds the reason.
@@ -554,6 +585,7 @@ public partial class AttacksWindow : Window
 
     private void RenderDetail(string address)
     {
+        RenderActions(address);
         var isStored = StoredAttackBoard.IsStored(range);
         AttackDetail? detail;
         if (isStored)
@@ -578,6 +610,7 @@ public partial class AttacksWindow : Window
             return;
         }
         var s = detail.Source;
+        detailSource = s;
         DetailAddress.Text = s.Address;
         DetailLabel.Text = s.Label;
         DetailLabel.Visibility = s.Label.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -676,6 +709,7 @@ public partial class AttacksWindow : Window
 
     private void ClearDetail(string address, string message)
     {
+        detailSource = null;
         DetailAddress.Text = address;
         DetailLabel.Visibility = Visibility.Collapsed;
         DetailNoteBox.Visibility = Visibility.Collapsed;
@@ -712,6 +746,267 @@ public partial class AttacksWindow : Window
         }
         if (selected == address && range == wanted) RenderDetail(address);
     }
+
+    /// <summary>Reads what the Settings window's door allows now: whether Label and Allow can write, and the allow-list.</summary>
+    private async Task ReadSettingsAsync()
+    {
+        if (settings is null) return;
+        try
+        {
+            var read = await Task.Run(settings.Read);
+            if (!closed) settingsRead = read;
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            if (!closed) settingsRead = new SettingsSnapshot(SettingsAccess.Unreadable, [], DisplayText.Clean(ex.Message, 200));
+        }
+    }
+
+    /// <summary>Why Label and Allow cannot be used for this address, or <see langword="null"/> when they can.</summary>
+    private string? ActionsUnavailable(string? canonical) =>
+        settings is null || store is null ? AddressActions.NoStore(spanish)
+        : canonical is null ? L("Only a single address can be labelled or allowed from here.", "Desde aquí solo se puede etiquetar o permitir una dirección.")
+        : AddressActions.Unavailable(settingsRead, spanish);
+
+    private static JsonNode? StoredValue(SettingsSnapshot? snapshot, string key) => snapshot?.Values.FirstOrDefault(v => v.Key == key)?.Value;
+
+    private string AlreadyAllowed(string entry, string address) => entry == address
+        ? L("This address is already on the allow-list.", "Esta dirección ya está en la lista de permitidas.")
+        : L($"This address is already allowed by the entry {DisplayText.Clean(entry, 64)}.",
+            $"Esta dirección ya está permitida por la entrada {DisplayText.Clean(entry, 64)}.");
+
+    /// <summary>Enables Label and Allow only when they can write, and says why not, in the panel and in their tooltips.</summary>
+    private void RenderActions(string address)
+    {
+        var canonical = AddressActions.Canonical(address);
+        var why = ActionsUnavailable(canonical);
+        var allowedBy = why is null ? AddressActions.AllowedBy(StoredValue(settingsRead, DefenseSettings.Allow), canonical!) : null;
+        var allowed = allowedBy is null ? null : AlreadyAllowed(allowedBy, canonical!);
+        LabelButton.IsEnabled = why is null && !actionBusy;
+        AllowButton.IsEnabled = why is null && allowed is null && !actionBusy;
+        LabelButton.ToolTip = why ?? L("Sets or replaces this address's own label in labels.addresses. Needs a reason, recorded with who made the change.",
+            "Asigna o reemplaza la etiqueta propia de esta dirección en labels.addresses. Necesita un motivo, que queda registrado con quién hizo el cambio.");
+        AllowButton.ToolTip = why ?? allowed ?? L("Adds this exact address, never its network, to defense.allow, after a confirmation.",
+            "Añade esta dirección exacta, nunca su red, a defense.allow, tras una confirmación.");
+        ActionNote.Text = why ?? allowed ?? "";
+        ActionNote.Visibility = ActionNote.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (editingAddress is not null && editingAddress != canonical) CloseEditor();
+        if (statusAddress is not null && statusAddress != canonical)
+        {
+            statusAddress = null;
+            ActionStatus.Visibility = Visibility.Collapsed;
+        }
+    }
+
+    private async void OnLabel(object sender, RoutedEventArgs e) => await OpenEditorAsync(AddressAction.Label);
+
+    private async void OnAllow(object sender, RoutedEventArgs e) => await OpenEditorAsync(AddressAction.Allow);
+
+    private void OnActionCancel(object sender, RoutedEventArgs e) => CloseEditor();
+
+    private async void OnActionSave(object sender, RoutedEventArgs e) => await SaveActionAsync();
+
+    private void OnActionText(object sender, TextChangedEventArgs e) => UpdateActionState();
+
+    /// <summary>
+    /// Opens the inline editor for the selected address and reads the setting again, so the save is checked
+    /// against the value as it is now, not as it was when the window loaded.
+    /// </summary>
+    internal Task OpenEditorAsync(AddressAction kind)
+    {
+        var address = AddressActions.Canonical(selected);
+        if (address is null || ActionsUnavailable(address) is not null) return Task.CompletedTask;
+        editing = kind;
+        editingAddress = address;
+        editingValue = null;
+        ActionStatus.Visibility = Visibility.Collapsed;
+        statusAddress = null;
+        ActionEditor.Visibility = Visibility.Visible;
+        LabelFields.Visibility = kind == AddressAction.Label ? Visibility.Visible : Visibility.Collapsed;
+        ActionWarning.Visibility = Visibility.Collapsed;
+        ActionTitle.Text = kind == AddressAction.Label ? L($"Label {address}", $"Etiquetar {address}") : L($"Allow {address}?", $"¿Permitir {address}?");
+        ActionSave.Content = kind == AddressAction.Label ? L("Save label", "Guardar etiqueta") : L("Allow this address", "Permitir esta dirección");
+        ActionText.Text = L("Reading the current value…", "Leyendo el valor actual…");
+        LabelBox.Text = "";
+        ActionReason.Text = "";
+        UpdateActionState();
+        return actionRead = ReadEditingValueAsync(kind, address, prefill: true);
+    }
+
+    /// <summary>Reads the setting being changed, keeps its stamp for the save, and fills the editor from it.</summary>
+    private async Task ReadEditingValueAsync(AddressAction kind, string address, bool prefill)
+    {
+        await ReadSettingsAsync();
+        if (closed || editing != kind || editingAddress != address) return;
+        editingValue = settingsRead?.Values.FirstOrDefault(v => v.Key == AddressActions.Key(kind));
+        if (kind == AddressAction.Label)
+        {
+            var own = AddressActions.OwnLabel(editingValue?.Value, address);
+            ActionText.Text = AddressActions.LabelIntro(address, own, own is null ? AttackBoard.LabelFor(labels, address) : "", spanish);
+            if (prefill && own is not null) LabelBox.Text = DisplayText.Clean(own, AddressActions.MaxLabel);
+        }
+        else
+        {
+            ActionText.Text = AddressActions.AllowConfirmation(address, spanish);
+            // The detail's source, or the selected row while the detail is still being read: both carry the count.
+            var source = detailSource?.Address == address ? detailSource
+                : Rows.SelectedItem is AttackSource row && row.Address == address ? row : null;
+            var warning = AddressActions.AllowWarning(source, AddressActions.WouldBlockInForce(storeProblem is null ? decisions : null, address,
+                DateTimeOffset.UtcNow), Period(), spanish);
+            ActionWarningText.Text = warning ?? "";
+            ActionWarning.Visibility = warning is null ? Visibility.Collapsed : Visibility.Visible;
+        }
+        if (selected is not null) RenderActions(selected);
+        UpdateActionState();
+    }
+
+    /// <summary>The value the editor would store, or why it would not.</summary>
+    private (JsonNode? Value, string? Problem) ProposedAction()
+    {
+        if (editing is not { } kind || editingAddress is not { } address) return (null, null);
+        if (editingValue is null) return (null, L("Reading the current value…", "Leyendo el valor actual…"));
+        if (kind == AddressAction.Label)
+        {
+            var label = LabelBox.Text.Trim();
+            if (label.Length is 0 or > AddressActions.MaxLabel)
+                return (null, L("Type a label of 1 to 64 characters.", "Escriba una etiqueta de 1 a 64 caracteres."));
+            if (AddressActions.OwnLabel(editingValue.Value, address) == label)
+                return (null, L("That is already its label.", "Esa ya es su etiqueta."));
+            var map = AddressActions.WithLabel(editingValue.Value, address, label);
+            if (map is null)
+                return (null, L("The stored labels are not a table this window can change one entry of; edit them in Settings.",
+                    "Las etiquetas guardadas no son una tabla de la que esta ventana pueda cambiar una entrada; edítelas en Ajustes."));
+            return AddressActions.Check(kind, map) is { } refused ? (null, refused) : (map, null);
+        }
+        if (AddressActions.AllowedBy(editingValue.Value, address) is { } entry) return (null, AlreadyAllowed(entry, address));
+        var list = AddressActions.WithAllowed(editingValue.Value, address);
+        if (list is null)
+            return (null, L("The stored allow-list is not a list this window can add to; edit it in Settings.",
+                "La lista de permitidas guardada no es una lista a la que esta ventana pueda añadir; edítela en Ajustes."));
+        return AddressActions.Check(kind, list) is { } problem ? (null, problem) : (list, null);
+    }
+
+    /// <summary>Redraws what Save may do. The catalog's verdict appears under the fields, as in the Settings window.</summary>
+    internal void UpdateActionState()
+    {
+        if (editing is null) return;
+        var why = ActionsUnavailable(editingAddress);
+        var (value, problem) = ProposedAction();
+        var hasReason = ActionReason.Text.Trim().Length > 0;
+        ActionValidation.Text = editingValue is null ? "" : problem ?? "";
+        ActionValidation.Visibility = ActionValidation.Text.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        LabelBox.IsEnabled = ActionReason.IsEnabled = why is null && !actionBusy;
+        ActionSave.IsEnabled = why is null && !actionBusy && value is not null && hasReason;
+        ActionSave.ToolTip = actionBusy ? L("Saving…", "Guardando…")
+            : why ?? problem ?? (!hasReason
+                ? L("Give a reason: every change is recorded with who made it and why.", "Indique un motivo: cada cambio queda registrado con quién lo hizo y por qué.")
+                : L("Saves the change in the evidence store and records it.", "Guarda el cambio en el almacén de evidencia y lo registra."));
+    }
+
+    /// <summary>
+    /// Stores the change against the stamp read when the editor opened. A change made elsewhere since then
+    /// is refused, said, and read again; the typed text stays. A save that worked refreshes labels and decisions.
+    /// </summary>
+    internal async Task SaveActionAsync()
+    {
+        if (settings is null || editing is not { } kind || editingAddress is not { } address || editingValue is not { } loaded) return;
+        var (value, problem) = ProposedAction();
+        var reason = ActionReason.Text.Trim();
+        if (value is null || problem is not null || reason.Length == 0 || actionBusy || ActionsUnavailable(address) is not null) return;
+        var key = AddressActions.Key(kind);
+        var json = value.ToJsonString();
+        var stamp = SettingStamp.Of(loaded);
+        var label = kind == AddressAction.Label ? LabelBox.Text.Trim() : null;
+        actionBusy = true;
+        UpdateActionState();
+        ShowActionStatus(address, L("Saving…", "Guardando…"));
+        string message;
+        Exception? failure = null;
+        try
+        {
+            var change = await Task.Run(() => settings.Save(key, json, reason, stamp));
+            message = AddressActions.Saved(kind, address, label, change, spanish);
+        }
+        catch (Exception ex) when (ex is not OutOfMemoryException)
+        {
+            failure = ex;
+            message = AddressActions.Failure(ex, key, spanish);
+        }
+        finally
+        {
+            actionBusy = false;
+        }
+        if (closed) return;
+        if (failure is null)
+        {
+            CloseEditor();
+            ShowActionStatus(address, message);
+            await RefreshAfterChangeAsync();
+            return;
+        }
+        // Refused because the value moved: read it again, so the panel shows that change and the next save is checked against it.
+        if (failure is SettingConflictException) await ReadEditingValueAsync(kind, address, prefill: false);
+        ShowActionStatus(address, message);
+        UpdateActionState();
+    }
+
+    private void ShowActionStatus(string address, string message)
+    {
+        statusAddress = address;
+        ActionStatus.Text = message;
+        ActionStatus.Visibility = Visibility.Visible;
+    }
+
+    private void CloseEditor()
+    {
+        editing = null;
+        editingAddress = null;
+        editingValue = null;
+        ActionEditor.Visibility = Visibility.Collapsed;
+    }
+
+    /// <summary>After a change: the labels and the decisions in force again, from the store, and the allow-list for the buttons.</summary>
+    private async Task RefreshAfterChangeAsync()
+    {
+        var access = ReadSettingsAsync();
+        if (store is not null)
+        {
+            try
+            {
+                var status = await Task.Run(() => store.Probe(DateTimeOffset.UtcNow));
+                if (closed) return;
+                labels = status.Labels;
+                decisions = status.Decisions;
+                foreach (var key in stored.Keys.ToArray()) stored[key] = stored[key] with { Labels = labels };
+                if (storedDetail is { Detail: { } detail } state)
+                    storedDetail = state with { Detail = detail with { Source = detail.Source with { Label = AttackBoard.LabelFor(labels, detail.Source.Address) } } };
+                decisionDetail = null;
+            }
+            catch (EvidenceAccessException ex)
+            {
+                if (closed) return;
+                ShowStore(ex.Problem);
+            }
+            catch (Exception ex) when (ex is not OutOfMemoryException)
+            {
+                if (closed) return;
+                ShowStore(EvidenceProblem.Unreadable);
+            }
+        }
+        await access;
+        if (!closed && view is not null) Render();
+    }
+
+    /// <summary>The selected range in a sentence: "the last 24 hours".</summary>
+    private string Period() => range switch
+    {
+        AttackRange.Hour => L("the last hour", "la última hora"),
+        AttackRange.SixHours => L("the last 6 hours", "las últimas 6 horas"),
+        AttackRange.Week => L("the last 7 days", "los últimos 7 días"),
+        AttackRange.Month => L("the last 30 days", "los últimos 30 días"),
+        _ => L("the last 24 hours", "las últimas 24 horas")
+    };
+
 
     private string Neighbors(AttackSource s) => s.Neighbors switch
     {
@@ -767,6 +1062,7 @@ public partial class AttacksWindow : Window
 
     private void HideDetail()
     {
+        CloseEditor();
         selected = null;
         Rows.SelectedItem = null;
         Slide(0);

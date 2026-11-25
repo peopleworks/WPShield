@@ -24,9 +24,10 @@ internal sealed record AttackBucket(DateTimeOffset Start, DateTimeOffset End, in
 /// The decision in force about this address or its network, in words (<see cref="AttackDecisions"/>):
 /// empty when none, "—" when the store could not be read.
 /// </param>
+/// <param name="UnknownAttempts">Attempts on account names that do not exist, as a count; <c>UnknownShare</c> is the same as a share.</param>
 internal sealed record AttackSource(string Address, int Attempts, DateTimeOffset First, DateTimeOffset Last,
     int? Accounts, string TopAccounts, double UnknownShare, string LogonTypes, string Network, int Neighbors, string Label = "",
-    string Decision = "")
+    string Decision = "", int UnknownAttempts = 0)
 {
     internal bool Matches(string query) => query.Length == 0 ||
         Address.Contains(query, StringComparison.OrdinalIgnoreCase) ||
@@ -202,9 +203,10 @@ internal sealed class AttackBoard
         var types = events.Where(f => f.LogonType is not null).Select(f => f.LogonType!.Value).Distinct().Order()
             .Select(t => t.ToString(CultureInfo.InvariantCulture));
         var network = Network(events[0].Address!);
+        var unknown = events.Count(f => f.Reason == "unknown-account");
         return new(address, events.Count, events.Min(f => f.Timestamp), events.Max(f => f.Timestamp), accounts.Length,
-            string.Join(", ", accounts.Take(3)), (double)events.Count(f => f.Reason == "unknown-account") / events.Count,
-            string.Join(", ", types), network, Math.Max(0, networks.GetValueOrDefault(network) - 1));
+            string.Join(", ", accounts.Take(3)), (double)unknown / events.Count,
+            string.Join(", ", types), network, Math.Max(0, networks.GetValueOrDefault(network) - 1), UnknownAttempts: unknown);
     }
 
     /// <summary>The operator's label for an address, cleaned for the window; empty when there is none.</summary>

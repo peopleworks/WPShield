@@ -3,7 +3,7 @@
 - **Status:** Accepted on 2026-11-25, with the as-built amendment below
 - **Deciders:** Pedro Hernández (maintainer)
 - **Affects:** `WPShield.Evidence`, the evidence collector, the settings catalog, `wpshield`, the
-  desktop's Attacks view and a future Protection panel, the MCP `decisions` tool
+  desktop's Attacks view and Protection window, the MCP `decisions` tool
 
 ## Context
 
@@ -92,7 +92,7 @@ threshold applies at the next evaluation (`NextUse`) and says so.
 Every decision goes to the store's `decisions` table with its rule, target, reason (the counts that
 triggered it), the evidence channel that asked, mode and expiry. The CLI gains a view of active and
 recent decisions, the desktop's Attacks view shows "would block" per address, the MCP `decisions` tool
-already reads the table, and the future Protection panel counts them.
+already reads the table, and the Protection window counts them.
 
 ## Consequences
 

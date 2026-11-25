@@ -131,7 +131,7 @@ internal static class StoredAttackBoard
     internal static AttackSource Source(EvidenceSource source, AddressLabels labels) =>
         new(source.Address, Int(source.Attempts), source.First, source.Last, source.Accounts is long accounts ? Int(accounts) : null,
             NotAsked, source.Attempts == 0 ? 0 : (double)source.UnknownAccount / source.Attempts, NotAsked, source.Network,
-            Int(source.Neighbors), AttackBoard.LabelFor(labels, source.Address));
+            Int(source.Neighbors), AttackBoard.LabelFor(labels, source.Address), UnknownAttempts: Int(source.UnknownAccount));
 
     internal static AttackBucket Bucket(EvidenceBucket bucket) =>
         new(bucket.Start, bucket.End, Int(bucket.UnknownAccount), Int(bucket.Attempts - bucket.UnknownAccount), bucket.Covered);

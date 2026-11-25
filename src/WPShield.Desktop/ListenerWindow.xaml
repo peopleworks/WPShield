@@ -51,6 +51,9 @@
       </StackPanel>
       <TextBlock x:Name="PreviewLabel" DockPanel.Dock="Bottom" Foreground="#B3C7D0" FontSize="12" Margin="18,16" TextWrapping="Wrap"/>
       <StackPanel Margin="10,0">
+        <!-- First in the navigation: what WPShield is recording and deciding on this host. -->
+        <Button x:Name="ProtectionButton" Margin="0,0,0,20" Padding="8,8" Background="#165958" Foreground="White"
+                BorderThickness="0" FontWeight="SemiBold" Click="OpenProtection"/>
         <TextBlock x:Name="NavLabel" Foreground="#A6BDC8" FontSize="12" Margin="9,0,0,8"/>
         <ListBox x:Name="Protocols" SelectedIndex="0" Background="Transparent" BorderThickness="0" SelectionChanged="OnFilterChanged"
                  ScrollViewer.HorizontalScrollBarVisibility="Disabled">

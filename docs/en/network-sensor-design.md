@@ -76,8 +76,8 @@ the shorter ranges work as before.
 **Labels.** The `labels.addresses` setting names addresses and networks you know: your office, your
 own connection, a scanner network you have already reported. A label appears next to a matching
 address in the table, in the detail and among the neighbours, in every range. An exact address
-wins over a network, and a longer prefix over a shorter one. Labels are set in the
-[Settings window](#settings-window) or with
+wins over a network, and a longer prefix over a shorter one. Labels are set from a source's detail
+(**Label…**, below), in the [Settings window](#settings-window) or with
 [`wpshield settings`](#attack-history-from-the-command-line). **A label describes an address; it
 never allows or blocks one.**
 
@@ -91,6 +91,27 @@ read with each load or **Refresh** while the rows update live, so each mark is c
 expiry when it is drawn. A source's detail lists the decisions
 about it and its network over the last 30 days, with rule, expiry and the reason the engine wrote.
 **Monitor only: nothing is blocked.** The view never says "blocked".
+
+**Label and Allow.** A source's detail can act on the address where you see it:
+
+- **Label…** opens an editor under the address with the label (1 to 64 characters) and a reason. It
+  sets or replaces that exact address's entry in `labels.addresses`; a label the address shows from a
+  network entry stays as it is.
+- **Allow…** adds the exact address to `defense.allow`, with a reason, after a confirmation that says
+  what it gives up: **the decision engine will never decide against this address**, and because a
+  decision about a network stops when any address in it is protected, none is made about its /24 or
+  /64 (`HOST-AUTH-003`) either. When the address tried accounts that do not exist in the range shown,
+  or a **would block** decision is in force about it or its network, a warning gives those counts
+  first. Its network is never offered: to allow a network, use the Settings window. An address the
+  list already covers says so instead.
+
+Both write the way the Settings window writes: only elevated, opening the store for that one change,
+against the value read when the editor opened, checked by the catalog and recorded with your Windows
+user name and the reason. A value changed elsewhere in between is not overwritten: the editor says
+who changed it, reads it again and keeps your text, and a second save applies it on top. Without
+elevation, or when the store cannot be read, both are disabled and the panel says why. After a save
+the labels and the decisions in force are read again. An allowed address takes effect at the next
+evaluation; a decision already in force is not withdrawn and ends at its expiry.
 
 What the view will not do:
 
@@ -107,9 +128,53 @@ What the view will not do:
   same way.
 - **Present aggregates as detail.** A period answered from hourly aggregates says so; the counts
   are exact and the names are gone.
-- **Decide or block anything.** It reads and shows. Decisions are made by the service's engine, in
-  Monitor, and the view only reads them. Live records are applied once a second and memory holds at
-  most 100,000 records, dropping the oldest and moving the "no data" line with them.
+- **Decide or block anything.** Decisions are made by the service's engine, in Monitor, and the view
+  only reads them. What it writes is a label or an allow-list entry, from a source's detail, through
+  the Settings window's checks. Live records are applied once a second and memory holds at most
+  100,000 records, dropping the oldest and moving the "no data" line with them.
+
+### Protection
+
+Open **Protection**, first in the main navigation, to see what WPShield is recording and deciding on
+this host, in the shape of RdpGuard's main window but only with what is true. `--protection` opens it
+directly, and **Reopen as administrator** relaunches it elevated on this view. It reads the evidence
+store read-only and the Windows service controller, off the interface thread, every 15 seconds while
+it is open.
+
+The header holds three facts:
+
+- **The collector, from the store.** **Recording** (green) while its coverage reaches within two
+  minutes of now, the same definition that decides what is in force. **Running, not recording**
+  (amber) when a collector is alive but cannot read the Security log, so it extends an `unavailable`
+  interval and records nothing. **Stopped - last recorded** and the time (grey). **Could not read the
+  store** (amber), with the remedy in a notice: reopen as administrator, install the service, or use
+  the desktop that came with it.
+- **The Windows service `WPShield`, read only.** Running, stopped, not installed, or could not be
+  read. Nothing here starts or stops it. It never contradicts the collector: when the store shows
+  recording and the service is stopped or not installed, the window says the recording comes from
+  `wpshield evidence collect` in the foreground (or a service that stopped in the last two minutes).
+- **The mode, from `defense.mode`:** **Monitor - nothing is blocked**. **Block** is drawn dotted and
+  disabled; it does not exist until the enforcer of ADR 0006 passes its validation.
+
+**Sensors.** Each chip's dot is earned, never toggled. **Windows logons (Remote Desktop, SMB,
+network)** is green when it recorded within the allowance; amber when it is configured but blind or
+its coverage reports a problem, with a tooltip that names the cause and the remedy (for an unreadable
+Security log: add `NT SERVICE\WPShield` to Event Log Readers and restart the service, or run
+`wpshield evidence collect` elevated when there is no service); grey when nothing is recording or the
+store could not be read. **SQL Server logins** and **Requests to the sites (gateway)** are drawn
+dotted and disabled, marked **planned**: [ADR 0007](adr/0007-local-evidence-store.md) names both as
+later sources of the evidence store, but neither is recorded into it yet, so the engine does not see
+them.
+
+**Decisions (Monitor).** Four counts: **would block** decisions in force now, and **protected**,
+**refused** and **report** records of the last 24 hours, counted exactly in the store. **In force**,
+**Last 24 h** and **30 days** list the records with target, label, rule, action, reason, since and
+until, newest first, at most 500 per tab (the tab's count is still exact, and the footer says when the
+list is shorter). A network target shows its own label or that of a broader entry, never the label of
+one address inside it. Search matches a target, a label or a rule. When the store cannot be read every
+count is `—`, never 0; a period the collector did not record is `—` as well; and an empty **In force**
+says why: nothing is in force, the engine has never run, or the service is not recording. **Open
+Attacks** and **Open Settings (defense.\*)** open those windows, Settings on `defense.allow`.
 
 ### Settings window
 
@@ -351,8 +416,9 @@ is logged with its type, and collection continues. The attempts are stored eithe
 
 **In force.** A decision counts as in force when it is the newest record about its target, is
 unexpired, was made since the engine last started, and the collector is still recording. A decision
-never outlives the process that made it, and a crash writes no `expire`. The CLI, the desktop and any
-later Protection panel all use this one definition (`EvidenceQueries.ActiveDecisions`).
+never outlives the process that made it, and a crash writes no `expire`. The CLI, the desktop's
+Attacks view and its [Protection](#protection) window all use this one definition
+(`EvidenceQueries.ActiveDecisions`).
 
 ### `wpshield decisions`
 
