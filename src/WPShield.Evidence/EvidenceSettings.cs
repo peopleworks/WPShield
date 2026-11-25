@@ -48,7 +48,7 @@ public static class SettingCatalog
             "Whether the MCP server may return single attempts and account names, or only aggregates. Answers leave the host.",
             JsonValue.Create(false), SettingEffect.NextStart,
             node => node is JsonValue v && v.TryGetValue<bool>(out _) ? null : "true or false"),
-    }.ToDictionary(d => d.Key, StringComparer.Ordinal);
+    }.Concat(Decisions.DefenseSettings.Definitions()).ToDictionary(d => d.Key, StringComparer.Ordinal);
 
     public const int MaxLabels = 1000;
 
