@@ -224,3 +224,24 @@ nothing. The first week measures how much legitimate traffic it catches.
   methods and statuses; with it they add site names, normalized paths, user agents and site remedies,
   each wrapped as untrusted. The analyst gets all four, with fewer optional parameters than an MCP
   client sees, to stay within the strict-schema budget (see `docs/en/analyst.md`).
+
+## Amendment 2 - WordPress's placeholder files (2026-11-25)
+
+The first `WEB-OBS-001` on the real host was a scanner's `GET /wp-content/index.php`, answered 200 by a
+WordPress site. That file is WordPress core's empty "Silence is golden" placeholder, and every healthy
+install answers it the same way; scanners request it to learn that a site runs WordPress. It is not a
+webshell answering.
+
+`WEB-OBS-001` therefore excuses a **GET or HEAD** of exactly three core placeholders, requested by name as
+the last segment: `wp-content/index.php`, `wp-content/plugins/index.php` and
+`wp-content/themes/index.php`, at any install depth. Nothing else changes:
+
+- a **POST** to one of them is still observed - nothing legitimate posts to a placeholder, and a placeholder
+  replaced by a shell is driven with POST;
+- an `index.php` **inside** a plugin or a theme is still observed, because that is where the incident's
+  shells were hidden;
+- `wp-content/uploads/index.php` is not a core placeholder and is still observed;
+- path-info after the placeholder (`wp-content/index.php/x.jpg`) is still observed.
+
+The week of data decides whether plugin-level placeholders deserve the same treatment; they are not
+excused on a guess.
