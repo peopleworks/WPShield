@@ -32,11 +32,13 @@ internal static class AuditCommand
                       administrator of the server.
           AUDIT-003   Pools that share NetworkService or LocalService, so no permission can keep
                       one of their sites out of another's files.
-          AUDIT-004   PHP mapped for the whole server, and the sites that run PHP without WordPress.
+          AUDIT-004   PHP mappings at server and site level, including the WordPress sites that
+                      need to keep PHP.
           AUDIT-005   Site folders that Everyone, Users, Authenticated Users or IIS_IUSRS can write
                       into - checked by SID, so it works on a Spanish Windows too.
           AUDIT-006   A site that answers any host name while its folder contains other sites'
                       folders: stopping one of those sites does not take its files offline.
+          AUDIT-007   Web roots inside an FTP site's root or one of its virtual directories.
 
         It never repairs. Every remedy it prints is a change you make by hand, one pool or one site
         at a time, looking at the site while it happens. It reads the account a pool runs as, never

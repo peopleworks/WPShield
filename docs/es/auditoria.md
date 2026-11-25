@@ -16,20 +16,22 @@ incompleta en lugar de imprimir un informe limpio.
 
 ## Por qué existe
 
-Un web shell en un sitio es un incidente. Cuatro configuraciones habituales de un servidor IIS
-compartido lo convierten en un servidor comprometido, y ningún escaneo de los propios sitios informa de
+Un web shell en un sitio es un incidente. Varias configuraciones de un servidor IIS compartido
+pueden comprometer todo el servidor, y ningún escaneo de los propios sitios informa de
 ninguna de ellas:
 
 1. **Pools de aplicación que corren como administrador.** Un comando enviado al shell se ejecuta como
    administrador del servidor, no como una identidad web restringida.
 2. **Carpetas de sitio escribibles por todas las cuentas.** Toda identidad de pool es miembro de
    `Users` e `IIS_IUSRS` mientras corre, así que un shell en un sitio puede escribir en todos los demás.
-3. **PHP asignado para todo el servidor.** Un archivo `.php` escrito en la carpeta de un sitio .NET se
-   ejecuta allí, así que el shell se extiende a sitios que nunca ejecutaron PHP.
+3. **PHP asignado a sitios que no lo necesitan.** Una asignación de PHP heredada del servidor o
+   configurada a nivel de sitio puede permitir que IIS ejecute archivos PHP en un sitio que no usa PHP.
 4. **Un sitio que responde a cualquier nombre de host y sirve la carpeta que contiene a todos los
    demás**: el `Default Web Site` de serie en `*:80` sobre `C:\inetpub\wwwroot`, que se quedó ahí cuando
    se añadieron los sitios reales debajo. Detener un sitio comprometido no saca sus archivos de
    internet: siguen accesibles por la dirección del servidor a través del sitio atrapa-todo.
+5. **Una raíz web dentro de una carpeta FTP.** Una cuenta FTP podría escribir archivos que IIS sirva
+   o ejecute con la identidad del pool de aplicaciones del sitio web.
 
 Ninguna de estas es un problema de WordPress, y ninguna se ve desde fuera. Juntas son la diferencia
 entre un sitio comprometido y un servidor comprometido.
@@ -39,11 +41,12 @@ entre un sitio comprometido y un servidor comprometido.
 | ID | Severidad | Qué significa |
 | --- | --- | --- |
 | `AUDIT-001` | Crítico cuando no pudo mirar | Se ejecuta elevado y la configuración de IIS es legible. Si falla cualquiera de las dos, la ejecución se marca incompleta y sale con `1`: "nadie pudo mirar" nunca debe leerse como "no hay nada". |
-| `AUDIT-002` | Crítico | Pools que corren como `LocalSystem` o como una cuenta que es miembro directo del grupo local de Administradores, localizado por el SID del grupo para que funcione en un Windows en español. Cada uno aparece con los sitios que sirve. Una cuenta que no se puede resolver es una advertencia para revisar a mano, nunca un aprobado. |
+| `AUDIT-002` | Crítico | Pools que se ejecutan como `LocalSystem` o con una cuenta que pertenece directamente al grupo local de Administradores, identificado por SID. El informe enumera los sitios que sirve cada pool. Revisa a mano las cuentas que no se pudieron resolver. **Cambia la contraseña al final.** Los pools que aún usan la cuenta fallarán en su próximo inicio y sus sitios devolverán HTTP 503. Cada migración a `ApplicationPoolIdentity` elimina una copia almacenada de la contraseña. |
 | `AUDIT-003` | Advertencia | Pools que comparten `NetworkService` o `LocalService`. Corren con una sola identidad, así que ningún permiso de carpeta puede impedir que uno de esos sitios toque los archivos de otro. |
-| `AUDIT-004` | Advertencia | PHP asignado a nivel de servidor, con los sitios que ejecutan PHP sin contener WordPress. Si solo lo ejecutan sitios WordPress, se informa como información. |
+| `AUDIT-004` | Advertencia | Comprueba los controladores efectivos en la raíz de cada sitio HTTP/HTTPS, exista o no una asignación de PHP en el servidor. Enumera los sitios WordPress que deben conservar PHP, los demás sitios que lo ejecutan y aquellos cuya configuración de controladores no pudo leerse. Enumera los sitios sin enlaces HTTP/HTTPS en una línea aparte y los excluye del recuento de PHP. Advierte cuando un sitio sin WordPress ejecuta PHP o si no se pudo leer la configuración. En los demás casos, una asignación a nivel de servidor es informativa y una asignación solo a nivel de sitio pasa la comprobación. |
 | `AUDIT-005` | Crítico | Carpetas de sitio en las que `Everyone`, `Users`, `Authenticated Users` o `IIS_IUSRS` pueden escribir, comprobado por SID. Cuentan las entradas que solo se heredan, porque dan escritura sobre todo lo que hay debajo de la carpeta, que es donde cae un archivo dejado por un atacante. Una carpeta cuyos permisos no se pueden leer es una advertencia, nunca un aprobado. |
 | `AUDIT-006.<sitio>` | Crítico si está iniciado | Un sitio con un binding HTTP o HTTPS sin nombre de host, cuya carpeta contiene las carpetas de otros sitios. Detenido es una advertencia: hoy no se llega a nada a través de él, y en cuanto arranque se llega a todo. |
+| `AUDIT-007` | Advertencia | La raíz configurada de un sitio HTTP/HTTPS está dentro de la raíz o de un directorio virtual de un sitio FTP. Mueve la carpeta web fuera de esa carpeta FTP o comprueba a mano que el aislamiento de usuarios FTP impide a todas las cuentas FTP acceder a ella. También advierte si faltan rutas necesarias para la comprobación. Pasa si no hay carpetas web anidadas y es informativo si IIS no tiene enlaces FTP. |
 
 ## Nunca repara
 
@@ -83,11 +86,10 @@ El informe lleva nombres reales de sitios, rutas de carpetas y nombres de cuenta
 
 ## Hasta dónde se ha probado
 
-Las comprobaciones se prueban contra instantáneas de una configuración de IIS que las pruebas
-construyen a mano. El lector que construye esa instantánea desde un servidor real, a través de
-`Microsoft.Web.Administration`, **todavía no se ha ejecutado contra un IIS real.** Hasta que se haga,
-lea su primer informe en un servidor real como lo que es, una primera ejecución: una lista vacía
-puede significar que el lector pasó algo por alto, no que no haya nada.
+Las comprobaciones se prueban con instantáneas sintéticas de IIS. Una ejecución con elevación en un
+servidor IIS real sirvió de base para los cambios del informe sobre contraseñas, PHP y FTP. La
+comprobación de FTP compara las rutas configuradas. El operador comprueba el acceso efectivo y el
+aislamiento de los usuarios FTP.
 
 ## Qué no comprueba todavía
 

@@ -15,13 +15,14 @@ namespace WPShield.Cli.Audit;
 /// nothing here reads a password: for a pool that runs as a named account the account name is read
 /// and the password stored beside it in the IIS configuration is not.
 /// </remarks>
+/// <param name="ServerHandlers">Server-level handlers, or <see langword="null"/> if unreadable.</param>
 internal sealed record AuditFacts(
     bool IsElevated,
     bool IisReadable,
     string? IisUnreadableReason,
     IReadOnlyList<AuditPool> Pools,
     IReadOnlyList<AuditSite> Sites,
-    IReadOnlyList<AuditHandler> ServerHandlers);
+    IReadOnlyList<AuditHandler>? ServerHandlers);
 
 /// <param name="IdentityType">
 /// As IIS names it: <c>ApplicationPoolIdentity</c>, <c>LocalSystem</c>, <c>LocalService</c>,
@@ -40,8 +41,12 @@ internal sealed record AuditPool(
     bool? RunsAsLocalAdministrator);
 
 /// <param name="ExecutesPhp">
-/// Whether a PHP handler is in the site's effective configuration, or <see langword="null"/> when that
-/// could not be read.
+/// Whether a site with an HTTP or HTTPS binding has an effective PHP handler, or
+/// <see langword="null"/> when that configuration could not be read.
+/// </param>
+/// <param name="FtpVirtualDirectoryPaths">
+/// Physical paths of additional virtual directories on an FTP site, or <see langword="null"/> when
+/// they could not be read. The site's root is carried in <c>PhysicalPath</c>.
 /// </param>
 internal sealed record AuditSite(
     string Name,
@@ -51,7 +56,13 @@ internal sealed record AuditSite(
     IReadOnlyList<IisBinding> Bindings,
     bool LooksLikeWordPress,
     bool? ExecutesPhp,
-    FolderAccess Root);
+    FolderAccess Root,
+    IReadOnlyList<string>? FtpVirtualDirectoryPaths)
+{
+    public bool HasWebBinding => Bindings.Any(AuditPrimitives.IsWebBinding);
+
+    public bool HasFtpBinding => Bindings.Any(AuditPrimitives.IsFtpBinding);
+}
 
 /// <param name="BroadWriters">
 /// The broad groups - Everyone, Users, Authenticated Users, IIS_IUSRS - that can create or change
@@ -70,6 +81,13 @@ internal static class AuditPrimitives
 {
     private const int GenericAll = 0x10000000;
     private const int GenericWrite = 0x40000000;
+
+    public static bool IsWebBinding(IisBinding binding) =>
+        string.Equals(binding.Protocol, "http", StringComparison.OrdinalIgnoreCase) ||
+        string.Equals(binding.Protocol, "https", StringComparison.OrdinalIgnoreCase);
+
+    public static bool IsFtpBinding(IisBinding binding) =>
+        string.Equals(binding.Protocol, "ftp", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Whether an access mask lets its holder put a file where it was not.
@@ -164,7 +182,7 @@ internal static class AuditFactsReader
             exception is UnauthorizedAccessException or COMException or FileNotFoundException
                 or InvalidOperationException or TypeInitializationException or DllNotFoundException)
         {
-            return new AuditFacts(elevated, false, exception.Message, [], [], []);
+            return new AuditFacts(elevated, false, exception.Message, [], [], null);
         }
     }
 
@@ -216,7 +234,7 @@ internal static class AuditFactsReader
         }
     }
 
-    private static List<AuditHandler> ReadServerHandlers(ServerManager manager)
+    private static IReadOnlyList<AuditHandler>? ReadServerHandlers(ServerManager manager)
     {
         try
         {
@@ -226,9 +244,10 @@ internal static class AuditFactsReader
 
             return [.. handlers.Select(ReadHandler)];
         }
-        catch (Exception exception) when (exception is COMException or InvalidOperationException or FileNotFoundException)
+        catch (Exception exception) when (
+            exception is COMException or InvalidOperationException or FileNotFoundException or UnauthorizedAccessException)
         {
-            return [];
+            return null;
         }
     }
 
@@ -274,20 +293,43 @@ internal static class AuditFactsReader
             (File.Exists(Path.Combine(physicalPath, "wp-config.php")) ||
              File.Exists(Path.Combine(physicalPath, "wp-includes", "version.php")));
 
+        IisBinding[] bindings =
+            [.. site.Bindings.Select(binding => new IisBinding(binding.Protocol, binding.BindingInformation))];
+
         return new AuditSite(
             site.Name,
             state,
             physicalPath,
             applicationPool,
-            [.. site.Bindings.Select(binding => new IisBinding(binding.Protocol, binding.BindingInformation))],
+            bindings,
             looksLikeWordPress,
-            ReadExecutesPhp(manager, site.Name),
-            DescribeFolder(physicalPath));
+            bindings.Any(AuditPrimitives.IsWebBinding) ? ReadExecutesPhp(manager, site.Name) : false,
+            DescribeFolder(physicalPath),
+            bindings.Any(AuditPrimitives.IsFtpBinding) ? ReadFtpVirtualDirectoryPaths(site) : []);
+    }
+
+    private static IReadOnlyList<string>? ReadFtpVirtualDirectoryPaths(Site site)
+    {
+        try
+        {
+            return
+            [
+                .. from application in site.Applications
+                   from directory in application.VirtualDirectories
+                   where application.Path != "/" || directory.Path != "/"
+                   select Environment.ExpandEnvironmentVariables(directory.PhysicalPath ?? string.Empty)
+            ];
+        }
+        catch (Exception exception) when (
+            exception is COMException or InvalidOperationException or FileNotFoundException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
     /// Whether PHP runs in this site, read from its effective configuration: the server-level mapping
-    /// it inherits and whatever its own <c>web.config</c> adds or removes.
+    /// it inherits and whatever its own <c>web.config</c> or site-level location adds or removes.
     /// </summary>
     private static bool? ReadExecutesPhp(ServerManager manager, string siteName)
     {

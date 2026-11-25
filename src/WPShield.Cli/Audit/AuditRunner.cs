@@ -36,9 +36,10 @@ internal sealed class AuditRunner(AuditFacts facts)
 
         CheckAdministratorPools(report);
         CheckSharedIdentities(report);
-        CheckServerWidePhp(report);
+        CheckPhpMappings(report);
         CheckWritableFolders(report);
         CheckCatchAllSites(report);
+        CheckFtpRoots(report);
 
         return report;
     }
@@ -122,7 +123,11 @@ internal sealed class AuditRunner(AuditFacts facts)
                 ? $"{privileged.Length} application pool(s) run with administrator rights"
                 : $"{unresolved.Length} application pool(s) run as an account that could not be resolved",
             "Code that runs in one of these pools - a web shell dropped into any site they serve - runs as an administrator of this server: it can read every other site's secrets, write into every folder, create accounts and install services. A pool that runs as a named account also keeps that account's password in the IIS configuration, where any administrator can read it back in plain text.",
-            "Move each pool to ApplicationPoolIdentity, by hand, one pool at a time, and give that identity only what its site needs: read on the site's folder, write only where the application writes. Check the site after each change. Then change the password of every account that was used as a pool identity. For an unresolved account, check by hand whether it is a member of the local Administrators group.",
+            "Change the password last. Changing it while any pool still uses the account stops those pools at their next start, and their sites return HTTP 503. " +
+            "For an unresolved account, check by hand whether it is a member of the local Administrators group. " +
+            "Move each pool to ApplicationPoolIdentity, by hand, one pool at a time, and grant read on the site's folder and write only where the application writes. " +
+            "Check the site after each change. Each pool moved to ApplicationPoolIdentity removes one stored copy of that account's password. " +
+            "Change the password only after every pool using that account has been moved.",
             items,
             AuditReport.Fields(
                 ("privilegedPools", privileged.Select(pool => pool.Name).ToArray()),
@@ -156,46 +161,63 @@ internal sealed class AuditRunner(AuditFacts facts)
     }
 
     // =============================================================================================
-    //  AUDIT-004 - PHP mapped for the whole server
+    //  AUDIT-004 - effective PHP mappings on web sites
     // =============================================================================================
 
-    private void CheckServerWidePhp(AuditReport report)
+    private void CheckPhpMappings(AuditReport report)
     {
-        var php = _facts.ServerHandlers.Where(AuditPrimitives.IsPhpHandler).ToArray();
+        var php = _facts.ServerHandlers?.Where(AuditPrimitives.IsPhpHandler).ToArray();
+        var serverLevelPhp = php?.Length > 0;
+        var webSites = _facts.Sites.Where(site => site.HasWebBinding).ToArray();
+        var nonWebSites = _facts.Sites.Where(site => !site.HasWebBinding).Select(site => site.Name).ToArray();
+        var running = webSites.Where(site => site.ExecutesPhp == true).ToArray();
+        var withWordPress = running.Where(site => site.LooksLikeWordPress).ToArray();
+        var withoutWordPress = running.Where(site => !site.LooksLikeWordPress).ToArray();
+        var unknown = webSites.Where(site => site.ExecutesPhp is null).ToArray();
 
-        if (php.Length == 0)
+        var items = new List<string>();
+        if (nonWebSites.Length > 0)
         {
-            report.Add(new AuditFinding(
-                "AUDIT-004", AuditSeverity.Pass, "PHP is not mapped at the server level",
-                Data: AuditReport.Fields(("serverLevelPhp", false))));
-            return;
+            items.Add($"Sites with no HTTP or HTTPS binding: {string.Join(", ", nonWebSites)}");
         }
 
-        var running = _facts.Sites.Where(site => site.ExecutesPhp == true).ToArray();
-        var withoutWordPress = running.Where(site => !site.LooksLikeWordPress).ToArray();
+        items.AddRange(withWordPress.Select(site => $"Keep PHP for WordPress: {site.Name}  ({site.PhysicalPath})"));
+        items.AddRange(unknown.Select(site => $"could not read this site's configuration, so whether PHP runs here is unknown: {site.Name}  ({site.PhysicalPath})"));
+        items.AddRange(withoutWordPress.Select(site => $"PHP runs here, and there is no WordPress: {site.Name}  ({site.PhysicalPath})"));
+        items.AddRange((php ?? []).Select(handler => $"handler {handler.Name}  {handler.Path}  -> {handler.ScriptProcessor}"));
 
-        // A site whose configuration could not be read may well run PHP. Unknown is listed, never
-        // dropped: leaving it out would be the optimistic direction.
-        var unknown = _facts.Sites.Where(site => site.ExecutesPhp is null).ToArray();
-
-        var items = php
-            .Select(handler => $"handler {handler.Name}  {handler.Path}  -> {handler.ScriptProcessor}")
-            .Concat(withoutWordPress.Select(site => $"PHP runs here, and there is no WordPress: {site.Name}  ({site.PhysicalPath})"))
-            .Concat(unknown.Select(site => $"could not read this site's configuration, so whether PHP runs here is unknown: {site.Name}  ({site.PhysicalPath})"))
-            .ToArray();
+        var severity = withoutWordPress.Length > 0 || unknown.Length > 0 || php is null
+            ? AuditSeverity.Warn
+            : serverLevelPhp ? AuditSeverity.Info : AuditSeverity.Pass;
+        var title = php is null ? "Server-level handler mappings could not be read"
+            : serverLevelPhp ? "PHP is mapped for the whole server"
+            : withoutWordPress.Length > 0 ? "PHP is mapped on sites without WordPress"
+            : unknown.Length > 0 ? "PHP mappings could not be checked on every web site"
+            : "PHP is not mapped at the server level and no web site without WordPress runs PHP";
+        var remedy = php is null
+            ? "Check the server-level handlers by hand, then rerun the audit before changing any mappings."
+            : serverLevelPhp
+                ? "Map PHP only on the sites that need it. By hand, add or verify a site-level handler on each site that needs PHP, including the WordPress sites listed, and check each site before removing the server-level handler."
+                : "Review each site listed as running PHP without WordPress by hand. Remove its site-level PHP handler if the site does not need PHP.";
+        if (unknown.Length > 0)
+        {
+            remedy = "Check the effective handlers of the sites marked unknown by hand before changing any mappings. " + remedy;
+        }
 
         report.Add(new AuditFinding(
             "AUDIT-004",
-            withoutWordPress.Length > 0 || unknown.Length > 0 ? AuditSeverity.Warn : AuditSeverity.Info,
-            "PHP is mapped for the whole server",
-            $"The mapping below is inherited by every site that does not remove it. PHP runs in {running.Length} site(s), {withoutWordPress.Length} of which contain no WordPress, and {unknown.Length} site(s) could not be read. A .php file written into any of those folders executes there.",
-            "Map PHP only on the sites that need it: add the handler to each of those sites, check each one, and then remove it from the server level. By hand, one site at a time.",
+            severity,
+            title,
+            $"PHP is mapped on {running.Length} HTTP/HTTPS site(s), including {withoutWordPress.Length} with no WordPress detected. Handler configuration is unknown on {unknown.Length} HTTP/HTTPS site(s). An effective PHP mapping can execute PHP files in the site's folder.",
+            severity == AuditSeverity.Pass ? string.Empty : remedy,
             items,
             AuditReport.Fields(
-                ("serverLevelPhp", true),
+                ("serverLevelPhp", php is null ? (bool?)null : serverLevelPhp),
                 ("sitesRunningPhp", running.Length),
                 ("sitesRunningPhpWithoutWordPress", withoutWordPress.Select(site => site.Name).ToArray()),
-                ("sitesWithUnreadableConfiguration", unknown.Select(site => site.Name).ToArray()))));
+                ("sitesWithUnreadableConfiguration", unknown.Select(site => site.Name).ToArray()),
+                ("sitesRunningPhpWithWordPress", withWordPress.Select(site => site.Name).ToArray()),
+                ("sitesWithoutWebBindings", nonWebSites))));
     }
 
     // =============================================================================================
@@ -289,14 +311,64 @@ internal sealed class AuditRunner(AuditFacts facts)
         }
     }
 
+    // =============================================================================================
+    //  AUDIT-007 - web roots under an FTP root or virtual directory
+    // =============================================================================================
+
+    private void CheckFtpRoots(AuditReport report)
+    {
+        var ftpSites = _facts.Sites.Where(site => site.HasFtpBinding).ToArray();
+        if (ftpSites.Length == 0)
+        {
+            report.Add(new AuditFinding("AUDIT-007", AuditSeverity.Info, "No IIS site has an FTP binding"));
+            return;
+        }
+
+        var webSites = _facts.Sites.Where(site => site.HasWebBinding).ToArray();
+        var ftpPaths = ftpSites.SelectMany(site => (site.FtpVirtualDirectoryPaths ?? [])
+            .Prepend(site.PhysicalPath)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Select(path => (site.Name, Path: path))).ToArray();
+        var overlaps =
+            from web in webSites
+            from ftp in ftpPaths
+            where AuditPrimitives.IsInside(ftp.Path, web.PhysicalPath)
+            select $"{web.Name}  ({web.PhysicalPath})  is under FTP site {ftp.Name}  ({ftp.Path})";
+
+        var items = overlaps.ToList();
+        var hasOverlap = items.Count > 0;
+        var unreadable = ftpSites.Where(site => site.FtpVirtualDirectoryPaths is null ||
+                                              site.FtpVirtualDirectoryPaths.Any(string.IsNullOrWhiteSpace) ||
+                                              string.IsNullOrWhiteSpace(site.PhysicalPath));
+        if (webSites.Length > 0)
+        {
+            items.AddRange(unreadable.Select(site => $"could not determine every FTP folder for {site.Name}"));
+            items.AddRange(webSites.Where(site => string.IsNullOrWhiteSpace(site.PhysicalPath))
+                .Select(site => $"could not determine the web root for {site.Name}"));
+        }
+
+        if (items.Count == 0)
+        {
+            report.Add(new AuditFinding("AUDIT-007", AuditSeverity.Pass, "No HTTP/HTTPS site root is inside an FTP folder"));
+            return;
+        }
+
+        report.Add(new AuditFinding(
+            "AUDIT-007",
+            AuditSeverity.Warn,
+            hasOverlap ? "HTTP/HTTPS site roots are inside FTP folders" : "FTP and web folders could not all be checked for nesting",
+            "An FTP account may be able to write files that IIS serves or executes. IIS can execute them as the site's application pool identity, which may have administrator rights.",
+            "Move each nested web folder out of the FTP root or virtual directory, or confirm by hand that FTP user isolation keeps every FTP account out of the web folder. Check any unknown paths by hand.",
+            items));
+    }
+
     /// <summary>
     /// An HTTP or HTTPS binding with no host name: the site that answers requests addressed to the
     /// server's IP, or to any name that no other binding claims.
     /// </summary>
     private static bool AnswersAnyHostName(AuditSite site) =>
         site.Bindings.Any(binding =>
-            (string.Equals(binding.Protocol, "http", StringComparison.OrdinalIgnoreCase) ||
-             string.Equals(binding.Protocol, "https", StringComparison.OrdinalIgnoreCase)) &&
+            AuditPrimitives.IsWebBinding(binding) &&
             string.IsNullOrEmpty(binding.HostHeader) &&
             !binding.IsLoopback);
 
