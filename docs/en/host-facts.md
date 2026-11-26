@@ -114,6 +114,10 @@ the CLI and the desktop together, and run `wpshield evidence collect` once befor
 
 ## What leaves the host
 
-Nothing yet: the MCP tools for host facts come in the next phase. They honour the new audited setting
+The local surfaces (`wpshield host`, the desktop) show everything; nothing they display leaves the
+server. What leaves is what an assistant asks `wpshield mcp` or the AI analyst for: the tools
+`host_health`, `iis_sites`, `iis_posture`, `listening_ports`, `rdp_sessions` and `host_inventory`
+([MCP server](mcp-server.md)). They answer from these snapshots only and honour the audited setting
 `mcp.host_details` (off by default): with it off they return counts, statuses, verdicts, port numbers,
-executable file names, restart times and bugcheck codes, and `withheld` for names, paths and addresses.
+executable file names, restart times and bugcheck codes, and `withheld` for names, paths and addresses;
+with it on, the names come back as untrusted text. `wpshield mcp` reads the setting when it starts.

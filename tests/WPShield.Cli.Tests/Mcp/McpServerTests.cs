@@ -17,7 +17,8 @@ public sealed class McpServerTests : IDisposable
     private static readonly string[] ToolNames =
     [
         "address_labels", "address_report", "attack_timeline", "attacks_summary", "coverage", "decisions", "evidence_events",
-        "evidence_kinds", "list_settings", "source_history", "top_sources", "web_findings", "web_summary", "web_top_sources"
+        "evidence_kinds", "host_health", "host_inventory", "iis_posture", "iis_sites", "list_settings", "listening_ports",
+        "rdp_sessions", "source_history", "top_sources", "web_findings", "web_summary", "web_top_sources"
     ];
 
     private readonly string directory = Path.Combine(Path.GetTempPath(), "wpshield-mcp-tests", Guid.NewGuid().ToString("N"));
@@ -32,7 +33,7 @@ public sealed class McpServerTests : IDisposable
     private string MissingStore => Path.Combine(directory, "absent", "wpshield-evidence.db");
 
     [Fact]
-    public async Task AClientSeesFourteenReadOnlyToolsThatSayTheirTextIsUntrusted()
+    public async Task AClientSeesTwentyReadOnlyToolsThatSayTheirTextIsUntrusted()
     {
         using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(30));
         await using var session = await Session.StartAsync(MissingStore, timeout.Token);

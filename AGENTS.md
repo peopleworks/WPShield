@@ -212,6 +212,12 @@ desktop, the CLI and a future MCP server answer from, so these rules protect eve
   matches is stored. A test searches the database files and the log output for a full name.
 - **An exposure verdict is "by the Windows Firewall rules", never "reachable"**, and it leans open when
   unsure. Other WFP filters decide too; the label says where the verdict comes from.
+- **The host's own names leave only behind `mcp.host_details`.** The MCP host tools (and so the analyst)
+  return site, pool, account, service and task names, host names, paths, local addresses and RDP source
+  addresses as `withheld` unless that setting is true, and under `untrusted` when it is. It is separate
+  from `mcp.detailed_records` on purpose, frozen when the server starts, and never reused for evidence
+  detail. The analyst's strict-schema budget is full (24 optional parameters, 20 tools): a new tool or
+  parameter must make room, and `McpAnalystToolsTests` says so.
 
 ## Operator scripts
 

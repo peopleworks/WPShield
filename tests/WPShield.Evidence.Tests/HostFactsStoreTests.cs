@@ -239,6 +239,23 @@ public sealed class HostFactsStoreTests : IDisposable
         Assert.Equal(Now, writer.RestartsReadUntil());
     }
 
+    /// <summary>
+    /// A reader has to tell "no restart" from "nobody read the System log": the read mark is null until the
+    /// collector's restart reader records one, and readers see the same mark the writer keeps.
+    /// </summary>
+    [Fact]
+    public void ReadersSeeWhetherTheRestartReaderHasReadAtAll()
+    {
+        using (var store = EvidenceStore.OpenForWriting(DbPath))
+        {
+            Assert.Null(new HostFactsQueries(store).RestartsReadUntil());
+            new HostFactsWriter(store).SetRestartsReadUntil(Now.AddMinutes(-10));
+        }
+
+        using var reader = EvidenceStore.OpenReadOnly(DbPath);
+        Assert.Equal(Now.AddMinutes(-10), new HostFactsQueries(reader).RestartsReadUntil());
+    }
+
     [Fact]
     public void InventoryChangesStopAtTheDailyBoundAndTheOverflowIsCounted()
     {

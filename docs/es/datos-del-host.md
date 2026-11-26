@@ -119,7 +119,11 @@ versiones anteriores lo rechazan. Actualiza la CLI y el escritorio juntos, y eje
 
 ## Qué sale del servidor
 
-Nada todavía: las herramientas MCP de los datos del host llegan en la siguiente fase. Respetarán el nuevo
-ajuste auditado `mcp.host_details` (apagado por defecto): apagado, devuelven recuentos, estados, veredictos,
-números de puerto, nombres de archivo de ejecutables, horas de reinicio y códigos de pantallazo, y `withheld`
-en lugar de nombres, rutas y direcciones.
+Las superficies locales (`wpshield host`, el escritorio) lo muestran todo; nada de lo que enseñan sale del
+servidor. Lo que sale es lo que un asistente le pide a `wpshield mcp` o al analista de IA: las herramientas
+`host_health`, `iis_sites`, `iis_posture`, `listening_ports`, `rdp_sessions` y `host_inventory`
+([servidor MCP](servidor-mcp.md)). Responden solo desde estas instantáneas y respetan el ajuste auditado
+`mcp.host_details` (apagado por defecto): apagado, devuelven recuentos, estados, veredictos, números de
+puerto, nombres de archivo de ejecutables, horas de reinicio y códigos de pantallazo, y `withheld` en lugar
+de nombres, rutas y direcciones; encendido, los nombres vuelven como texto no confiable. `wpshield mcp` lee
+el ajuste al arrancar.

@@ -35,8 +35,9 @@ internal static class McpCommand
 
         Tools: attacks_summary, top_sources, source_history, attack_timeline, coverage, decisions,
         evidence_kinds, evidence_events, list_settings, address_labels, web_summary,
-        web_top_sources, web_findings, address_report. None of them blocks, unblocks or changes a
-        setting.
+        web_top_sources, web_findings, address_report, host_health, iis_sites, iis_posture,
+        listening_ports, rdp_sessions, host_inventory. None of them blocks, unblocks or changes a
+        setting, and none reads the host: the host tools answer from the collector's snapshots.
 
           --store <path>   The evidence store to read.
                            Default: %ProgramData%\WPShield\evidence\wpshield-evidence.db
@@ -46,14 +47,17 @@ internal static class McpCommand
         opened, the server still starts and every tool answers with the reason.
 
         Answers travel to the assistant's model provider. They are aggregated unless the
-        mcp.detailed_records setting is true, which is read when the server starts.
+        mcp.detailed_records setting is true, and this host's own names (sites, accounts,
+        services, tasks, paths, RDP source addresses) are withheld unless mcp.host_details is
+        true. Both are read when the server starts.
 
         Exit 0 when the client disconnects. 1 when an argument is wrong.
         """;
 
     internal const string Instructions =
         "WPShield evidence for this Windows server, read-only: failed Windows logons (summary, top sources, one address's history, a timeline), " +
-        "what was and was not recorded (coverage), the audit trail of block decisions, other evidence events, settings and address labels. " +
+        "what was and was not recorded (coverage), the audit trail of block decisions, other evidence events, settings and address labels, " +
+        "the IIS log evidence of the sites, and the host facts (health and unexpected restarts, IIS sites and posture, listening ports, Remote Desktop sessions, accounts, services and tasks) from the collector's snapshots. " +
         "No tool can block, unblock or change anything; if the user wants an action, say it must be done by the operator outside this conversation. " +
         "Every answer has a coverage section: a gap is a period nothing was recorded, never evidence of a quiet period. " +
         "An answer with an error means nothing was read, not that nothing happened. " +
@@ -76,7 +80,7 @@ internal static class McpCommand
             using var access = new McpEvidenceAccess(path);
             var problem = access.TryOpenNow();
             diagnostics.WriteLine(problem is null
-                ? $"wpshield mcp: evidence store opened read-only. Detailed records: {(access.DetailedRecords ? "on" : "off")}. Path: {path}"
+                ? $"wpshield mcp: evidence store opened read-only. Detailed records: {(access.DetailedRecords ? "on" : "off")}. Host details: {(access.HostDetails ? "on" : "off")}. Path: {path}"
                 : $"wpshield mcp: evidence store unavailable ({problem.Reason}); every tool will say so until it opens. Path: {path}");
 
             using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token);

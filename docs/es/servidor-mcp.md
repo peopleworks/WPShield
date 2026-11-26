@@ -11,7 +11,8 @@ esta página, es la [ADR 0008](adr/0008-servidor-mcp-de-solo-lectura.md).
 > **Las respuestas salen del servidor.** Lo que devuelve una herramienta lo envía el asistente al
 > proveedor de su modelo (Anthropic, para Claude Desktop y Claude Code). Por defecto son conteos,
 > direcciones de origen, cobertura, decisiones de bloqueo, ajustes y sus etiquetas de direcciones, que
-> nombran direcciones propias. Lea [Qué sale del servidor](#qué-sale-del-servidor) antes de conectarlo.
+> nombran direcciones propias, y los datos del host sin sus nombres: reinicios, nivel de parches,
+> puertos y veredictos, conteos. Lea [Qué sale del servidor](#qué-sale-del-servidor) antes de conectarlo.
 
 ## Qué puede responder
 
@@ -30,6 +31,12 @@ esta página, es la [ADR 0008](adr/0008-servidor-mcp-de-solo-lectura.md).
 | "¿Quién sondeó los sitios esta semana? ¿Quién martilleó `wp-login.php`?" | `web_top_sources` |
 | "¿Cuáles fueron los hallazgos web más recientes del sitio 4?" "¿Qué pidió 203.0.113.7?" | `web_findings` |
 | "Cuéntame todo sobre 203.0.113.7: inicios de sesión, web, decisiones, lista de permitidos." | `address_report` |
+| "¿Cómo está el servidor? ¿Cuántos reinicios inesperados este mes, y con qué código de pantallazo? ¿Cuándo fue la última actualización acumulativa?" | `host_health` |
+| "¿Qué sitios corren en un grupo con derechos de administrador? ¿Qué binding responde a cualquier nombre de host?" | `iis_sites` |
+| "¿Cuántos grupos siguen corriendo como administrador? ¿PHP está asignado para todo el servidor?" | `iis_posture` |
+| "¿Qué puertos están abiertos a cualquier dirección según las reglas del firewall? ¿Está expuesto SMB o MySQL?" | `listening_ports` |
+| "¿Quién tiene sesión abierta? ¿Quién entró por RDP esta semana, desde cuántas direcciones?" | `rdp_sessions` |
+| "¿Qué cuentas son administradoras? ¿Los atacantes prueban el nombre completo de una cuenta real? ¿Qué servicios o tareas sin firmar corren aquí?" | `host_inventory` |
 
 Los rangos son `1h`, `6h`, `24h`, `7d`, `30d` o `90d`, o un `from` y un `to` explícitos (ISO-8601 en
 UTC, separados como mucho por 90 días). Un rango de más de seis horas empieza en una hora en punto,
@@ -51,6 +58,23 @@ carpeta de log `W3SVC`; `web_summary` lista los ID que conoce el sensor.
 de sesión fallidos, las decisiones sobre ella o su /24 o /64 y la que está en vigor ahora, sus conteos
 web y sus hallazgos más recientes, su etiqueta, y si la lista de permitidos o un rango privado impiden
 que el motor de decisiones decida contra ella.
+
+Las herramientas del host (`host_health`, `iis_sites`, `iis_posture`, `listening_ports`,
+`rdp_sessions` y `host_inventory`) responden qué *es* el servidor, a partir de los datos del host del
+[ADR 0013](adr/0013-datos-del-host-y-centro-de-mando.md). Leen las fotos que el recolector de WPShield
+toma a su ritmo y nunca leen el host por su cuenta, así que nada de lo que pregunte un asistente hace
+que WPShield sondee el servidor. Cada respuesta empieza por la foto que leyó: su hora de lectura, su
+antigüedad, si está vencida (más vieja que tres veces su ritmo) y su estado, con el motivo y el remedio
+cuando no es `ok`. Un remedio, y un motivo que no es un código fijo, pueden nombrar una ruta o un sitio,
+así que siguen `mcp.host_details`: sin él solo se devuelve el código del motivo y el remedio dice
+``withheld (mcp.host_details); run `wpshield host` on the server to see it`` (retenido; ejecute
+`wpshield host` en el servidor para verlo). Un dato que el recolector aún no ha leído aparece como `no-snapshot-yet` y sus valores
+son `null`: desconocido, nunca ninguno. Cuatro no aceptan argumentos; `rdp_sessions` acepta `24h` o `7d`
+(por defecto `7d`, todo lo que guarda la foto) y `host_inventory` exige un `kind`: `accounts`,
+`services` o `tasks`. Ninguna acepta una ruta, un nombre ni un comando. Los veredictos de exposición son
+"según las reglas del Firewall de Windows" y nunca "alcanzable"; el nivel de parches es lo que Windows
+dice de sí mismo, nunca un veredicto de "desactualizado"; y el inventario nunca guarda los argumentos de
+un comando, solo marcas de lo que contenían.
 
 **No puede** bloquear, desbloquear, permitir ni cambiar nada. Si se le pide, dice que esa acción la
 tiene que hacer usted, fuera de la conversación. No abre nada que escuche y no modifica nada en el
@@ -76,6 +100,14 @@ ni puertos.
   vale `false`. El mismo ajuste retiene los nombres de los sitios de IIS, las rutas y agentes de
   usuario de los hallazgos web y los remedios de los sitios: sin él, una respuesta web lleva ID de
   sitio, conteos e ID de reglas y observaciones.
+- **El mapa del propio servidor tiene su propio interruptor.** Las herramientas del host retienen los
+  nombres de sitios, grupos, cuentas, servicios y tareas, los nombres de host, las rutas, las
+  direcciones locales y las direcciones de origen de RDP salvo que el ajuste del almacén
+  `mcp.host_details` valga `true`. Por defecto vale `false`, y está separado de `mcp.detailed_records`
+  a propósito: permitir el detalle de la evidencia para una investigación no debe exportar con él el
+  inventario del servidor. Con él activado, cada uno de esos valores vuelve como
+  `{"untrusted": "..."}`, porque en un servidor comprometido el atacante pone el nombre a las tareas y
+  a los servicios.
 - **Los huecos se dicen en voz alta.** Cada respuesta tiene una sección `coverage` con los huecos de lo
   registrado; un hueco nunca se presenta como un periodo tranquilo. Una respuesta también dice cuándo
   falta detalle porque el ajuste lo retuvo o porque las filas detalladas ya se podaron.
@@ -89,14 +121,19 @@ ni puertos.
 | `false` (por defecto) | Conteos, direcciones de origen y sus redes, líneas de tiempo, cobertura, decisiones de bloqueo, ajustes, etiquetas de direcciones; de la evidencia web, ID de sitio, ID de reglas y observaciones, métodos y estados |
 | `true` | Todo lo anterior, más los nombres de cuenta probados, los intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste (con `false` aparecen como `"withheld"`, porque suelen ser nombres de cuentas propias; una decisión del motor nombra su canal de evidencia, `security-4625` o `rdpcorets-140`, que no identifica a nadie y siempre se muestra); y de la evidencia web, los nombres de los sitios de IIS, las rutas normalizadas y los agentes de usuario de los hallazgos, y el remedio de un sitio cuyo log no se leyó (puede nombrar una carpeta del servidor) |
 
+| Ajuste `mcp.host_details` | Lo que envían las herramientas del host ([ADR 0013](adr/0013-datos-del-host-y-centro-de-mando.md)) |
+| --- | --- |
+| `false` (por defecto) | Conteos, estados con sus códigos de motivo, horas de lectura y marcas de foto vencida; tiempo encendido, CPU, memoria y disco; el nivel de parches y el título de la última actualización acumulativa; los reinicios inesperados con su hora y su código de pantallazo; los ID y conteos de la postura; números de puerto, protocolos, veredictos de exposición y el nombre de archivo del programa que escucha; cuántas sesiones, inicios de sesión, usuarios y direcciones de origen; las marcas de las cuentas y el indicador de nombre completo (sí o no y un conteo, nunca un nombre); y de servicios y tareas, el tipo de cuenta con que corren, el nombre de archivo del ejecutable, la firma y las marcas. Cada nombre, ruta y dirección de origen de RDP aparece como `"withheld"`, igual que el remedio de un dato que no se pudo leer y todo motivo que no sea un código fijo |
+| `true` | Todo lo anterior, más los nombres de sitios, grupos, cuentas, servicios y tareas, los nombres de host de los bindings, las rutas de los ejecutables, las direcciones locales concretas, la dirección de origen de cada inicio de sesión por RDP, y los remedios y motivos en texto libre de los datos que no se pudieron leer, cada uno como `{"untrusted": "..."}` |
+
 Entre los nombres de cuenta probados hay **cuentas reales de este servidor**, bien o mal escritas.
-Active `mcp.detailed_records` solo si acepta eso. Es un ajuste del almacén
+Active `mcp.detailed_records` solo si acepta eso, y `mcp.host_details` solo si acepta que el proveedor
+del asistente reciba un mapa del servidor. Los dos son ajustes del almacén
 ([ADR 0007](adr/0007-almacen-local-de-evidencia.md), enmienda) que cambia una herramienta de operador
-elevada, nunca el asistente. **Todavía no hay un verbo de `wpshield` que lo cambie**, así que hoy sigue
-en `false` salvo que lo ponga una herramienta construida sobre `EvidenceSettings`. `wpshield mcp` lo lee
-al arrancar: reinicie la conexión del asistente con
-el servidor después de cambiarlo. `list_settings` muestra el valor guardado y el que está en vigor
-cuando no coinciden.
+elevada, nunca el asistente: `wpshield settings set mcp.host_details true --reason <texto>` desde una
+consola elevada, o la ventana **Ajustes** del escritorio. `wpshield mcp` los lee al arrancar: reinicie la
+conexión del asistente con el servidor después de cambiar uno. `list_settings` muestra el valor guardado
+y el que está en vigor cuando no coinciden.
 
 ## Elevación
 
@@ -167,8 +204,8 @@ del que el asistente puede corregirse; nada se recorta en silencio.
 
 Los mensajes del propio servidor van a la salida de error, nunca a la salida estándar: Claude Desktop
 los guarda en su registro del servidor (en `%APPDATA%\Claude\logs`) y Claude Code los muestra con
-`claude --debug`. La primera línea dice si el almacén se abrió y si los registros detallados están
-activos.
+`claude --debug`. La primera línea dice si el almacén se abrió y si los registros detallados y los
+detalles del host están activos.
 
 ## Opciones
 
