@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Data;
 using System.Windows.Threading;
@@ -48,29 +49,37 @@ public partial class AttacksWindow
         WebDetailRulesLabel.Text = L("Rules and observations", "Reglas y observaciones");
         WebDetailFindingsLabel.Text = L("Latest findings · paths are untrusted text", "Últimos hallazgos · rutas como texto no confiable");
 
-        (string Title, string? Property, int Width)[] columns =
+        (string Title, string Short, string? Property, int Width, bool Expand)[] columns =
         [
-            (L("Address", "Dirección"), "Source.Address", 145),
-            (L("Label", "Etiqueta"), nameof(WebRow.Label), 120),
-            (L("Requests", "Peticiones"), "Source.Requests", 88),
-            ("4xx", "Source.ClientErrors", 65),
-            (L("Findings", "Hallazgos"), "Source.Findings", 88),
-            (L("Observations", "Observaciones"), nameof(WebRow.Observations), 112),
-            (L("Login POST", "POST de acceso"), "Source.LoginPosts", 106),
-            ("XML-RPC POST", "Source.XmlrpcPosts", 112),
-            (L("Network", "Red"), "Source.Network", 142),
-            (L("Neighbors", "Vecinas"), "Source.Neighbors", 88),
-            (L("Decision", "Decisión"), null, 88),
-            (L("Last (UTC)", "Último (UTC)"), "Source.Last", 147)
+            (L("Address", "Dirección"), L("Address", "Dirección"), "Source.Address", 132, true),
+            (L("Label", "Etiqueta"), L("Label", "Etiqueta"), nameof(WebRow.Label), 100, true),
+            (L("Requests", "Peticiones"), L("Req.", "Pet."), "Source.Requests", 67, false),
+            (L("Client errors (4xx)", "Errores de cliente (4xx)"), "4xx", "Source.ClientErrors", 56, false),
+            (L("Rule findings", "Hallazgos de reglas"), L("Finds", "Hall."), "Source.Findings", 65, false),
+            (L("Observations", "Observaciones"), "Obs.", nameof(WebRow.Observations), 64, false),
+            (L("Login POST", "POST de acceso"), L("Login", "Acceso"), "Source.LoginPosts", 72, false),
+            ("XML-RPC POST", "XML-RPC", "Source.XmlrpcPosts", 82, false),
+            (L("Network", "Red"), L("Network", "Red"), "Source.Network", 130, true),
+            (L("Neighbors", "Vecinas"), L("Neigh.", "Vec."), "Source.Neighbors", 66, false),
+            (L("Decision", "Decisión"), L("Decision", "Decisión"), null, 87, false),
+            (L("Last (UTC)", "Último (UTC)"), L("Last", "Último"), "Source.Last", 145, false)
         ];
-        foreach (var (title, property, width) in columns)
+        var cellText = (Style)FindResource("CellText");
+        foreach (var (title, shortTitle, property, width, expand) in columns)
         {
-            var cellText = (Style)FindResource("CellText");
-            var column = new DataGridTextColumn { Header = title, Width = width, ElementStyle = cellText };
+            var header = new TextBlock { Text = shortTitle, ToolTip = title, TextTrimming = TextTrimming.CharacterEllipsis };
+            AutomationProperties.SetName(header, title);
+            var column = new DataGridTextColumn
+            {
+                Header = header,
+                Width = expand ? new DataGridLength(1, DataGridLengthUnitType.Star) : new DataGridLength(width),
+                MinWidth = width,
+                ElementStyle = cellText
+            };
             if (property is null)
             {
                 var reason = L("Web evidence does not feed decisions yet.", "La evidencia web aún no alimenta las decisiones.");
-                column.Header = new TextBlock { Text = title, ToolTip = reason };
+                header.ToolTip = title + " · " + reason;
                 column.CellStyle = new Style(typeof(DataGridCell));
                 column.CellStyle.Setters.Add(new Setter(ToolTipService.ToolTipProperty, reason));
                 column.CanUserSort = false;
@@ -90,6 +99,8 @@ public partial class AttacksWindow
     }
 
     internal void OpenWebView() => Views.SelectedItem = WebTab;
+
+    internal void OpenAttacksView() => Views.SelectedItem = AttackTab;
 
     private void OnViewChanged(object sender, SelectionChangedEventArgs e)
     {

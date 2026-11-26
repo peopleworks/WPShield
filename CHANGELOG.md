@@ -32,6 +32,13 @@ must complete first.
     a compromised host the attacker names tasks and services. `list_settings` shows when a change waits for a restart.
   - The analyst is offered 24 optional parameters across 20 tools, exactly the strict-tool-use limits: the host tools add only the
     range of `rdp_sessions`. A test pins both numbers.
+- The bilingual desktop **Command center** opens as the home view. It reads recorded collector,
+  logon, IIS and host facts every 30 seconds while visible and pauses when minimized. The tiles
+  link to detailed views and show coverage, staleness, restart codes, health and posture trends,
+  and exposure by the Windows Firewall rules. A zero `WEB-OBS-001` count turns green only with
+  full coverage for every site. The Web address table fits at the default width and keeps full
+  column names in tooltips.
+
 - The bilingual **Web** tab in the desktop's **Attacks** window reads IIS evidence by time range
   and site through `WebEvidenceQueries`. It shows site coverage, remedies and time gaps before
   totals, a timeline and an address table. A red `WEB-OBS-001` card flags 2xx PHP responses outside

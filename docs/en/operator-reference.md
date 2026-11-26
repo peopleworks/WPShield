@@ -6,6 +6,7 @@
 
 | Question | First command | Requirements and evidence |
 | --- | --- | --- |
+| How is the server doing right now? | Open the desktop monitor's **Command center** | The home view shows collector and sensor status, logon and web activity, server health, IIS posture and firewall exposure from the evidence store. Select a tile for details. [Command center](#desktop-command-center) |
 | Which rule fired on my IIS-hosted WordPress site? | `wpshield watch --plain` | Start the gateway in Monitor on loopback and read its evidence log. [Request evidence](request-evidence.md) |
 | Which local ports are in use? | `wpshield network-monitor --listeners` | Use `--protocol tcp --local-address 127.0.0.1` to find sockets bound to IPv4 loopback. Add `--port-hints` for conventional port names or `--owners` for the observed PID. [Listener inventory](network-sensor-design.md#local-listener-inventory) |
 | Can I see local ports in a window? | `dotnet run --project src/WPShield.Desktop -c Release` | Browse TCP listeners and bound UDP sockets in a Windows desktop window, with the process name when its start time confirms the observed PID. Search by address, port, PID, process or port name. [Desktop monitor](network-sensor-design.md#desktop-monitor) |
@@ -29,6 +30,29 @@
 | Which record confirms a login? | `wpshield network-monitor --sql-instance MSSQLSERVER --json` | Read the local Application log for SQL. For RDP, add `--rdp-port` and its local port number to a flow capture that includes that port. [Login evidence](network-sensor-design.md#remote-desktop-logon-evidence) · [Export one audit reference](network-sensor-design.md#selected-audit-reference) |
 
 An instance-level SQL login can be verified even when its TCP flow attribution remains `unknown`. [Guía del operador en español](../es/diseno-sensor-red.md)
+
+### Desktop command center
+
+The desktop opens on **Command center**. **Local ports** in the sidebar opens the socket inventory.
+Run `wpshield evidence collect` as administrator on the IIS host to collect web evidence and host
+facts. The home view reads the store every 30 seconds while visible and pauses when minimized.
+
+- **WPShield, RDP / SMB attacks and Web** show sensor status and recorded activity. The logon
+  baseline averages the recorded whole hours of the last seven days. Web request rates use the last
+  complete UTC hour plus the current hour so far. `WEB-OBS-001` turns red for a recorded observation,
+  green after zero observations with full coverage for every site, and grey when zero cannot be
+  established.
+- **Server health, IIS posture and Exposure** show the latest snapshots. Health includes 24-hour
+  trends, recorded restarts with bugcheck codes and patch facts. Posture tracks the share of pools
+  moved off administrator identities. Exposure reports the verdict **by the Windows Firewall rules**.
+  Missing and unreadable facts show their status, and snapshots past their next scheduled read show
+  **STALE** with their age.
+- **AI analyst** shows its configuration state and opens the relevant setting. Usage and the latest
+  digest are available through `wpshield analyst status` and `wpshield analyst reports`. Outbound
+  connections from web processes are marked **Not measured yet**.
+
+Select a tile to open its detailed view. All host and web facts shown here come from recorded
+evidence. [Host facts](host-facts.md)
 
 ### Desktop Web tab
 
@@ -97,7 +121,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 2,906 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 728 for the CLI, 246 for the desktop monitor, 492 for the gateway, 56 for the network sensor, 14 for the network filter, 104 for the security monitor, 224 for the evidence store, 67 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine; the gateway suite includes timeout and cancellation scenarios.
+The suite is 2,922 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 728 for the CLI, 262 for the desktop monitor, 492 for the gateway, 56 for the network sensor, 14 for the network filter, 104 for the security monitor, 224 for the evidence store, 67 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine. The gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

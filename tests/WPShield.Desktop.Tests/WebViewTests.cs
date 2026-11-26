@@ -67,6 +67,31 @@ public sealed class WebViewTests
             return Task.CompletedTask;
         });
 
+    [Theory]
+    [InlineData(false, "Last (UTC)")]
+    [InlineData(true, "Último (UTC)")]
+    public Task TheAddressTableFitsAtTheDefaultWidthAndShowsFullHeaderTooltips(bool spanish, string last) =>
+        Verify(Seed, (window, _) =>
+        {
+            // The window is designed 1280 x 820, but Windows clamps a shown window to the desktop, and a CI
+            // desktop can be narrower (1044 on the hosted runner). Lay the content out at the design size
+            // explicitly, so the check measures the table rather than the machine that runs the test.
+            window.UpdateLayout();
+            var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+            var design = new Size(DesignWidth - (window.ActualWidth - root.ActualWidth), DesignHeight - (window.ActualHeight - root.ActualHeight));
+            for (var pass = 0; pass < 2; pass++)
+            {
+                root.Measure(design);
+                root.Arrange(new Rect(design));
+            }
+            var scroll = Assert.IsType<ScrollViewer>(window.WebRows.Template.FindName("DG_ScrollViewer", window.WebRows));
+            Assert.True(scroll.ViewportWidth > 0);
+            Assert.Equal(Visibility.Collapsed, scroll.ComputedHorizontalScrollBarVisibility);
+            Assert.Equal("XML-RPC POST", Assert.IsType<TextBlock>(window.WebRows.Columns[7].Header).ToolTip);
+            Assert.Equal(last, Assert.IsType<TextBlock>(window.WebRows.Columns[^1].Header).ToolTip);
+            return Task.CompletedTask;
+        }, spanish);
+
     [Fact]
     public Task SiteFilterChangesTotalsSourcesAndCoverage() =>
         Verify(store => Seed(store, otherSiteRead: true), async (window, _) =>
@@ -183,6 +208,9 @@ public sealed class WebViewTests
         });
 
     private static string AutomationName(DependencyObject item) => System.Windows.Automation.AutomationProperties.GetName(item);
+
+    private const double DesignWidth = 1280;
+    private const double DesignHeight = 820;
 
     private static AttacksWindow.WebCard Card(AttacksWindow window, string title) =>
         Assert.Single(window.WebCards.Items.Cast<AttacksWindow.WebCard>(), card => card.Title == title);

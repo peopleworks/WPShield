@@ -6,6 +6,7 @@
 
 | Pregunta | Primer comando | Requisitos y evidencia |
 | --- | --- | --- |
+| ¿Cómo está el servidor ahora? | Abre el **Centro de mando** del escritorio | La vista inicial muestra el estado del recolector y los sensores, la actividad de inicio de sesión y web, la salud del servidor, la postura de IIS y la exposición según el firewall. Selecciona una tarjeta para ver el detalle. [Centro de mando](#centro-de-mando-del-escritorio) |
 | ¿Qué regla se activó en mi sitio WordPress en IIS? | `wpshield watch --plain` | Arranca el gateway en Monitor sobre loopback y lee la [evidencia de solicitudes](evidencia-solicitudes.md). |
 | ¿Qué puertos locales están en uso? | `wpshield network-monitor --listeners` | Usa `--protocol tcp --local-address 127.0.0.1` para sockets TCP en loopback IPv4. Añade `--port-hints` para nombres convencionales o `--owners` para el PID. [Inventario](diseno-sensor-red.md#inventario-de-puertos-locales) |
 | ¿Puedo ver los puertos en una ventana? | `dotnet run --project src/WPShield.Desktop -c Release` | Ventana para TCP y UDP con el nombre del proceso si su hora de inicio confirma el PID. Busca dirección, puerto, PID, proceso o nombre de puerto. [Monitor de escritorio](diseno-sensor-red.md#monitor-de-escritorio) |
@@ -28,6 +29,31 @@
 | ¿Qué registro confirma un acceso? | `wpshield network-monitor --sql-instance MSSQLSERVER --json` | Lee el registro Aplicación para SQL Server. Para RDP, añade `--rdp-port` y el puerto local a una captura que lo incluya. [Evidencia de acceso](diseno-sensor-red.md#evidencia-de-inicios-de-sesión-por-escritorio-remoto) |
 
 Un acceso SQL puede verificarse por instancia aunque el flujo TCP asociado permanezca `unknown`.
+
+### Centro de mando del escritorio
+
+El escritorio abre el **Centro de mando**. **Puertos locales** en la barra lateral abre el inventario
+de sockets. Ejecuta `wpshield evidence collect` como administrador en el servidor IIS para recoger
+evidencia web y datos del host. La vista inicial lee el almacén cada 30 segundos mientras está
+visible y se pausa al minimizar.
+
+- **WPShield, Ataques RDP / SMB y Web** muestran el estado de los sensores y la actividad registrada.
+  La media de intentos usa las horas completas registradas de los últimos siete días. La tasa web
+  abarca la última hora UTC completa y la parte transcurrida de la actual. `WEB-OBS-001` se pone rojo
+  si se registra una observación, verde si se registran cero con cobertura completa de todos los
+  sitios y gris si no se puede establecer el cero.
+- **Salud del servidor, Postura de IIS y Exposición** muestran las últimas instantáneas. Salud
+  incluye tendencias de 24 horas, reinicios registrados con sus códigos y datos de actualizaciones.
+  Postura sigue la proporción de pools que dejaron de usar una identidad administradora. Exposición
+  muestra el resultado **según las reglas del Firewall de Windows**. Las lecturas ausentes o
+  ilegibles indican su estado. Si pasó la hora prevista de la próxima lectura, la instantánea se
+  marca **CADUCADA** y muestra su antigüedad.
+- **Analista de IA** indica su estado de configuración y abre el ajuste correspondiente. El uso y
+  el último resumen se consultan con `wpshield analyst status` y `wpshield analyst reports`. Las
+  conexiones salientes de procesos web aparecen como **Aún sin medición**.
+
+Selecciona una tarjeta para abrir su detalle. Los datos del host y de la web proceden de evidencia
+registrada. [Datos del host](datos-del-host.md)
 
 ### Pestaña Web del escritorio
 
