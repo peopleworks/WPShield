@@ -18,9 +18,10 @@ internal sealed record StoreProblem(string Reason, string Message, string Remedy
 /// not safe to share between threads. The queries are bounded, so a caller waits milliseconds, not minutes.
 /// </para>
 /// <para>
-/// <c>mcp.detailed_records</c> takes effect at the next start (<see cref="SettingEffect.NextStart"/>), so it
-/// is read once, when the store first opens, and frozen. A change made while the server runs is reported
-/// by <c>list_settings</c> as waiting for a restart, never applied silently.
+/// <c>mcp.detailed_records</c> and <c>mcp.host_details</c> take effect at the next start
+/// (<see cref="SettingEffect.NextStart"/>), so both are read once, when the store first opens, and frozen. A
+/// change made while the server runs is reported by <c>list_settings</c> as waiting for a restart, never
+/// applied silently.
 /// </para>
 /// </remarks>
 internal sealed class McpEvidenceAccess : IDisposable
@@ -42,6 +43,13 @@ internal sealed class McpEvidenceAccess : IDisposable
 
     /// <summary>The value of <c>mcp.detailed_records</c> when the store first opened; false until then.</summary>
     public bool DetailedRecords { get; private set; }
+
+    /// <summary>
+    /// The value of <c>mcp.host_details</c> when the store first opened; false until then. It releases the
+    /// host's own names (sites, pools, accounts, services, tasks, paths, RDP source addresses) to the host
+    /// tools of ADR 0013, separately from the evidence detail <see cref="DetailedRecords"/> releases.
+    /// </summary>
+    public bool HostDetails { get; private set; }
 
     /// <summary>The last reason the store could not be opened, or null once it is open.</summary>
     public StoreProblem? Problem { get; private set; }
@@ -77,7 +85,9 @@ internal sealed class McpEvidenceAccess : IDisposable
             var opened = open(Path);
             try
             {
-                DetailedRecords = new EvidenceSettings(opened).Get<bool>("mcp.detailed_records");
+                var settings = new EvidenceSettings(opened);
+                DetailedRecords = settings.Get<bool>("mcp.detailed_records");
+                HostDetails = settings.Get<bool>("mcp.host_details");
             }
             catch
             {

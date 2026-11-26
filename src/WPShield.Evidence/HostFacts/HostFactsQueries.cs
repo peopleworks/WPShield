@@ -82,6 +82,17 @@ public sealed class HostFactsQueries
         return result;
     }
 
+    /// <summary>
+    /// Until when the collector's restart reader has read the System log, or <see langword="null"/> when it never
+    /// has. A count of restarts is only a count once this is known: with no read, "no restart recorded" means
+    /// "nobody looked", never "none" (ADR 0013, section 2).
+    /// </summary>
+    public DateTimeOffset? RestartsReadUntil()
+    {
+        var ms = store.Scalar<long?>("SELECT last_ts FROM collector_state WHERE channel = $c;", null, ("$c", HostFactsWriter.RestartChannel));
+        return ms is null ? null : EvidenceStore.FromMs(ms.Value);
+    }
+
     /// <summary>The posture snapshots in a range, oldest first: the history behind "pools moved: N of M".</summary>
     public IReadOnlyList<PosturePoint> PostureHistory(DateTimeOffset from, DateTimeOffset to, int limit = 500)
     {

@@ -105,6 +105,13 @@ pida el modelo. Esos resultados son exactamente los que devolvería el servidor 
 | `false` (por defecto) | Conteos, direcciones de origen y sus redes, cronologías, cobertura, decisiones de bloqueo, ajustes y sus etiquetas de direcciones, que nombran sus propias direcciones |
 | `true` | Todo lo anterior, más los nombres de cuenta probados (entre ellos cuentas reales de este servidor), intentos y eventos sueltos, y quién pidió cada decisión y quién cambió cada ajuste |
 
+Las herramientas del host siguen `mcp.host_details`, que es aparte y también vale `false` por defecto:
+sin él, el proveedor recibe los datos del host como conteos, veredictos, números de puerto, nombres de
+archivo de los ejecutables, horas de reinicio y códigos de pantallazo, y cada nombre de sitio, grupo,
+cuenta, servicio y tarea, cada ruta y cada dirección de origen de RDP aparece como `"withheld"`; con él,
+esos nombres también llegan al proveedor, cada uno marcado como no confiable
+([servidor MCP: qué sale del servidor](servidor-mcp.md#qué-sale-del-servidor)).
+
 | Proveedor | A dónde va | Notas |
 | --- | --- | --- |
 | `anthropic` | A Anthropic, bajo los términos de su cuenta de la API | Modelo por defecto `claude-opus-5-5`, pensamiento adaptativo, esfuerzo `medium` salvo que fije `analyst.effort`. Si el modelo se niega, el respaldo del lado del servidor de Anthropic puede contestar con otro modelo; el informe nombra el modelo que contestó de verdad |
@@ -162,16 +169,22 @@ Un informe impreso:
 - **Las mismas herramientas que el servidor MCP, dentro del proceso.** `attacks_summary`,
   `top_sources`, `source_history`, `attack_timeline`, `coverage`, `decisions`, `evidence_kinds`,
   `evidence_events`, `list_settings`, `address_labels`, `web_summary`, `web_top_sources`,
-  `web_findings` y `address_report`, a través de las propias funciones del servidor MCP, así que el
-  envoltorio `{"untrusted": ...}` del texto del atacante, la compuerta `mcp.detailed_records` y los
-  límites se definen una sola vez. Los esquemas estrictos de herramientas admiten 24 parámetros
-  opcionales entre todas las herramientas, así que al analista se le ofrecen menos que a un cliente
-  MCP y para el resto se aplica el valor por defecto de la herramienta: el rango explícito `from`/`to`
-  solo en `attacks_summary`, `top_sources`, `attack_timeline` y `coverage` (las demás aceptan rangos
-  con nombre); `limit` solo en `top_sources` (20 filas en las demás); sin `bucket` en la línea de tiempo
-  (se elige según el rango); sin `site` en las herramientas web (todos los sitios, y cada fila nombra el
-  ID de su sitio); y sin filtro de dirección en `web_findings`, porque `address_report` responde sobre
-  una dirección. En total son 23 parámetros opcionales.
+  `web_findings`, `address_report` y las herramientas del host del
+  [ADR 0013](adr/0013-datos-del-host-y-centro-de-mando.md): `host_health`, `iis_sites`, `iis_posture`,
+  `listening_ports`, `rdp_sessions` y `host_inventory`. Pasan por las propias funciones del servidor
+  MCP, así que el envoltorio `{"untrusted": ...}` del texto del atacante, las compuertas
+  `mcp.detailed_records` y `mcp.host_details` y los límites se definen una sola vez. El uso estricto de
+  herramientas admite como máximo 20 herramientas y 24 parámetros opcionales entre todas en una misma
+  petición, así que al analista se le ofrecen menos parámetros que a un cliente MCP y para el resto se
+  aplica el valor por defecto de la herramienta: el rango explícito `from`/`to` solo en
+  `attacks_summary`, `top_sources`, `attack_timeline` y `coverage` (las demás aceptan rangos con
+  nombre); `limit` solo en `top_sources` (20 filas en las demás); sin `bucket` en la línea de tiempo (se
+  elige según el rango); sin `site` en las herramientas web (todos los sitios, y cada fila nombra el ID
+  de su sitio); y sin filtro de dirección en `web_findings`, porque `address_report` responde sobre una
+  dirección. Las herramientas del host añaden un parámetro opcional, el rango de `rdp_sessions`: cuatro
+  no aceptan ninguno y el `kind` de `host_inventory` es obligatorio. En total son 24 parámetros
+  opcionales en 20 herramientas, justo los dos límites, así que una herramienta o un parámetro nuevos
+  tendrán que hacer sitio antes, y una prueba hace fallar la compilación antes de que falle una petición.
 - **Ninguna otra herramienta.** Ni consola, ni archivos, ni web, ni ejecución de código, ni
   herramientas de servidor del proveedor. El proceso corre elevado, así que cualquiera de ellas pondría
   una capacidad elevada al alcance de un texto inyectado.

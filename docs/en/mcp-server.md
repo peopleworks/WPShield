@@ -10,7 +10,8 @@ decisions WPShield made. The decision behind it, and everything this page summar
 > [!IMPORTANT]
 > **Answers leave the server.** Whatever a tool returns is sent by the assistant to its model provider
 > (Anthropic, for Claude Desktop and Claude Code). By default that is counts, source addresses,
-> coverage, block decisions, settings and your address labels - which name your own addresses. Read
+> coverage, block decisions, settings and your address labels - which name your own addresses - and
+> the host facts without their names: restarts, patch level, ports and verdicts, counts. Read
 > [What leaves the host](#what-leaves-the-host) before you connect it.
 
 ## What it can answer
@@ -30,6 +31,12 @@ decisions WPShield made. The decision behind it, and everything this page summar
 | "Who probed the sites this week? Who hammered `wp-login.php`?" | `web_top_sources` |
 | "What were the newest web findings on site 4?" "What did 203.0.113.7 request?" | `web_findings` |
 | "Tell me everything about 203.0.113.7: logons, web, decisions, allow-list." | `address_report` |
+| "How is the server? How many unexpected restarts this month, with which bugcheck code? When was the last cumulative update?" | `host_health` |
+| "Which sites run in a pool with administrator rights? Which binding answers every host name?" | `iis_sites` |
+| "How many pools still run as an administrator? Is PHP mapped for the whole server?" | `iis_posture` |
+| "Which ports are open to any address by the firewall rules? Is SMB or MySQL exposed?" | `listening_ports` |
+| "Who is logged on? Who connected over RDP this week, from how many addresses?" | `rdp_sessions` |
+| "Which accounts are administrators? Do attackers try a real account's full name? Which unsigned services or tasks run here?" | `host_inventory` |
 
 Ranges are `1h`, `6h`, `24h`, `7d`, `30d` or `90d`, or an explicit `from` and `to` (ISO-8601 UTC, at
 most 90 days apart). A range longer than six hours starts on the hour, because hourly aggregates count
@@ -48,6 +55,19 @@ its ID, the number of its `W3SVC` log folder; `web_summary` lists the IDs the se
 `address_report` answers one address from every source in one call: its failed logons, the decisions
 about it or its /24 or /64 and the one in force now, its web counts and newest findings, its label, and
 whether the allow-list or a private range keeps the decision engine from deciding against it.
+
+The host tools - `host_health`, `iis_sites`, `iis_posture`, `listening_ports`, `rdp_sessions` and
+`host_inventory` - answer what the server *is*, from the host facts of
+[ADR 0013](adr/0013-host-facts-and-the-command-center.md). They read the snapshots the WPShield
+collector takes on its cadence and never read the host themselves, so nothing an assistant asks makes
+WPShield probe the server. Every answer starts with the snapshot it read: its read time, its age,
+whether it is stale (older than three times its cadence) and its status, with the reason and the remedy
+when it is not `ok`. A fact the collector has not read yet is `no-snapshot-yet` and its values are
+`null`: unknown, never none. Four of them take no argument; `rdp_sessions` takes `24h` or `7d` (default
+`7d`, all the snapshot holds) and `host_inventory` takes a required `kind`: `accounts`, `services` or
+`tasks`. None takes a path, a name or a command. Exposure verdicts are "by the Windows Firewall rules"
+and never "reachable"; the patch level is what Windows reports, never a verdict of "outdated"; and the
+inventory never holds a command line's arguments, only flags for what they contained.
 
 It **cannot** block, unblock, allow or change anything. If you ask it to, it says the action has to be
 done by you, outside the conversation. It opens no listener and modifies nothing on the server: no
@@ -70,6 +90,12 @@ IIS setting, DNS record, certificate, firewall rule, service or port.
   returned only when the store setting `mcp.detailed_records` is `true`. It is `false` by default. The
   same setting holds back IIS site names, the request paths and user agents of web findings, and site
   remedies: without it a web answer carries site IDs, counts and rule and observation IDs.
+- **The server's own map has its own switch.** The host tools withhold the names of sites, pools,
+  accounts, services and tasks, host names, paths, local addresses and RDP source addresses unless the
+  store setting `mcp.host_details` is `true`. It is `false` by default, and it is separate from
+  `mcp.detailed_records` on purpose: allowing evidence detail for one investigation must not export the
+  server's inventory with it. With it on, every such value comes back as `{"untrusted": "..."}`, because
+  on a compromised host an attacker names the tasks and services.
 - **Gaps are said out loud.** Every answer has a `coverage` section with the gaps in what was
   recorded; a gap is never presented as a quiet period. An answer also says when detail is missing
   because the setting withheld it or because the detailed rows were already pruned.
@@ -83,13 +109,19 @@ IIS setting, DNS record, certificate, firewall rule, service or port.
 | `false` (default) | Counts, source addresses and their networks, timelines, coverage, block decisions, settings, address labels; for web evidence, site IDs, rule and observation IDs, methods and statuses |
 | `true` | All of the above, plus the account names that were tried, single attempts and events, and who requested each decision and who changed each setting (with `false` these show as `"withheld"`, because they are often your own account names; a decision the engine made names its evidence channel, `security-4625` or `rdpcorets-140`, which names nobody and is always shown); and for web evidence, IIS site names, the normalized request paths and user agents of findings, and the remedy for a site whose log was not read (it can name a folder on the server) |
 
+| Setting `mcp.host_details` | Sent by the host tools ([ADR 0013](adr/0013-host-facts-and-the-command-center.md)) |
+| --- | --- |
+| `false` (default) | Counts, statuses, read times and stale flags; uptime, CPU, memory and disk; the patch level and the last cumulative update's title; unexpected restarts with their times and bugcheck codes; posture finding IDs and counts; port numbers, protocols, exposure verdicts and the listening program's file name; numbers of sessions, logons, users and source addresses; account flags and the full-name indicator (yes or no and a count, never a name); for services and tasks, the kind of account they run as, the executable's file name, the signature and the flags. Every name, path and RDP source address reads `"withheld"` |
+| `true` | All of the above, plus site, pool, account, service and task names, binding host names, executable paths, specific local addresses and the source address of each RDP logon - each as `{"untrusted": "..."}` |
+
 Account names that were tried include **real accounts on this server**, correctly spelled or not.
-Turn `mcp.detailed_records` on only if you accept that. It is a store setting
+Turn `mcp.detailed_records` on only if you accept that, and `mcp.host_details` only if you accept that
+the assistant's provider receives a map of the server. Both are store settings
 ([ADR 0007](adr/0007-local-evidence-store.md), amendment) changed by an elevated operator tool, never
-through the assistant. **No `wpshield` verb changes it yet**, so today it stays `false` unless a tool
-built on `EvidenceSettings` sets it. `wpshield mcp` reads it when it starts: restart the assistant's connection
-to the server after changing it. `list_settings` shows the stored value and the one in effect when they
-differ.
+through the assistant: `wpshield settings set mcp.host_details true --reason <text>` from an elevated
+prompt, or the desktop's **Settings** window. `wpshield mcp` reads both when it starts: restart the
+assistant's connection to the server after changing one. `list_settings` shows the stored value and the
+one in effect when they differ.
 
 ## Elevation
 
@@ -161,7 +193,7 @@ the assistant can correct itself from; nothing is clamped silently.
 
 The server's own messages go to stderr, never stdout: Claude Desktop keeps them in its log for the
 server (under `%APPDATA%\Claude\logs`), and Claude Code shows them with `claude --debug`. The first
-line says whether the store opened and whether detailed records are on.
+line says whether the store opened and whether detailed records and host details are on.
 
 ## Options
 

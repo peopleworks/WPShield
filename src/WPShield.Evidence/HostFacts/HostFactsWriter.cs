@@ -14,7 +14,8 @@ namespace WPShield.Evidence;
 /// </remarks>
 public sealed class HostFactsWriter
 {
-    private const string RestartChannel = "host-restarts";
+    /// <summary>The <c>collector_state</c> channel that records how far the restart reader has read.</summary>
+    internal const string RestartChannel = "host-restarts";
     private readonly EvidenceStore store;
 
     public HostFactsWriter(EvidenceStore store)

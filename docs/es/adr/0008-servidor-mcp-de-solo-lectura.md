@@ -68,9 +68,17 @@ Llegar al almacén desde otra máquina es otra decisión, con autenticación, y 
 | `web_top_sources` | Las direcciones que guardó la evidencia web, las más señaladas primero | `WebEvidenceQueries.TopSources` |
 | `web_findings` | Los hallazgos web más recientes; nombres de sitio, rutas y agentes de usuario solo si se permite | `WebEvidenceQueries.Findings` |
 | `address_report` | Una dirección en los inicios de sesión fallidos, las decisiones, la evidencia web, su etiqueta y la lista de permitidos | `EvidenceQueries.SourceHistory`, `.DecisionsAbout`, `.ActiveDecisions`, `WebEvidenceQueries`, `DefenseOptions.Read` |
+| `host_health` | Tiempo encendido, CPU, memoria, disco, el nivel de parches, los reinicios inesperados con su código de pantallazo, las últimas 24 horas | `HostFactsQueries.Latest`, `.Restarts`, `.RestartsReadUntil`, `.HealthHourly` |
+| `iis_sites` | Los sitios de IIS, sus bindings, el tipo de identidad del grupo y si es administradora; los nombres solo si se permite | `HostFactsQueries.Latest`, `WebEvidenceQueries.Sites` |
+| `iis_posture` | El último resumen del `audit` y la historia de los grupos que corren como administrador | `HostFactsQueries.Latest`, `.PostureHistory` |
+| `listening_ports` | Los puertos a la escucha con su veredicto de exposición según las reglas del Firewall de Windows | `HostFactsQueries.Latest` |
+| `rdp_sessions` | Las sesiones abiertas y los inicios por RDP en un rango; usuarios y direcciones de origen solo si se permite | `HostFactsQueries.Latest` |
+| `host_inventory` | Cuentas, servicios o tareas, con sus marcas y cambios; nombres y rutas solo si se permite | `HostFactsQueries.Latest`, `.InventoryChanges`, `.InventoryOverflows` |
 
-Las cuatro últimas filas se añadieron el 2026-11-25, con la evidencia de los logs de IIS del ADR 0011;
-las reglas de abajo se les aplican sin cambios.
+Las cuatro filas anteriores a las del host se añadieron el 2026-11-25, con la evidencia de los logs de
+IIS del ADR 0011; las seis herramientas del host, el 2026-11-26, con los datos del host del ADR 0013.
+Las reglas de abajo se les aplican sin cambios, y las herramientas del host responden solo desde las
+fotos del recolector: ninguna lee el host.
 
 El almacén se abre con `EvidenceStore.OpenReadOnly`. Ninguna herramienta deja pasar SQL, y ninguna
 bloquea, desbloquea, permite ni cambia un ajuste. Todas llevan las anotaciones `readOnlyHint: true`,
@@ -163,6 +171,13 @@ cobertura, decisiones de bloqueo, ajustes y etiquetas. **Las etiquetas nombran d
 cuenta probados, y entre ellos hay cuentas reales del servidor, junto con quién pidió cada decisión y
 quién cambió cada ajuste. La documentación del operador lo dice
 antes de mostrar la configuración.
+
+Las herramientas del host del ADR 0013 tienen su propia compuerta, **`mcp.host_details`** (por defecto
+`false`, se lee en el siguiente arranque). Gobierna otro contenido, el inventario del propio servidor y
+no el detalle de la evidencia, así que un operador que permite los registros detallados para una
+investigación no exporta con ellos el mapa del servidor. Sin ella, los nombres de sitios, grupos,
+cuentas, servicios y tareas, los nombres de host, las rutas, las direcciones locales y las direcciones
+de origen de RDP aparecen como `"withheld"`; con ella, salen como texto no confiable.
 
 ### 8. La elevación, y lo que cuesta
 

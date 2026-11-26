@@ -44,8 +44,9 @@ internal sealed class ToolArgumentException : ArgumentException
 /// <remarks>
 /// <para>
 /// <b>Read-only by construction.</b> The store is opened read-only and only <see cref="EvidenceQueries"/>,
-/// <see cref="WebEvidenceQueries"/>, <see cref="EvidenceEvents.Query"/>, <see cref="EvidenceEvents.Kinds"/> and the
-/// read side of <see cref="EvidenceSettings"/> are called. No tool blocks, unblocks or changes a setting.
+/// <see cref="WebEvidenceQueries"/>, <see cref="HostFactsQueries"/>, <see cref="EvidenceEvents.Query"/>,
+/// <see cref="EvidenceEvents.Kinds"/> and the read side of <see cref="EvidenceSettings"/> are called. No tool
+/// blocks, unblocks or changes a setting, and no tool reads the host: host facts are the collector's snapshots.
 /// </para>
 /// <para>
 /// <b>Attacker text is data.</b> Every string an attacker could have chosen - an account name, an event's
@@ -387,12 +388,13 @@ internal sealed partial class EvidenceTools
                 ["takes_effect"] = setting.Effect == SettingEffect.NextStart ? "next-start" : "next-use",
                 ["description"] = setting.Description
             };
-            if (setting.Key == "mcp.detailed_records")
+            if (setting.Key is "mcp.detailed_records" or "mcp.host_details")
             {
-                item["in_effect_for_this_server"] = access.DetailedRecords;
+                var inEffect = setting.Key == "mcp.detailed_records" ? access.DetailedRecords : access.HostDetails;
+                item["in_effect_for_this_server"] = inEffect;
                 var stored = setting.Value is JsonValue v && v.TryGetValue<bool>(out var b) && b;
-                if (stored != access.DetailedRecords)
-                    notes.Add("mcp.detailed_records was changed after this server started. It applies at the next start: restart the assistant's connection to 'wpshield mcp' to apply it.");
+                if (stored != inEffect)
+                    notes.Add($"{setting.Key} was changed after this server started. It applies at the next start: restart the assistant's connection to 'wpshield mcp' to apply it.");
             }
             items.Add(item);
         }

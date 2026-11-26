@@ -103,6 +103,12 @@ host](mcp-server.md#what-leaves-the-host)), so `mcp.detailed_records` decides fo
 | `false` (default) | Counts, source addresses and their networks, timelines, coverage, block decisions, settings, and your address labels - which name your own addresses |
 | `true` | All of the above, plus the account names that were tried (real accounts on this server among them), single attempts and events, and who requested each decision and who changed each setting |
 
+The host tools follow `mcp.host_details`, which is separate and also `false` by default: without it
+the provider receives the host facts as counts, verdicts, port numbers, executable file names, restart
+times and bugcheck codes, and every site, pool, account, service and task name, path and RDP source
+address reads `"withheld"`; with it, those names reach the provider too, each marked untrusted
+([MCP server: what leaves the host](mcp-server.md#what-leaves-the-host)).
+
 | Provider | Where it goes | Notes |
 | --- | --- | --- |
 | `anthropic` | Anthropic, under your API terms | Default model `claude-opus-5-5`, adaptive thinking, effort `medium` unless you set `analyst.effort`. If the model declines, Anthropic's server-side fallback may answer with another model; the report names the model that actually answered |
@@ -158,15 +164,20 @@ A printed report:
 
 - **The same tools as the MCP server, in-process.** `attacks_summary`, `top_sources`, `source_history`,
   `attack_timeline`, `coverage`, `decisions`, `evidence_kinds`, `evidence_events`, `list_settings`,
-  `address_labels`, `web_summary`, `web_top_sources`, `web_findings` and `address_report`, through the
-  MCP server's own functions, so the `{"untrusted": ...}` wrapping of attacker text, the
-  `mcp.detailed_records` gate and the bounds are defined once. Strict tool schemas allow 24 optional
-  parameters across all tools, so the analyst is offered fewer than an MCP client and the tool's own
-  default applies to the rest: the explicit `from`/`to` range only on `attacks_summary`, `top_sources`,
-  `attack_timeline` and `coverage` (the others take named ranges); `limit` only on `top_sources` (20
-  rows elsewhere); no timeline `bucket` (chosen from the range); no `site` on the web tools (every site,
-  each row names its site ID); and no address filter on `web_findings`, because `address_report`
-  answers one address. That is 23 optional parameters.
+  `address_labels`, `web_summary`, `web_top_sources`, `web_findings`, `address_report`, and the host
+  tools of [ADR 0013](adr/0013-host-facts-and-the-command-center.md): `host_health`, `iis_sites`,
+  `iis_posture`, `listening_ports`, `rdp_sessions` and `host_inventory`. They go through the MCP
+  server's own functions, so the `{"untrusted": ...}` wrapping of attacker text, the
+  `mcp.detailed_records` and `mcp.host_details` gates and the bounds are defined once. Strict tool use
+  takes at most 20 tools and 24 optional parameters across them in one request, so the analyst is
+  offered fewer parameters than an MCP client and the tool's own default applies to the rest: the
+  explicit `from`/`to` range only on `attacks_summary`, `top_sources`, `attack_timeline` and `coverage`
+  (the others take named ranges); `limit` only on `top_sources` (20 rows elsewhere); no timeline
+  `bucket` (chosen from the range); no `site` on the web tools (every site, each row names its site ID);
+  and no address filter on `web_findings`, because `address_report` answers one address. The host tools
+  add one optional parameter, the range of `rdp_sessions`: four take none and `host_inventory`'s `kind`
+  is required. That is 24 optional parameters across 20 tools - both limits exactly, so a tool or a
+  parameter added later has to make room first, and a test fails the build before a request would fail.
 - **No other tool.** No shell, file, web, code-execution or provider server tool. The process is
   elevated, so any such tool would put an elevated capability within reach of injected text.
 - **The prompts are in code** (`WPShield.Analyst/AnalystPrompts.cs`) and say: text under `untrusted`

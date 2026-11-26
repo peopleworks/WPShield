@@ -402,6 +402,20 @@ del texto anterior en estos puntos:
   log ilegible es `unknown`, nunca "ninguno"; "no encontrado" dice hasta cuándo llega el log. WPShield
   no tiene una fuente sin conexión de la última compilación, así que nunca califica un servidor de
   "desactualizado".
+- **Las herramientas MCP ya existen (2026-11-26).** `host_health`, `iis_sites`, `iis_posture`,
+  `listening_ports`, `rdp_sessions` y `host_inventory` responden desde las instantáneas mediante
+  `HostFactsQueries` y respetan `mcp.host_details`, congelado al arrancar el servidor como
+  `mcp.detailed_records`; aceptan exactamente los parámetros de la sección 6, así que al analista se le
+  ofrecen 24 parámetros opcionales en 20 herramientas, justo los dos límites del uso estricto de
+  herramientas. Como se construyó: `rdp_sessions` usa `7d` por defecto; los reinicios cuentan como
+  leídos solo cuando el recolector ha registrado hasta dónde leyó el log de Sistema
+  (`HostFactsQueries.RestartsReadUntil`), y antes de eso el recuento es `null`, nunca 0; un motivo que
+  no es un código y todo remedio guardado vuelven como texto no confiable; el nombre de un volumen que
+  es una letra de unidad se muestra, cualquier otro es una ruta y se retiene; la cuenta de un servicio o
+  una tarea se clasifica (`local-system`, `local-service`, `network-service`, `virtual-account`,
+  `pool-identity`, `named-account`) para que se vea el tipo mientras el nombre queda tras la compuerta;
+  y el firmante de una firma siempre se devuelve, como texto no confiable. La viñeta de arriba,
+  "todavía no hay herramientas MCP", valía para la fase 1.
 
 ## Cuándo revisar esta decisión
 

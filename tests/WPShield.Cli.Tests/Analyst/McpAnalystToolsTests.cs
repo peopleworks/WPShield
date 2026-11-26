@@ -11,9 +11,9 @@ using WPShield.Evidence;
 namespace WPShield.Cli.Tests.Analyst;
 
 /// <summary>
-/// The analyst's tools are the MCP server's: the same fourteen, the same descriptions, the same answers
-/// with the same untrusted wrapping and the same <c>mcp.detailed_records</c> gate - and schemas that
-/// strict tool use accepts.
+/// The analyst's tools are the MCP server's: the same twenty, the same descriptions, the same answers
+/// with the same untrusted wrapping and the same <c>mcp.detailed_records</c> and <c>mcp.host_details</c>
+/// gates - and schemas that strict tool use accepts.
 /// </summary>
 public sealed class McpAnalystToolsTests : IDisposable
 {
@@ -76,12 +76,12 @@ public sealed class McpAnalystToolsTests : IDisposable
     }
 
     [Fact]
-    public void TheToolsAreExactlyTheMcpServersFourteenWithTheirDescriptions()
+    public void TheToolsAreExactlyTheMcpServersTwentyWithTheirDescriptions()
     {
         var mcp = WPShieldMcpTools.Collection(Evidence()).ToDictionary(t => t.ProtocolTool.Name, t => t.ProtocolTool.Description);
         var tools = Tools();
 
-        Assert.Equal(14, tools.Count);
+        Assert.Equal(20, tools.Count);
         Assert.Equal(mcp.Keys.Order(StringComparer.Ordinal), tools.Select(t => t.Name));
         foreach (var tool in tools)
         {
@@ -116,7 +116,40 @@ public sealed class McpAnalystToolsTests : IDisposable
     }
 
     /// <summary>
-    /// Fourteen tools with every optional parameter would need 32, over the strict-schema budget of 24. The
+    /// The host tools of ADR 0013 take what the ADR decided: four take nothing, <c>rdp_sessions</c> one optional
+    /// named range, <c>host_inventory</c> one required kind. With them the analyst is offered exactly 24 optional
+    /// parameters across exactly 20 tools - both strict-tool-use limits - so this pins the count: the next tool or
+    /// parameter must make room, and this test says so before a request fails at the provider.
+    /// </summary>
+    [Fact]
+    public void TheHostToolsFitTheStrictBudgetExactly()
+    {
+        var tools = Tools().ToDictionary(t => t.Name);
+
+        foreach (var name in new[] { "host_health", "iis_sites", "iis_posture", "listening_ports" })
+            Assert.Empty(tools[name].InputSchema["properties"]!.AsObject());
+        Assert.Equal(["range"], tools["rdp_sessions"].InputSchema["properties"]!.AsObject().Select(p => p.Key));
+        Assert.Empty(tools["rdp_sessions"].InputSchema["required"]!.AsArray());
+        Assert.Equal(["kind"], tools["host_inventory"].InputSchema["required"]!.AsArray().Select(r => (string)r!));
+
+        var optional = tools.Values.Sum(t => t.InputSchema["properties"]!.AsObject().Count - t.InputSchema["required"]!.AsArray().Count);
+        Assert.Equal(24, optional);
+        Assert.Equal(20, tools.Count);
+    }
+
+    [Fact]
+    public void TheAnalystGetsHostFactsWithTheHostDetailsGate()
+    {
+        Seed(detailed: true);
+        var answer = Tools().Single(t => t.Name == "iis_sites").Invoke([], CancellationToken.None);
+
+        Assert.False(answer.IsError, answer.Json);
+        Assert.Contains("\"host_details_allowed\":false", answer.Json, StringComparison.Ordinal);
+        Assert.Contains("no-snapshot-yet", answer.Json, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Twenty tools with every optional parameter would need 33, over the strict-schema budget of 24. The
     /// analyst is offered fewer; MCP clients keep every parameter, and the tool's default applies to the rest.
     /// </summary>
     [Fact]

@@ -16,8 +16,9 @@ namespace WPShield.Cli.Analyst;
 /// <para>
 /// <b>Defined once.</b> The tools are found by reflection over <see cref="WPShieldMcpTools"/>, the class
 /// <c>wpshield mcp</c> serves, and each call goes through the same attributed method, so the name, the
-/// description, the <c>{"untrusted": ...}</c> wrapping, the bounds and the <c>mcp.detailed_records</c>
-/// gate (frozen in <see cref="McpEvidenceAccess"/> when the store first opens) are the MCP server's own.
+/// description, the <c>{"untrusted": ...}</c> wrapping, the bounds and the <c>mcp.detailed_records</c> and
+/// <c>mcp.host_details</c> gates (frozen in <see cref="McpEvidenceAccess"/> when the store first opens) are the
+/// MCP server's own.
 /// A tool added there reaches the analyst without a change here, and nothing else does: no shell, file,
 /// web or code tool exists to add.
 /// </para>
@@ -30,14 +31,18 @@ namespace WPShield.Cli.Analyst;
 /// the one before. The other tools take named ranges, which they already accept.
 /// </para>
 /// <para>
-/// <b>Server defaults instead of optional parameters.</b> Fourteen tools with every optional parameter
-/// would need 32 optional parameters, over the budget of 24. The analyst's schemas therefore leave out a
+/// <b>Server defaults instead of optional parameters.</b> Twenty tools with every optional parameter
+/// would need 33 optional parameters, over the budget of 24. The analyst's schemas therefore leave out a
 /// few parameters whose MCP default is what a digest or an investigation wants, listed in
 /// <see cref="ServerDefaults"/>: <c>limit</c> on every tool but <c>top_sources</c> (20 rows), the timeline's
 /// <c>bucket</c> (chosen from the range), the web tools' <c>site</c> (every site; each row names its site
 /// ID) and the address filter of <c>web_findings</c> (<c>address_report</c> answers one address). That
-/// leaves 23. MCP clients still see every parameter: only what the analyst is offered is reduced, and the
-/// tool's own default applies to what it is not offered.
+/// leaves 24, exactly the budget: the host tools of ADR 0013 add one optional parameter, the range of
+/// <c>rdp_sessions</c>, and nothing else (four take none, and <c>host_inventory</c>'s <c>kind</c> is
+/// required). Twenty tools is also the most strict tool use takes in one request. The next tool needs a
+/// tool or a parameter to give way first; the budget test fails the build before a request would fail at
+/// the provider. MCP clients still see every parameter: only what the analyst is offered is reduced, and
+/// the tool's own default applies to what it is not offered.
 /// </para>
 /// </remarks>
 internal static class McpAnalystTools

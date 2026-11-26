@@ -134,6 +134,40 @@ internal sealed class WPShieldMcpTools(EvidenceTools tools)
         [Description("One of 1h, 6h, 24h, 7d, 30d (default 7d).")] string? range = null) =>
         Result("address_report", () => tools.AddressReport(address, range));
 
+    private const string HostSnapshot =
+        " From the latest snapshot the WPShield collector took (ADR 0013), with its read time, its status and whether it is stale; no snapshot or an unreadable one means unknown, never none. This server never reads the host itself.";
+
+    private const string HostNames =
+        " Names of sites, pools, accounts, services and tasks, paths and addresses of this host are returned only if the operator enabled mcp.host_details; otherwise they read 'withheld'.";
+
+    [McpServerTool(Name = "host_health", Title = "Host: health and restarts", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("How this server is doing: uptime and last boot, CPU, memory, free space per volume (the IIS log volume marked), the evidence store's size, the patch level as Windows reports it (build, kernel file version, last cumulative update and failed installs; facts, never a verdict of outdated), the unexpected restarts of the last 30 days with their bugcheck codes, and CPU and memory per hour over the last 24 hours." + HostSnapshot + HostNames + Safety)]
+    public CallToolResult HostHealth() => Result("host_health", tools.HostHealth);
+
+    [McpServerTool(Name = "iis_sites", Title = "Host: IIS sites", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("The IIS sites of this server: ID, state, bindings (protocol, port, whether a binding answers every host name), the kind of identity each site's pool runs as and whether it is a local administrator, and whether the IIS log sensor reads the site's log. Counts by identity kind. No password is ever read." + HostSnapshot + HostNames + Safety)]
+    public CallToolResult IisSites() => Result("iis_sites", tools.IisSites);
+
+    [McpServerTool(Name = "iis_posture", Title = "Host: IIS posture", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("The latest IIS posture summary of 'wpshield audit': each finding's ID, severity and item count, pools running as an administrator out of all pools, PHP mapped at the server level, writable site folders, FTP overlaps, and the history of pools running as an administrator. IDs and counts only, never names; the remedies are changes an operator makes by hand." + HostSnapshot + Safety)]
+    public CallToolResult IisPosture() => Result("iis_posture", tools.IisPosture);
+
+    [McpServerTool(Name = "listening_ports", Title = "Host: listening ports and exposure", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("The TCP and UDP ports this server listens on, with the listening program's file name and an exposure verdict by the Windows Firewall rules (open-to-any, restricted, blocked, local-only, unknown); never 'reachable', because other network filters decide too. red marks SMB, RPC, SQL Server, MySQL, PostgreSQL, VNC and WinRM open to any address." + HostSnapshot + HostNames + Safety)]
+    public CallToolResult ListeningPorts() => Result("listening_ports", tools.ListeningPorts);
+
+    [McpServerTool(Name = "rdp_sessions", Title = "Host: Remote Desktop sessions and logons", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("The current sessions of this server and its Remote Desktop logons and reconnections in a range, with counts of users and source addresses. Source addresses come from the LocalSessionManager log, never from what a client reports about itself." + HostSnapshot + HostNames + Safety)]
+    public CallToolResult RdpSessions(
+        [Description("24h or 7d (default 7d). The snapshot holds the last 7 days of logons.")] string? range = null) =>
+        Result("rdp_sessions", () => tools.RdpSessions(range));
+
+    [McpServerTool(Name = "host_inventory", Title = "Host: accounts, services or tasks", ReadOnly = true, Destructive = false, Idempotent = true, OpenWorld = false)]
+    [Description("One inventory of this server. accounts: local accounts, whether enabled, administrator or Remote Desktop user, last logon and password age, and whether attackers try a local account's full name (a yes or no and a count; the names are never stored). services and tasks: those that are not Microsoft's, with the kind of account they run as, the executable's file name, whether it is signed, and flags for what their arguments contained (the arguments are never stored). Each with the changes of the last 7 days." + HostSnapshot + HostNames + Safety)]
+    public CallToolResult HostInventory(
+        [Description("accounts, services or tasks.")] string kind) =>
+        Result("host_inventory", () => tools.HostInventory(kind));
+
     /// <summary>
     /// Every answer leaves as JSON text. An exception the tool logic did not expect becomes an explicit
     /// error naming only its type, so neither a stack trace nor an empty success reaches the model.

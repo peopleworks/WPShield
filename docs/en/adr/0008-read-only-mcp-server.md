@@ -68,9 +68,16 @@ made here.
 | `web_top_sources` | The addresses the web evidence kept, most flagged first | `WebEvidenceQueries.TopSources` |
 | `web_findings` | The newest web findings; site names, paths and user agents only if allowed | `WebEvidenceQueries.Findings` |
 | `address_report` | One address across failed logons, decisions, web evidence, its label and the allow-list | `EvidenceQueries.SourceHistory`, `.DecisionsAbout`, `.ActiveDecisions`, `WebEvidenceQueries`, `DefenseOptions.Read` |
+| `host_health` | Uptime, CPU, memory, disk, the patch level, unexpected restarts with bugcheck codes, the last 24 hours | `HostFactsQueries.Latest`, `.Restarts`, `.RestartsReadUntil`, `.HealthHourly` |
+| `iis_sites` | IIS sites, bindings, the kind of pool identity and whether it is an administrator; names only if allowed | `HostFactsQueries.Latest`, `WebEvidenceQueries.Sites` |
+| `iis_posture` | The latest audit summary and the history of pools running as an administrator | `HostFactsQueries.Latest`, `.PostureHistory` |
+| `listening_ports` | Listeners with their exposure verdict by the Windows Firewall rules | `HostFactsQueries.Latest` |
+| `rdp_sessions` | Current sessions and RDP logons in a range; users and source addresses only if allowed | `HostFactsQueries.Latest` |
+| `host_inventory` | Accounts, services or tasks, with flags and changes; names and paths only if allowed | `HostFactsQueries.Latest`, `.InventoryChanges`, `.InventoryOverflows` |
 
-The four last rows were added on 2026-11-25, with the IIS log evidence of ADR 0011; the rules below
-apply to them unchanged.
+The four rows before the host tools were added on 2026-11-25, with the IIS log evidence of ADR 0011;
+the six host tools on 2026-11-26, with the host facts of ADR 0013. The rules below apply to them
+unchanged, and the host tools answer only from the collector's snapshots: none reads the host.
 
 The store is opened with `EvidenceStore.OpenReadOnly`. No tool passes SQL through, and no tool
 blocks, unblocks, allows or changes a setting. Every tool is annotated `readOnlyHint: true`,
@@ -160,6 +167,12 @@ leave the host too. With `mcp.detailed_records` set to `true`, the account names
 leave as well, and those include real accounts on the server, together with who requested each
 decision and who changed each setting. The operator documentation says this
 before it shows the configuration.
+
+The host tools of ADR 0013 have their own gate, **`mcp.host_details`** (default `false`, read at the
+next start). It governs different content - the server's own inventory, not evidence detail - so an
+operator who allows detailed records for one investigation does not export the server's map with it.
+Without it, names of sites, pools, accounts, services and tasks, host names, paths, local addresses
+and RDP source addresses read `"withheld"`; with it, they leave as untrusted text.
 
 ### 8. Elevation, and its cost
 

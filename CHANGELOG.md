@@ -14,6 +14,22 @@ must complete first.
 
 ### Added
 
+- Six read-only host tools in `wpshield mcp`, which the AI analyst gets too (ADR 0013 as built, ADR 0008 table):
+  `host_health` (uptime, CPU, memory, disk, the patch level as Windows reports it, the unexpected restarts of the last 30 days
+  with their bugcheck codes, and the last 24 hours), `iis_sites`, `iis_posture` (the audit's summary and the history of pools
+  running as an administrator), `listening_ports` (verdicts by the Windows Firewall rules, red marked), `rdp_sessions` (`24h` or
+  `7d`) and `host_inventory` (a required `kind`: `accounts`, `services` or `tasks`, with flags and the changes of 7 days).
+  - They answer only from the collector's snapshots through `HostFactsQueries`; none reads the host. Every answer starts with the
+    snapshot it read: read time, age, whether it is stale, and its status with the reason and remedy. A fact never read is
+    `no-snapshot-yet` with `null` values, and restarts are counted only once the collector has recorded reading the System log
+    (`HostFactsQueries.RestartsReadUntil`): unknown is never none.
+  - The new gate `mcp.host_details` (default `false`, read when the server starts, separate from `mcp.detailed_records`) decides
+    whether the names of sites, pools, accounts, services and tasks, host names, paths, local addresses and RDP source addresses
+    leave the host. Without it they read `withheld`; counts, verdicts, port numbers, executable file names, restart times,
+    bugcheck codes and the full-name indicator are always returned. With it, every name comes back as untrusted text, because on
+    a compromised host the attacker names tasks and services. `list_settings` shows when a change waits for a restart.
+  - The analyst is offered 24 optional parameters across 20 tools, exactly the strict-tool-use limits: the host tools add only the
+    range of `rdp_sessions`. A test pins both numbers.
 - The bilingual **Web** tab in the desktop's **Attacks** window reads IIS evidence by time range
   and site through `WebEvidenceQueries`. It shows site coverage, remedies and time gaps before
   totals, a timeline and an address table. A red `WEB-OBS-001` card flags 2xx PHP responses outside
