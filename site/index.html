@@ -17,16 +17,16 @@
 <meta property="og:url" content="https://peopleworks.github.io/WPShield/">
 <meta property="og:title" content="WPShield — Windows Server and IIS evidence">
 <meta property="og:description" content="Research preview for Windows Server. See failed host logons, inspect WordPress requests on IIS, and ask an assistant about the recorded evidence.">
-<meta property="og:image" content="https://peopleworks.github.io/WPShield/assets/attacks-en.png">
-<meta property="og:image:alt" content="The Attacks view shows a timeline of synthetic failed Windows logons and groups them by source.">
+<meta property="og:image" content="https://peopleworks.github.io/WPShield/assets/screenshots/command-center-en.png">
+<meta property="og:image:alt" content="The command center shows synthetic collector, attack, web and host readings together, with an IIS observation and an open SMB port highlighted.">
 <meta property="og:locale" content="en_US">
 <meta property="og:locale:alternate" content="es_ES">
 
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="WPShield — Windows Server and IIS evidence">
 <meta name="twitter:description" content="Research preview for Windows Server. See failed host logons, inspect WordPress requests on IIS, and ask an assistant about the recorded evidence.">
-<meta name="twitter:image" content="https://peopleworks.github.io/WPShield/assets/attacks-en.png">
-<meta name="twitter:image:alt" content="The Attacks view shows a timeline of synthetic failed Windows logons and groups them by source.">
+<meta name="twitter:image" content="https://peopleworks.github.io/WPShield/assets/screenshots/command-center-en.png">
+<meta name="twitter:image:alt" content="The command center shows synthetic collector, attack, web and host readings together, with an IIS observation and an open SMB port highlighted.">
 
 <style>
 /* ------------------------------------------------------------------ tokens */
@@ -603,6 +603,28 @@ footer p { max-width: 46rem; }
   </section>
 
   <section id="capabilities" aria-label="WPShield">
+    <article class="capability" id="command-center">
+      <div>
+        <h2 lang="en">Command center</h2>
+        <h2 lang="es">Centro de mando</h2>
+        <p lang="en">The desktop home view brings together collector coverage, logon and IIS evidence, server health, posture and firewall exposure.</p>
+        <p lang="es">La vista inicial del escritorio reúne la cobertura del recolector, la evidencia de acceso y de IIS, la salud del servidor, la postura y la exposición según el firewall.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/operator-reference.md#desktop-command-center">Command center guide</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/referencia-operador.md#centro-de-mando-del-escritorio">Guía del centro de mando</a>
+      </div>
+      <figure class="figure">
+        <div class="fig-frame">
+          <picture lang="en">
+            <img src="assets/screenshots/command-center-en.png" width="1440" height="900" loading="lazy" alt="The command center highlights an IIS PHP observation and an open SMB port while showing the collector, health and posture readings beside them.">
+          </picture>
+          <picture lang="es">
+            <img src="assets/screenshots/command-center-es.png" width="1440" height="900" loading="lazy" alt="El centro de mando destaca una observación PHP en IIS y un puerto SMB abierto junto al estado del recolector, la salud y la postura.">
+          </picture>
+        </div>
+        <figcaption lang="en">Desktop command center with synthetic evidence.</figcaption>
+        <figcaption lang="es">Centro de mando con evidencia sintética.</figcaption>
+      </figure>
+    </article>
     <article class="capability" id="attacks">
       <div>
         <h2 lang="en">Attacks on the host</h2>
@@ -615,14 +637,36 @@ footer p { max-width: 46rem; }
       <figure class="figure">
         <div class="fig-frame">
         <picture lang="en">
-          <img src="assets/attacks-en.png" loading="lazy" alt="The Attacks view charts synthetic failed logons over time and groups them by source address, with an operator label beside the matching addresses.">
+          <img src="assets/screenshots/attacks-en.png" width="1440" height="900" loading="lazy" alt="The Attacks view groups failed logons by source and network, with labels and would-block decisions beside the matching addresses.">
         </picture>
         <picture lang="es">
-          <img src="assets/attacks-es.png" loading="lazy" alt="La vista Ataques muestra la evolución de intentos fallidos sintéticos y los agrupa por dirección de origen, con una etiqueta junto a las direcciones que coinciden.">
+          <img src="assets/screenshots/attacks-es.png" width="1440" height="900" loading="lazy" alt="La vista Ataques agrupa los intentos fallidos por origen y red, con etiquetas y decisiones de Monitor junto a las direcciones correspondientes.">
         </picture>
         </div>
       <figcaption lang="en">Desktop Attacks view with synthetic logon records.</figcaption>
       <figcaption lang="es">Vista Ataques con registros sintéticos de acceso.</figcaption>
+      </figure>
+    </article>
+    <article class="capability" id="iis-evidence">
+      <div>
+        <h2 lang="en">Web evidence</h2>
+        <h2 lang="es">Evidencia web</h2>
+        <p lang="en">Open <strong>Attacks → Web</strong> to check IIS log coverage, filter by site and review findings and observations by source address.</p>
+        <p lang="es">Abre <strong>Ataques → Web</strong> para revisar la cobertura de los logs de IIS, filtrar por sitio y consultar los hallazgos y las observaciones por dirección.</p>
+        <a lang="en" href="https://github.com/peopleworks/WPShield/blob/main/docs/en/operator-reference.md#desktop-web-tab">Web tab guide</a>
+        <a lang="es" href="https://github.com/peopleworks/WPShield/blob/main/docs/es/referencia-operador.md#pestaña-web-del-escritorio">Guía de la pestaña Web</a>
+      </div>
+      <figure class="figure">
+        <div class="fig-frame">
+          <picture lang="en">
+            <img src="assets/screenshots/web-en.png" width="1440" height="900" loading="lazy" alt="The Web tab shows an unreadable IIS site above the timeline and highlights a recorded PHP observation in red.">
+          </picture>
+          <picture lang="es">
+            <img src="assets/screenshots/web-es.png" width="1440" height="900" loading="lazy" alt="La pestaña Web muestra un sitio IIS sin lectura encima de la gráfica y destaca en rojo una observación PHP registrada.">
+          </picture>
+        </div>
+        <figcaption lang="en">Desktop Web tab with synthetic IIS evidence.</figcaption>
+        <figcaption lang="es">Pestaña Web con evidencia sintética de IIS.</figcaption>
       </figure>
     </article>
     <article class="capability" id="requests">
@@ -669,6 +713,32 @@ footer p { max-width: 46rem; }
         </div>
       </figure>
     </article>
+    <details class="card">
+      <summary><span lang="en">Protection, Settings and Audit references</span><span lang="es">Protección, Ajustes y Referencias de auditoría</span></summary>
+      <div class="grid grid--3">
+        <figure class="figure">
+          <div class="fig-frame">
+            <picture lang="en"><img src="assets/screenshots/protection-en.png" width="1440" height="900" loading="lazy" alt="Protection shows the collector and its active would-block decisions while WPShield is in Monitor mode."></picture>
+            <picture lang="es"><img src="assets/screenshots/protection-es.png" width="1440" height="900" loading="lazy" alt="Protección muestra el recolector y las decisiones vigentes de bloqueo simulado en modo Monitor."></picture>
+          </div>
+          <figcaption lang="en">Protection</figcaption><figcaption lang="es">Protección</figcaption>
+        </figure>
+        <figure class="figure">
+          <div class="fig-frame">
+            <picture lang="en"><img src="assets/screenshots/settings-en.png" width="1440" height="900" loading="lazy" alt="Settings shows the demo allow-list, its audit history and the controls that require a reason before saving."></picture>
+            <picture lang="es"><img src="assets/screenshots/settings-es.png" width="1440" height="900" loading="lazy" alt="Ajustes muestra la lista de permitidas de demostración, su historial y los controles que requieren un motivo para guardar."></picture>
+          </div>
+          <figcaption lang="en">Settings</figcaption><figcaption lang="es">Ajustes</figcaption>
+        </figure>
+        <figure class="figure">
+          <div class="fig-frame">
+            <picture lang="en"><img src="assets/screenshots/audit-references-en.png" width="1440" height="900" loading="lazy" alt="Audit references shows the coverage of a synthetic audit and previews the JSON for the selected record."></picture>
+            <picture lang="es"><img src="assets/screenshots/audit-references-es.png" width="1440" height="900" loading="lazy" alt="Referencias de auditoría muestra la cobertura de una auditoría sintética y la vista previa del JSON del registro seleccionado."></picture>
+          </div>
+          <figcaption lang="en">Audit references</figcaption><figcaption lang="es">Referencias de auditoría</figcaption>
+        </figure>
+      </div>
+    </details>
   </section>
 
   <section id="tasks">

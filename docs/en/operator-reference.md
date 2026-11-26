@@ -104,6 +104,30 @@ spaces, it starts with `=`, `+`, `-`, `@`, a tab or a carriage return, or their 
 spreadsheet then reads `=HYPERLINK(...)` or `+cmd|...` as text, never as a formula. The choice
 follows the column's type, not the value: a text column holding `-2+3` is still text.
 
+### Regenerate desktop screenshots
+
+From the repository root on Windows with the .NET 10 SDK and a desktop session, run:
+
+```powershell
+dotnet run --project tools/WPShield.Desktop.Demo -c Release
+```
+
+The tool generates a temporary evidence store at the current schema and a synthetic audit snapshot.
+It renders command center, Attacks, Web, Protection, Settings and Audit references in English and
+Spanish at 1440 × 900 and 96 DPI. It replaces the PNGs in `docs/assets/screenshots/` after all views
+render and removes the temporary data. The capture contains only WPF content fed by the synthetic
+fixture. It uses the desktop's native light palette.
+
+To keep a demo database for CLI queries, choose a new filename in an existing directory:
+
+```powershell
+dotnet run --project tools/WPShield.Desktop.Demo -c Release -- --store "$env:TEMP\wpshield-demo-example.db"
+```
+
+The fixture clock is fixed at 2026-11-26 12:42 UTC. Use that date when querying the demo database.
+The generator rejects existing files and the default WPShield evidence directory. The tool is
+available from the source checkout.
+
 ## Project status
 
 | Capability | Status | Notes |
@@ -152,7 +176,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 2,990 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 747 for the CLI, 290 for the desktop monitor, 492 for the gateway, 58 for the network sensor, 14 for the network filter, 104 for the security monitor, 243 for the evidence store, 67 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine. The gateway suite includes timeout and cancellation scenarios.
+The suite is 2,994 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 747 for the CLI, 294 for the desktop monitor, 492 for the gateway, 58 for the network sensor, 14 for the network filter, 104 for the security monitor, 243 for the evidence store, 67 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine. The gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

@@ -49,8 +49,8 @@ jobs:
       #
       # The figures are copied in rather than linked from raw.githubusercontent.com. Served from the
       # same origin they arrive with the page instead of after it, and the published site stops
-      # depending on a host that is not the one it is published on. Both directories flatten into
-      # one, which the asset path contract in AGENTS.md already assumes: no basename appears twice.
+      # depending on a host that is not the one it is published on. Both roots copy into assets,
+      # preserving the screenshots subdirectory.
       #
       # .nojekyll is not required by this deployment path — it serves the uploaded artifact as-is
       # and never runs Jekyll. It is written so the site still publishes correctly if the repository
@@ -61,7 +61,7 @@ jobs:
           touch site/.nojekyll
           mkdir -p site/assets
           cp assets/* site/assets/
-          cp docs/assets/* site/assets/
+          cp -R docs/assets/. site/assets/
 
       # The page references each figure twice, once per theme, and a missing file shows up as a
       # broken image only in whichever theme the reader happens to be in. Failing here instead means

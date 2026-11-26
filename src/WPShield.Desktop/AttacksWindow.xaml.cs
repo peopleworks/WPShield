@@ -58,6 +58,7 @@ public partial class AttacksWindow : Window
     private static readonly Brush Gap = Frozen("#C9D3D8");
 
     private readonly bool spanish;
+    private readonly TimeProvider clock;
     private readonly Func<DateTimeOffset, AuthFailureSnapshot> read;
     private readonly Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch;
     private readonly IAttackStore? store;
@@ -120,7 +121,7 @@ public partial class AttacksWindow : Window
 
     internal AttacksWindow(bool spanish, Func<DateTimeOffset, AuthFailureSnapshot> read,
         Func<Action<AuthFailure>, Action<string, string>, IDisposable> watch, IAttackStore? store, ISettingsStore? settings,
-        EvidenceWebStore? webStore = null)
+        EvidenceWebStore? webStore = null, TimeProvider? clock = null)
     {
         this.spanish = spanish;
         this.read = read;
@@ -128,6 +129,7 @@ public partial class AttacksWindow : Window
         this.store = store;
         this.settings = settings;
         this.webStore = webStore;
+        this.clock = clock ?? TimeProvider.System;
         InitializeComponent();
         SetViewHeading(false);
         Live.Content = L("Live", "En vivo");
@@ -183,7 +185,7 @@ public partial class AttacksWindow : Window
         var probe = ProbeStoreAsync();
         try
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.GetUtcNow();
             var snapshot = await Task.Run(() => read(now));
             if (closed) return;
             board.Reset(snapshot.Failures, CoveredFrom(snapshot));
@@ -225,7 +227,7 @@ public partial class AttacksWindow : Window
         var access = ReadSettingsAsync();
         try
         {
-            var status = await Task.Run(() => store.Probe(DateTimeOffset.UtcNow));
+            var status = await Task.Run(() => store.Probe(clock.GetUtcNow()));
             if (closed) return;
             labels = status.Labels;
             decisions = status.Decisions;
@@ -321,7 +323,7 @@ public partial class AttacksWindow : Window
         if (range == wanted) Render();
         try
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.GetUtcNow();
             var data = await Task.Run(() => store!.Read(wanted, now));
             if (closed) return;
             stored[wanted] = data;
@@ -430,7 +432,7 @@ public partial class AttacksWindow : Window
         var data = isStored && stored.TryGetValue(range, out var cached) ? cached : null;
         view = isStored
             ? data is null ? null : StoredAttackBoard.View(data, Search.Text.Trim())
-            : board.View(DateTimeOffset.UtcNow, range, Search.Text.Trim(), labels: labels);
+            : board.View(clock.GetUtcNow(), range, Search.Text.Trim(), labels: labels);
         // Across 7 or 30 days "last" needs its date. Rebinding only when the format changes keeps the grid's cells.
         var lastFormat = isStored ? "yyyy-MM-dd HH:mm" : "HH:mm:ss";
         if (Rows.Columns[^1] is DataGridTextColumn { Binding: Binding { StringFormat: var current } } last && current != lastFormat)
@@ -447,7 +449,7 @@ public partial class AttacksWindow : Window
             return;
         }
         // Nobody could look is "—", never an empty cell that would read as "no decision".
-        view = AttackDecisions.Apply(view, storeProblem is null ? decisions : null, spanish, DateTimeOffset.UtcNow);
+        view = AttackDecisions.Apply(view, storeProblem is null ? decisions : null, spanish, clock.GetUtcNow());
         RenderCards(view);
         RenderChart(view.Buckets);
         var previous = selected;
@@ -472,7 +474,7 @@ public partial class AttacksWindow : Window
                 $"{view.Rows.Count:N0} de {view.MatchingRows:N0} orígenes · {board.Count:N0} registros en memoria");
         Footer.Text += " · " + (probing && store is not null
             ? L("decisions: reading…", "decisiones: leyendo…")
-            : AttackDecisions.Status(storeProblem is null && store is not null ? decisions : null, spanish, DateTimeOffset.UtcNow));
+            : AttackDecisions.Status(storeProblem is null && store is not null ? decisions : null, spanish, clock.GetUtcNow()));
         if (selected is not null) RenderDetail(selected);
     }
 
@@ -624,7 +626,7 @@ public partial class AttacksWindow : Window
             }
             detail = state.Detail;
         }
-        else detail = board.Detail(address, DateTimeOffset.UtcNow, range, labels);
+        else detail = board.Detail(address, clock.GetUtcNow(), range, labels);
 
         if (detail is null)
         {
@@ -715,7 +717,7 @@ public partial class AttacksWindow : Window
         DetailDecisions.ItemsSource = new[] { L("Reading the evidence store…", "Leyendo el almacén de evidencia…") };
         try
         {
-            var now = DateTimeOffset.UtcNow;
+            var now = clock.GetUtcNow();
             var rows = await Task.Run(() => store.Decisions(address, now - AttackDecisions.DetailSpan, now.AddMinutes(1)));
             if (closed) return;
             decisionDetail = new DecisionDetail(address, rows, false, null);
@@ -875,7 +877,7 @@ public partial class AttacksWindow : Window
             var source = showingWeb ? null : detailSource?.Address == address ? detailSource
                 : Rows.SelectedItem is AttackSource row && row.Address == address ? row : null;
             var warning = AddressActions.AllowWarning(source, AddressActions.WouldBlockInForce(storeProblem is null ? decisions : null, address,
-                DateTimeOffset.UtcNow), showingWeb ? L("the Windows logon history", "el historial de inicios de sesión de Windows") : Period(), spanish);
+                clock.GetUtcNow()), showingWeb ? L("the Windows logon history", "el historial de inicios de sesión de Windows") : Period(), spanish);
             ActionWarningText.Text = warning ?? "";
             ActionWarning.Visibility = warning is null ? Visibility.Collapsed : Visibility.Visible;
         }
@@ -996,7 +998,7 @@ public partial class AttacksWindow : Window
         {
             try
             {
-                var status = await Task.Run(() => store.Probe(DateTimeOffset.UtcNow));
+                var status = await Task.Run(() => store.Probe(clock.GetUtcNow()));
                 if (closed) return;
                 labels = status.Labels;
                 decisions = status.Decisions;

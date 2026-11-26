@@ -33,4 +33,7 @@
     <Project Path="tests/WPShield.Analyst.Tests/WPShield.Analyst.Tests.csproj" />
     <Project Path="tests/WPShield.WebEvidence.Tests/WPShield.WebEvidence.Tests.csproj" />
   </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/WPShield.Desktop.Demo/WPShield.Desktop.Demo.csproj" />
+  </Folder>
 </Solution>

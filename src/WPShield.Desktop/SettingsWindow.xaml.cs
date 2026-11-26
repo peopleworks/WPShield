@@ -56,6 +56,7 @@ public partial class SettingsWindow : Window
     private readonly bool spanish;
     private readonly ISettingsStore store;
     private readonly Func<OwnConnection> remote;
+    private readonly TimeProvider clock;
     private readonly string? initialKey;
     private SettingsSnapshot? snapshot;
     private SettingRow? shown;
@@ -78,12 +79,14 @@ public partial class SettingsWindow : Window
     {
     }
 
-    internal SettingsWindow(bool spanish, ISettingsStore store, Func<OwnConnection> remote, string? initialKey = null)
+    internal SettingsWindow(bool spanish, ISettingsStore store, Func<OwnConnection> remote, string? initialKey = null,
+        TimeProvider? clock = null)
     {
         this.spanish = spanish;
         this.store = store;
         this.remote = remote;
         this.initialKey = initialKey;
+        this.clock = clock ?? TimeProvider.System;
         InitializeComponent();
         Title = "WPShield | " + L("Settings", "Ajustes");
         SourceLabel.Text = L("Evidence store  /  settings", "Almacén de evidencia  /  ajustes");
@@ -155,8 +158,9 @@ public partial class SettingsWindow : Window
             var keep = shown?.Key ?? initialKey;
             Keys.ItemsSource = rows;
             Keys.SelectedItem = rows.FirstOrDefault(r => r.Key == keep) ?? rows.FirstOrDefault();
+            var readAt = clock.GetUtcNow();
             Footer.Text = read.Read
-                ? L($"{rows.Length} settings, read {DateTimeOffset.UtcNow:HH:mm:ss} UTC.", $"{rows.Length} ajustes, leídos a las {DateTimeOffset.UtcNow:HH:mm:ss} UTC.")
+                ? L($"{rows.Length} settings, read {readAt:HH:mm:ss} UTC.", $"{rows.Length} ajustes, leídos a las {readAt:HH:mm:ss} UTC.")
                 : L($"{rows.Length} settings this version knows. Their values were not read.",
                     $"{rows.Length} ajustes que conoce esta versión. Sus valores no se leyeron.");
             if (historyRead is not null) await historyRead;

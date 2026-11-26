@@ -14,6 +14,8 @@ must complete first.
 
 ### Added
 
+- A source-only tool generates a synthetic evidence store and renders the six desktop views in
+  English and Spanish at a fixed size and DPI. The README and landing page use those captures.
 - Host facts refined after the first real `wpshield host` run (ADR 0013, as built), all read-only and bounded:
   - `listening_ports` names, for each port open to any address, the enabled allow rules that open it (at most five, a
     program rule on any port marked as such) or why no rule was needed; `wpshield host ports` prints them under each red

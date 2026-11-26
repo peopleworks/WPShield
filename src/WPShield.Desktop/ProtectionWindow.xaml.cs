@@ -36,6 +36,7 @@ public partial class ProtectionWindow : Window
     private static readonly Brush Grey = Frozen("#A9B8C0");
 
     private readonly bool spanish;
+    private readonly TimeProvider clock;
     private readonly IProtectionStore? store;
     private readonly Func<ServiceReading> service;
     private readonly Action? openAttacks;
@@ -57,13 +58,14 @@ public partial class ProtectionWindow : Window
     }
 
     internal ProtectionWindow(bool spanish, IProtectionStore? store, Func<ServiceReading> service, Action? openAttacks = null,
-        Action? openSettings = null)
+        Action? openSettings = null, TimeProvider? clock = null)
     {
         this.spanish = spanish;
         this.store = store;
         this.service = service;
         this.openAttacks = openAttacks;
         this.openSettings = openSettings;
+        this.clock = clock ?? TimeProvider.System;
         InitializeComponent();
         Title = "WPShield | " + L("Protection", "Protección");
         SourceLabel.Text = L("Protection  /  this host", "Protección  /  este servidor");
@@ -121,7 +123,7 @@ public partial class ProtectionWindow : Window
         if (closed) return;
         RefreshButton.IsEnabled = false;
         if (readAt is null) Footer.Text = L("Reading the evidence store…", "Leyendo el almacén de evidencia…");
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var asked = Task.Run(ReadService);
         ProtectionRead? next = null;
         EvidenceProblem? failed = null;
@@ -177,7 +179,7 @@ public partial class ProtectionWindow : Window
             RenderReading();
             return;
         }
-        var now = DateTimeOffset.UtcNow;
+        var now = clock.GetUtcNow();
         var collector = ProtectionStatus.Collector(read);
         Paint(ProtectionStatus.CollectorLine(collector, spanish), CollectorText, CollectorDetail, CollectorDot);
         Paint(ProtectionStatus.ServiceLine(serviceRead, collector, spanish), ServiceText, ServiceDetail, ServiceDot);

@@ -354,9 +354,10 @@ must not contradict that, because a download is read by more people than a warni
   referenced through `<picture>` with `prefers-color-scheme`. Never update one variant without the
   other. A single-variant edit is invisible in review and leaves half the readers looking at a figure
   that contradicts the text.
-- The synthetic Attacks screenshots (`docs/assets/attacks-en.png` and `docs/assets/attacks-es.png`)
-  are exempt from the theme pair. They show the desktop in its native light palette because this view
-  has no dark theme. The English capture also serves as the landing page’s social preview.
+- **Desktop screenshots** use synthetic evidence and the desktop's native light palette. Regenerate
+  the English and Spanish captures in `docs/assets/screenshots/` with the
+  [screenshot command](docs/en/operator-reference.md#regenerate-desktop-screenshots).
+  The English command center capture also serves as the landing page's social preview.
 - Alt text states the figure's argument in a full sentence, not its title. A figure whose argument
   only exists in the pixels is unavailable to a screen reader and to every renderer that is not
   GitHub.

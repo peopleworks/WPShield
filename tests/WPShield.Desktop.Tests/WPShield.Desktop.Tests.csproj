@@ -9,5 +9,6 @@
     <PackageReference Include="xunit" />
     <PackageReference Include="xunit.runner.visualstudio" PrivateAssets="all" />
     <ProjectReference Include="../../src/WPShield.Desktop/WPShield.Desktop.csproj" />
+    <ProjectReference Include="../../tools/WPShield.Desktop.Demo/WPShield.Desktop.Demo.csproj" />
   </ItemGroup>
 </Project>

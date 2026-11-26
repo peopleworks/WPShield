@@ -5,15 +5,28 @@ WPShield (Windows Power Shield) watches IIS and WordPress sites on Windows Serve
 > [!IMPORTANT]
 > **Research preview. WPShield is not approved for production traffic.** Keep the gateway on loopback during M1 and M2 and leave public IIS bindings in place.
 
-[Attacks on the host](#attacks-on-the-host) · [Requests to the sites](#requests-to-the-sites) · [Ask about it](#ask-about-it) · [Español](docs/es/)
+[Command center](#command-center) · [Attacks on the host](#attacks-on-the-host) · [Requests to the sites](#requests-to-the-sites) · [Ask about it](#ask-about-it) · [Español](docs/es/)
+
+## Command center
+
+The desktop opens on the **Command center**, with collector coverage, logon and IIS evidence,
+health, posture and firewall exposure on one screen. The captures below use a synthetic evidence
+store. [Desktop guide](docs/en/operator-reference.md#desktop-command-center) · [Regenerate the captures](docs/en/operator-reference.md#regenerate-desktop-screenshots)
+
+![The command center highlights an IIS PHP observation and an open SMB port while showing the collector, health and posture readings beside them.](docs/assets/screenshots/command-center-en.png)
 
 ## Attacks on the host
 
 The desktop’s **Attacks** view shows failed RDP, SMB and other network logons from the last 24 hours and updates live. The **7 d** and **30 d** views use the evidence store. Address labels help identify known sources in the desktop and in `wpshield attacks`. [Attacks guide](docs/en/network-sensor-design.md#attacks)
 
-![The Attacks view charts synthetic failed logons over time and groups them by source address, with an operator label beside the matching addresses.](docs/assets/attacks-en.png)
+![The Attacks view groups failed logons by source and network, with labels and would-block decisions beside the matching addresses.](docs/assets/screenshots/attacks-en.png)
 
 ## Requests to the sites
+
+The desktop’s **Web** tab shows which IIS logs were read, groups findings by address and highlights
+`WEB-OBS-001`, a PHP response outside WordPress entry points. [Web tab guide](docs/en/operator-reference.md#desktop-web-tab)
+
+![The Web tab shows an unreadable IIS site above the timeline and highlights a recorded PHP observation in red.](docs/assets/screenshots/web-en.png)
 
 In the lab, the gateway sits in front of IIS and runs in **Monitor** by default. It records findings for executable uploads, `web.config` and suspicious request paths. [Gateway reference](docs/en/gateway-reference.md)
 
@@ -21,6 +34,17 @@ In the lab, the gateway sits in front of IIS and runs in **Monitor** by default.
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/site-requests-dark.svg">
   <img src="docs/assets/site-requests-light.svg" alt="In Monitor mode, the gateway forwards the request to its assigned IIS site and records the upload rule that fired.">
 </picture>
+
+<details>
+<summary>Protection, Settings and Audit references</summary>
+
+![Protection shows the collector and its active would-block decisions while WPShield is in Monitor mode.](docs/assets/screenshots/protection-en.png)
+
+![Settings shows the demo allow-list, its audit history and the controls that require a reason before saving.](docs/assets/screenshots/settings-en.png)
+
+![Audit references shows the coverage of a synthetic audit and previews the JSON for the selected record.](docs/assets/screenshots/audit-references-en.png)
+
+</details>
 
 ## Ask about it
 
