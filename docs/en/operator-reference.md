@@ -73,6 +73,37 @@ Select an address to see the stored time, site, method, normalized path, status 
 **Label…** and **Allow…** use the same elevated and audited settings editor as **Attacks**.
 Web evidence is for review only. It produces no decisions or blocks.
 
+The address table opens with the busiest address first: most requests, then most findings, then by
+address.
+
+### Desktop tables: sorting and CSV export
+
+Every table in the desktop sorts by any column. Click a header, and click it again to reverse the
+order. Addresses and networks sort as numbers, so `203.0.113.7` comes before `203.0.113.20` and IPv4
+before IPv6.
+
+A refresh keeps your sort, the header arrow, the selected row and the scroll position. This applies
+to a **Live** tick, **Refresh**, a new range and a reload after "not read". The tables involved are
+**Attacks**, **Web**, **Protection**, **Local ports**, **Port traffic** and the history in
+**Settings**.
+
+Right-click a table and choose **Export CSV…** to save exactly what it shows: the visible columns,
+the rows in their current sort, and the headers in the window's language. The same applies to the
+**Audit references** list. A save dialog opens in **Documents** with a name such as
+`wpshield-web-2026-11-26-1830.csv`. Nothing but the file you choose is written.
+
+The file is UTF-8 with a byte order mark, so Excel reads accents. Fields are quoted per RFC 4180 and
+lines end in CRLF. If Excel puts everything in one column, which happens with a semicolon list
+separator, open the file through **Data → From Text/CSV**.
+
+Numbers, times (UTC, as `yyyy-MM-dd HH:mm:ss`) and shares (as fractions, `0.93`) are written as
+values. Every text cell is treated as attacker-chosen, because many are: paths, attempted account
+names, user agents and labels. Each text cell is cleaned like the window cleans it, with control and
+format characters replaced and the length bounded. It also gets a leading `'` when, after leading
+spaces, it starts with `=`, `+`, `-`, `@`, a tab or a carriage return, or their full-width forms. A
+spreadsheet then reads `=HYPERLINK(...)` or `+cmd|...` as text, never as a formula. The choice
+follows the column's type, not the value: a text column holding `-2+3` is still text.
+
 ## Project status
 
 | Capability | Status | Notes |
@@ -121,7 +152,7 @@ dotnet build WPShield.slnx --configuration Release --no-restore
 dotnet test WPShield.slnx --configuration Release --no-build
 ```
 
-The suite is 2,962 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 747 for the CLI, 262 for the desktop monitor, 492 for the gateway, 58 for the network sensor, 14 for the network filter, 104 for the security monitor, 243 for the evidence store, 67 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine. The gateway suite includes timeout and cancellation scenarios.
+The suite is 2,990 tests across fourteen projects — 251 for the abstractions, 90 for the core, 233 for the Windows rules, 327 for the WordPress rules, 747 for the CLI, 290 for the desktop monitor, 492 for the gateway, 58 for the network sensor, 14 for the network filter, 104 for the security monitor, 243 for the evidence store, 67 for the IIS log sensor, 69 for the analyst and 5 for integration. Runtime depends on the machine. The gateway suite includes timeout and cancellation scenarios.
 
 ### Build the release to carry to the server
 

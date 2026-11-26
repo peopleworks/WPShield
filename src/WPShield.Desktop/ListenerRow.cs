@@ -7,6 +7,9 @@ internal sealed record ListenerRow(string Protocol, string Address, int Port, st
 {
     internal (string, string, int) Key => (Protocol, Address, Port);
 
+    /// <summary>What the local-address column sorts by: the address as a number (<see cref="AddressOrder"/>).</summary>
+    public string AddressSortKey => AddressOrder.Key(Address);
+
     internal bool Matches(string? protocol, string query) =>
         (protocol is null || protocol == Protocol) &&
         (query.Length == 0 || Address.Contains(query, StringComparison.OrdinalIgnoreCase) ||

@@ -29,6 +29,12 @@ internal sealed record AttackSource(string Address, int Attempts, DateTimeOffset
     int? Accounts, string TopAccounts, double UnknownShare, string LogonTypes, string Network, int Neighbors, string Label = "",
     string Decision = "", int UnknownAttempts = 0)
 {
+    /// <summary>What the address column sorts by: the address as a number (<see cref="AddressOrder"/>).</summary>
+    public string AddressSortKey => AddressOrder.Key(Address);
+
+    /// <summary>What the network column sorts by.</summary>
+    public string NetworkSortKey => AddressOrder.Key(Network);
+
     internal bool Matches(string query) => query.Length == 0 ||
         Address.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         TopAccounts.Contains(query, StringComparison.OrdinalIgnoreCase) ||

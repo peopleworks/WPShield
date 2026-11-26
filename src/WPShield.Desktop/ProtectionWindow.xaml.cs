@@ -98,6 +98,7 @@ public partial class ProtectionWindow : Window
         string[] headers = [L("Target", "Destino"), L("Label", "Etiqueta"), L("Rule", "Regla"), L("Action", "Acción"),
             L("Reason", "Motivo"), L("Since (UTC)", "Desde (UTC)"), L("Until (UTC)", "Hasta (UTC)")];
         for (var i = 0; i < headers.Length; i++) Rows.Columns[i].Header = headers[i];
+        GridExport.Attach(Rows, "protection", spanish);
         var planned = ProtectionStatus.Planned(spanish);
         (SqlText.Text, SqlStatus.Text, SqlChip.ToolTip) = (planned[0].Name, planned[0].Status, planned[0].Tooltip);
         (GatewayText.Text, GatewayStatus.Text, GatewayChip.ToolTip) = (planned[1].Name, planned[1].Status, planned[1].Tooltip);
@@ -209,7 +210,7 @@ public partial class ProtectionWindow : Window
         var query = Search.Text.Trim();
         var all = ProtectionStatus.Rows(read, tab, "", spanish, now);
         var rows = query.Length == 0 ? all : ProtectionStatus.Rows(read, tab, query, spanish, now);
-        Rows.ItemsSource = rows;
+        GridRefresh.Replace(Rows, rows, RowKey);
         Empty.Text = ProtectionStatus.Empty(read, tab, searching: all.Count > 0, spanish);
         Empty.Visibility = rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
         Footer.Text = FooterText(rows.Count, all.Count);
@@ -236,11 +237,14 @@ public partial class ProtectionWindow : Window
         TabInForce.Content = ProtectionStatus.TabTitle(DecisionTab.InForce, "—", spanish);
         TabDay.Content = ProtectionStatus.TabTitle(DecisionTab.Day, "—", spanish);
         TabMonth.Content = ProtectionStatus.TabTitle(DecisionTab.Month, "—", spanish);
-        Rows.ItemsSource = Array.Empty<ProtectionRow>();
+        GridRefresh.Replace(Rows, Array.Empty<ProtectionRow>(), RowKey);
         Empty.Text = L("Reading the evidence store…", "Leyendo el almacén de evidencia…");
         Empty.Visibility = Visibility.Visible;
         Footer.Text = Empty.Text;
     }
+
+    /// <summary>A decision row is the same row across refreshes when its target, rule, action and start match.</summary>
+    private static object? RowKey(object row) => row is ProtectionRow r ? (r.Target, r.Rule, r.Action, r.Since) : null;
 
     private string FooterText(int shown, int listed)
     {

@@ -112,6 +112,7 @@ public partial class SettingsWindow : Window
         string[] headers = [L("When (UTC)", "Cuándo (UTC)"), L("Who", "Quién"), L("Old value", "Valor anterior"),
             L("New value", "Valor nuevo"), L("Reason", "Motivo")];
         for (var i = 0; i < headers.Length; i++) HistoryRows.Columns[i].Header = headers[i];
+        GridExport.Attach(HistoryRows, "settings-history", spanish);
         RemoveText = L("Remove this row", "Quitar esta fila");
         ShowNothingSelected();
     }
@@ -444,9 +445,12 @@ public partial class SettingsWindow : Window
         var shown = string.Join(", ", connection.Peers.Take(10).Select(p => DisplayText.Clean(p, 64)));
         return connection.Peers.Count > 10 ? shown + L($" and {connection.Peers.Count - 10} more", $" y {connection.Peers.Count - 10} más") : shown;
     }
+    /// <summary>A history row is the same row across reloads when its time, author and reason match.</summary>
+    private static object? HistoryKey(object row) => row is SettingHistoryRow r ? (r.When, r.Who, r.Reason) : null;
+
     private async Task LoadHistoryAsync(SettingRow row)
     {
-        HistoryRows.ItemsSource = Array.Empty<SettingHistoryRow>();
+        GridRefresh.Replace(HistoryRows, Array.Empty<SettingHistoryRow>(), HistoryKey);
         if (snapshot is not { Read: true })
         {
             HistoryEmpty.Text = L("The history was not read either.", "Tampoco se leyó el historial.");
@@ -463,7 +467,7 @@ public partial class SettingsWindow : Window
                 c.OldValue is null ? L("default", "por defecto") : Shown(c.OldValue),
                 c.NewValue is null ? L("default (reset)", "por defecto (restablecido)") : Shown(c.NewValue),
                 DisplayText.Clean(c.Reason, 200))).ToArray();
-            HistoryRows.ItemsSource = rows;
+            GridRefresh.Replace(HistoryRows, rows, HistoryKey);
             HistoryEmpty.Text = rows.Length == 0 ? L("Never changed in this store.", "Nunca se cambió en este almacén.") : "";
         }
         catch (Exception ex) when (ex is not OutOfMemoryException)

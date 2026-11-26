@@ -117,12 +117,12 @@
       </DockPanel>
       <Border Grid.Row="3" BorderBrush="#CFDCE2" BorderThickness="1" Background="White" CornerRadius="6" ClipToBounds="True">
         <Grid>
-          <DataGrid x:Name="Rows" AutoGenerateColumns="False" IsReadOnly="True" CanUserReorderColumns="False" CanUserSortColumns="False"
+          <DataGrid x:Name="Rows" AutoGenerateColumns="False" IsReadOnly="True" CanUserReorderColumns="False"
                     SelectionMode="Single" HeadersVisibility="Column" GridLinesVisibility="Horizontal" HorizontalGridLinesBrush="#E6ECEF"
                     BorderThickness="0" Background="White" AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True">
             <DataGrid.Columns>
               <DataGridTextColumn Binding="{Binding Protocol}" Width="104" ElementStyle="{StaticResource CellText}"/>
-              <DataGridTextColumn Binding="{Binding Address}" Width="2*" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Address}" SortMemberPath="AddressSortKey" Width="2*" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Port}" Width="72" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Family}" Width="68" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Hint}" Width="*" ElementStyle="{StaticResource CellText}"/>

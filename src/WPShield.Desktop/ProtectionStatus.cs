@@ -116,6 +116,9 @@ internal enum DecisionTab { InForce, Day, Month }
 /// <summary>One row of the decisions table, cleaned for display.</summary>
 internal sealed record ProtectionRow(string Target, string Label, string Rule, string Action, string Reason, string Since, string Until)
 {
+    /// <summary>What the target column sorts by: an address or a network as a number (<see cref="AddressOrder"/>).</summary>
+    public string TargetSortKey => AddressOrder.Key(Target);
+
     internal bool Matches(string query) => query.Length == 0 ||
         Target.Contains(query, StringComparison.OrdinalIgnoreCase) ||
         Label.Contains(query, StringComparison.OrdinalIgnoreCase) ||
