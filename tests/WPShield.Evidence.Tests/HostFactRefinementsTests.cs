@@ -94,8 +94,8 @@ public sealed class HostFactRefinementsTests
     [Fact]
     public void TheDominantEventIsTheMostFrequentPairOfTheNewestRecords()
     {
-        var records = Enumerable.Repeat((7036, (string?)"Service Control Manager"), 4986).Concat(Enumerable.Repeat((1000, (string?)"Synthetic App"), 30))
-            .Concat(Enumerable.Repeat((7036, (string?)"Service Control Manager"), 900)).ToArray();
+        (int, string?) control = (7036, "Service Control Manager"), app = (1000, "Synthetic App");
+        var records = Enumerable.Repeat(control, 4986).Concat(Enumerable.Repeat(app, 30)).Concat(Enumerable.Repeat(control, 900)).ToArray();
 
         var dominant = HostLogHorizon.Dominant(records);
 
@@ -159,7 +159,9 @@ public sealed class HostFactRefinementsTests
     public void TheNewestDatedHotfixWinsAndAnUndatedListStillNamesOne()
     {
         Assert.Equal("KB5090002", Hotfixes.Newest([new("KB5090001", "10/14/2026"), new("KB5090002", "11/2/2026"), new("KB5090003", "")])!.Value.Id);
-        Assert.Equal(("KB5090009", (DateTimeOffset?)null), Hotfixes.Newest([new("KB5090008", null), new("KB5090009", "garbage")])!.Value);
+        var undated = Hotfixes.Newest([new("KB5090008", null), new("KB5090009", "garbage")])!.Value;
+        Assert.Equal("KB5090009", undated.Id);
+        Assert.Null(undated.InstalledOn);
         Assert.Null(Hotfixes.Newest([]));
         Assert.DoesNotContain('\u001b', Hotfixes.Newest([new("KB\u001b[31m5090001", "11/2/2026")])!.Value.Id!);
     }
@@ -186,7 +188,7 @@ public sealed class HostFactRefinementsTests
     public void StateChangesCountForAnHourAndFailuresForADayByDisplayName()
     {
         var events = new List<ServiceControlEvent>();
-        for (var i = 0; i < 12; i++) events.Add(new(Now.AddMinutes(-i * 4), ServiceStates.StateChange, "Synthetic Worker"));
+        for (var i = 0; i < 12; i++) events.Add(new(Now.AddMinutes(-i * 4.0), ServiceStates.StateChange, "Synthetic Worker"));
         events.Add(new(Now.AddHours(-2), ServiceStates.StateChange, "Synthetic Worker"));
         events.Add(new(Now.AddHours(-3), 7031, "synthetic worker"));
         events.Add(new(Now.AddHours(-30), 7034, "Synthetic Worker"));

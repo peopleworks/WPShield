@@ -143,9 +143,8 @@ internal sealed class HostInventoryReader(Authenticode signatures)
         // State changes and failures from the System log, for the start-loop flags. Unreadable leaves the counts
         // unknown, which adds no flag rather than a guess.
         var serviceEvents = WindowsHostReaders.ReadServiceControlEvents(now, cancellationToken);
-        var (changes, failures) = serviceEvents is null
-            ? ((IReadOnlyDictionary<string, int>?)null, (IReadOnlyDictionary<string, int>?)null)
-            : ServiceStates.Count(serviceEvents, now);
+        IReadOnlyDictionary<string, int>? changes = null, failures = null;
+        if (serviceEvents is not null) (changes, failures) = ServiceStates.Count(serviceEvents, now);
 
         var services = new List<HostService>();
         using var root = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
