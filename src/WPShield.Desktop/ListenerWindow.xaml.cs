@@ -26,7 +26,10 @@ public partial class ListenerWindow : Window
     {
         spanish = App.Spanish();
         InitializeComponent();
-        Title = "WPShield | " + L("Local network monitor", "Monitor de red local");
+        HomeButton.Content = L("Command center", "Centro de mando");
+        ListenersButton.Content = L("Local ports", "Puertos locales");
+        Home.OpenTile = OpenCommandTile;
+        Title = "WPShield | " + HomeButton.Content;
         Heading.Text = L("Local ports", "Puertos locales");
         SourceLabel.Text = L("Network monitor  /  Windows", "Monitor de red  /  Windows");
         NavLabel.Text = L("Inventory", "Inventario");
@@ -87,20 +90,45 @@ public partial class ListenerWindow : Window
         }
     }
 
-    private async void OnLoaded(object sender, RoutedEventArgs e)
+    private void OnLoaded(object sender, RoutedEventArgs e)
     {
         // "Reopen as administrator" in the attacks, settings and protection views relaunches with
         // --attacks, --web, --settings or --protection to land there again.
         var args = Environment.GetCommandLineArgs();
         if (args.Contains("--protection")) OpenProtection(this, e);
-        if (args.Contains("--web"))
-        {
-            OpenAttacks(this, e);
-            attacksWindow?.OpenWebView();
-        }
+        if (args.Contains("--web")) ShowAttacks(web: true);
         else if (args.Contains("--attacks")) OpenAttacks(this, e);
         if (args.Contains("--settings")) OpenSettings(this, e);
+    }
+
+    private void OpenHome(object sender, RoutedEventArgs e)
+    {
+        Title = "WPShield | " + HomeButton.Content;
+        Listeners.Visibility = Protocols.Visibility = Visibility.Collapsed;
+        Home.Visibility = Visibility.Visible;
+        timer.Stop();
+    }
+
+    private async void OpenListeners(object sender, RoutedEventArgs e)
+    {
+        Title = "WPShield | " + ListenersButton.Content;
+        Home.Visibility = Visibility.Collapsed;
+        Listeners.Visibility = Protocols.Visibility = Visibility.Visible;
+        timer.IsEnabled = AutoRefresh.IsChecked == true;
         await RefreshAsync();
+    }
+
+    private void OpenCommandTile(CommandTile tile)
+    {
+        switch (tile.Section)
+        {
+            case CommandSection.Protection: OpenProtection(this, new RoutedEventArgs()); break;
+            case CommandSection.Attacks: ShowAttacks(web: false); break;
+            case CommandSection.Web: ShowAttacks(web: true); break;
+            case CommandSection.Analyst: OpenSettings(WPShield.Evidence.AnalystSettings.Enabled); break;
+            case CommandSection.Exposure: Home.ShowDetails(tile, () => OpenListeners(this, new RoutedEventArgs())); break;
+            default: Home.ShowDetails(tile); break;
+        }
     }
 
     private void OpenProtection(object sender, RoutedEventArgs e)
@@ -121,7 +149,9 @@ public partial class ListenerWindow : Window
         }
     }
 
-    private void OpenAttacks(object sender, RoutedEventArgs e)
+    private void OpenAttacks(object sender, RoutedEventArgs e) => ShowAttacks(web: false);
+
+    private void ShowAttacks(bool web)
     {
         if (attacksWindow is null)
         {
@@ -134,6 +164,8 @@ public partial class ListenerWindow : Window
             if (attacksWindow.WindowState == WindowState.Minimized) attacksWindow.WindowState = WindowState.Normal;
             attacksWindow.Activate();
         }
+        if (web) attacksWindow.OpenWebView();
+        else attacksWindow.OpenAttacksView();
     }
 
     private void OpenSettings(object sender, RoutedEventArgs e) => OpenSettings(null);
@@ -155,8 +187,10 @@ public partial class ListenerWindow : Window
         }
     }
 
-    private void OpenPortTraffic(object sender, RoutedEventArgs e)
+    private async void OpenPortTraffic(object sender, RoutedEventArgs e)
     {
+        if (latest.Count == 0) await RefreshAsync();
+        if (closed) return;
         if (portTrafficWindow is null)
         {
             portTrafficWindow = new PortTrafficWindow(spanish, () => inventory.Select(row => row.Port)) { Owner = this };

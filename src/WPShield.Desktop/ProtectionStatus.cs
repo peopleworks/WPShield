@@ -154,16 +154,21 @@ internal static class ProtectionStatus
     internal static CollectorReading Collector(ProtectionRead? read)
     {
         if (read is null) return new(CollectorState.Unread, null, []);
-        var since = read.At - EvidenceQueries.CurrentAllowance;
-        var problems = read.RecentCoverage
-            .Where(c => c.Status != "collected" && c.To >= since && c.From <= read.At)
+        return Collector(read.At, read.Active, read.RecentCoverage);
+    }
+
+    internal static CollectorReading Collector(DateTimeOffset now, ActiveDecisions active, IReadOnlyList<EvidenceCoverage> recentCoverage)
+    {
+        var since = now - EvidenceQueries.CurrentAllowance;
+        var problems = recentCoverage
+            .Where(c => c.Status != "collected" && c.To >= since && c.From <= now)
             .OrderBy(c => c.Status == "unavailable" ? 0 : 1).ThenByDescending(c => c.To)
             .Select(c => c.Reason ?? c.Status).Distinct(StringComparer.Ordinal).Take(3).ToArray();
         // "Recording" is the store's one definition, the same that decides what is in force.
-        if (read.Active.CollectorCurrent) return new(CollectorState.Recording, read.Active.CollectedUntil, problems);
+        if (active.CollectorCurrent) return new(CollectorState.Recording, active.CollectedUntil, problems);
         return problems.Length > 0
-            ? new(CollectorState.Blind, read.Active.CollectedUntil, problems)
-            : new(CollectorState.Stopped, read.Active.CollectedUntil, []);
+            ? new(CollectorState.Blind, active.CollectedUntil, problems)
+            : new(CollectorState.Stopped, active.CollectedUntil, []);
     }
 
     /// <summary>The collector's state in the header. When the store could not be read, the remedy is the banner's to give.</summary>

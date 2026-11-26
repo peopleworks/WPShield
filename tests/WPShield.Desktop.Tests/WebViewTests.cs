@@ -67,6 +67,22 @@ public sealed class WebViewTests
             return Task.CompletedTask;
         });
 
+    [Theory]
+    [InlineData(false, "Last (UTC)")]
+    [InlineData(true, "Último (UTC)")]
+    public Task TheAddressTableFitsAtTheDefaultWidthAndShowsFullHeaderTooltips(bool spanish, string last) =>
+        Verify(Seed, (window, _) =>
+        {
+            Assert.Equal(1280, window.Width);
+            window.UpdateLayout();
+            var scroll = Assert.IsType<ScrollViewer>(window.WebRows.Template.FindName("DG_ScrollViewer", window.WebRows));
+            Assert.True(scroll.ViewportWidth > 0);
+            Assert.Equal(Visibility.Collapsed, scroll.ComputedHorizontalScrollBarVisibility);
+            Assert.Equal("XML-RPC POST", Assert.IsType<TextBlock>(window.WebRows.Columns[7].Header).ToolTip);
+            Assert.Equal(last, Assert.IsType<TextBlock>(window.WebRows.Columns[^1].Header).ToolTip);
+            return Task.CompletedTask;
+        }, spanish);
+
     [Fact]
     public Task SiteFilterChangesTotalsSourcesAndCoverage() =>
         Verify(store => Seed(store, otherSiteRead: true), async (window, _) =>
