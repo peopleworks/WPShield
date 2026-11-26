@@ -21,14 +21,10 @@ internal sealed class HostInventoryReader(Authenticode signatures)
     private const int MaxTaskFolders = 500;
 
     /// <summary>
-    /// Microsoft binaries attackers run their payloads through. A service or task that runs one of these is
-    /// listed even though its binary is Microsoft's: <c>cmd /c powershell -enc ...</c> is signed by Microsoft too.
+    /// Microsoft binaries attackers run their payloads through (<see cref="WPShield.Evidence.ScriptHosts"/>). A service
+    /// or task that runs one of these is listed even though its binary is Microsoft's.
     /// </summary>
-    internal static readonly IReadOnlySet<string> ScriptHosts = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-    {
-        "cmd.exe", "powershell.exe", "pwsh.exe", "powershell_ise.exe", "mshta.exe", "wscript.exe", "cscript.exe", "rundll32.exe",
-        "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "forfiles.exe", "curl.exe"
-    };
+    internal static IReadOnlySet<string> ScriptHosts => WPShield.Evidence.ScriptHosts.Names;
 
     public HostInventoryReading Read(string kind, CancellationToken cancellationToken) => kind switch
     {
@@ -144,6 +140,13 @@ internal sealed class HostInventoryReader(Authenticode signatures)
                 "The service control manager could not be queried. Run the collector elevated.");
         }
 
+        // State changes and failures from the System log, for the start-loop flags. Unreadable leaves the counts
+        // unknown, which adds no flag rather than a guess.
+        var serviceEvents = WindowsHostReaders.ReadServiceControlEvents(now, cancellationToken);
+        var (changes, failures) = serviceEvents is null
+            ? ((IReadOnlyDictionary<string, int>?)null, (IReadOnlyDictionary<string, int>?)null)
+            : ServiceStates.Count(serviceEvents, now);
+
         var services = new List<HostService>();
         using var root = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Services");
         if (root is null)
@@ -175,16 +178,22 @@ internal sealed class HostInventoryReader(Authenticode signatures)
                 }
                 var signature = signatures.Check(executable, budget);
                 if (IsQuietMicrosoft(signature, executable, flags)) continue;
+                var displayName = HostFacts.Clean(key.GetValue("DisplayName") as string ?? name);
+                var state = states.GetValueOrDefault(name, "unknown");
+                var startMode = StartMode(key.GetValue("Start") as int?);
+                var stateFlags = ServiceStates.Flags(state, startMode,
+                    changes is null ? null : changes.GetValueOrDefault(displayName),
+                    failures is null ? null : failures.GetValueOrDefault(displayName));
                 services.Add(new HostService(
                     HostFacts.Clean(name),
-                    HostFacts.Clean(key.GetValue("DisplayName") as string ?? name),
-                    states.GetValueOrDefault(name, "unknown"),
-                    StartMode(key.GetValue("Start") as int?),
+                    displayName,
+                    state,
+                    startMode,
                     HostFacts.Clean(key.GetValue("ObjectName") as string ?? "LocalSystem"),
                     executable,
                     signature.Status,
                     signature.Signer,
-                    flags));
+                    stateFlags.Count == 0 ? flags : [.. flags, .. stateFlags]));
             }
             catch (Exception exception) when (exception is UnauthorizedAccessException or System.Security.SecurityException or IOException)
             {
@@ -333,14 +342,54 @@ internal sealed class HostInventoryReader(Authenticode signatures)
     // ---------------------------------------------------------------------------------------------
 
     /// <summary>Whether Everyone, Users, Authenticated Users or IIS_IUSRS can write the file or its folder.</summary>
+    /// <remarks>
+    /// A bare program name (<c>xcopy</c>, <c>sc.exe</c>) is found the way Windows finds it - the system folder, then
+    /// the folders of <c>PATH</c> - never in the reader's current folder, which would judge every bare name by the
+    /// folder WPShield happened to be started from. A name found nowhere is not judged.
+    /// </remarks>
     internal static bool IsUserWritable(string path)
     {
         var expanded = Environment.ExpandEnvironmentVariables(path.Trim('"'));
+        if (!Path.IsPathFullyQualified(expanded))
+        {
+            if (Resolve(expanded) is not { } resolved) return false;
+            expanded = resolved;
+        }
         var file = new FileInfo(expanded);
         if (file.Exists && Writable(file.GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier)))) return true;
         var directory = file.Directory;
         return directory is { Exists: true } &&
                Writable(directory.GetAccessControl().GetAccessRules(true, true, typeof(SecurityIdentifier)));
+    }
+
+    /// <summary>The most <c>PATH</c> folders searched for a bare program name.</summary>
+    private const int MaxPathFolders = 64;
+
+    /// <summary>
+    /// Where Windows would find a bare program name: the system folder, then each folder of <c>PATH</c>, trying the
+    /// name as given and with <c>.exe</c>. A relative path with a folder in it is not resolved: there is no folder it
+    /// is relative to that the program's caller is known to use.
+    /// </summary>
+    internal static string? Resolve(string name, string? systemFolder = null, string? pathVariable = null)
+    {
+        if (string.IsNullOrWhiteSpace(name) || name.IndexOfAny(['\\', '/', ':']) >= 0) return null;
+        var candidates = Path.HasExtension(name) ? new[] { name } : [name + ".exe", name];
+        var folders = new List<string>();
+        var system = systemFolder ?? Environment.GetFolderPath(Environment.SpecialFolder.System);
+        if (!string.IsNullOrWhiteSpace(system)) folders.Add(system);
+        foreach (var folder in (pathVariable ?? Environment.GetEnvironmentVariable("PATH") ?? "")
+                     .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Take(MaxPathFolders))
+        {
+            var expanded = Environment.ExpandEnvironmentVariables(folder.Trim('"'));
+            if (Path.IsPathFullyQualified(expanded)) folders.Add(expanded);
+        }
+        foreach (var folder in folders)
+            foreach (var candidate in candidates)
+            {
+                var full = Path.Join(folder, candidate);
+                if (File.Exists(full)) return full;
+            }
+        return null;
     }
 
     private static bool Writable(AuthorizationRuleCollection rules)

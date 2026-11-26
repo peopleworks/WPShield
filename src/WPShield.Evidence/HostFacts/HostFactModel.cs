@@ -146,6 +146,10 @@ public sealed record HostFactReading(string Fact, string? Kind, DateTimeOffset T
 
 /// <summary><c>host_health</c>: how the machine is doing. Restarts are events, counted by a query.</summary>
 /// <param name="Patch">What the operating system reports about its own patch level; <see langword="null"/> when not read.</param>
+/// <param name="Logs">
+/// How far back the System, Security and Application logs reach and what fills them; <see langword="null"/> when this
+/// snapshot did not read them. A log that reaches back only hours loses the evidence of crashes and logons.
+/// </param>
 public sealed record HostHealth(
     DateTimeOffset LastBoot,
     long UptimeSeconds,
@@ -154,7 +158,74 @@ public sealed record HostHealth(
     long? MemoryAvailableBytes,
     IReadOnlyList<HostVolume> Volumes,
     long? StoreBytes,
-    HostPatchLevel? Patch = null);
+    HostPatchLevel? Patch = null,
+    IReadOnlyList<HostLogHorizon>? Logs = null);
+
+/// <summary>
+/// How far back one event log reaches, and what fills it. On the first real host a service stuck in a start loop
+/// wrote 7036 records until the 20 MB System log reached back only hours, and a bugcheck record was overwritten
+/// before anyone read it: the horizon is what tells "no crash" from "no record of the crash".
+/// </summary>
+/// <param name="Log"><c>System</c>, <c>Security</c> or <c>Application</c>.</param>
+/// <param name="Readable">Whether the log could be read. When it could not, every value below is unknown, never zero.</param>
+/// <param name="MaximumBytes">The log's configured maximum size.</param>
+/// <param name="OldestRecordAt">The oldest record the log still holds: its horizon.</param>
+/// <param name="DominantEventId">The most frequent event ID among the newest <see cref="SampleSize"/> records.</param>
+/// <param name="DominantProvider">Its provider, cleaned and bounded. A host detail where the MCP tools are concerned.</param>
+/// <param name="DominantCount">How many of the sampled records it accounts for.</param>
+/// <param name="Sampled">How many records were sampled: <see cref="SampleSize"/>, or fewer in a smaller log.</param>
+/// <param name="Problem">Why the log was not read (a fixed code), when it was not.</param>
+public sealed record HostLogHorizon(
+    string Log,
+    bool Readable,
+    long? MaximumBytes,
+    long? RecordCount,
+    DateTimeOffset? OldestRecordAt,
+    int? DominantEventId,
+    string? DominantProvider,
+    int? DominantCount,
+    int? Sampled,
+    string? Problem = null)
+{
+    /// <summary>How many of the newest records are sampled for the dominant event.</summary>
+    public const int SampleSize = 5000;
+
+    /// <summary>A horizon shorter than this is called out: a week is the least a crash or logon investigation needs.</summary>
+    public static readonly TimeSpan ShortHorizon = TimeSpan.FromDays(7);
+
+    /// <summary>The logs read, in the order every surface shows them.</summary>
+    public static readonly IReadOnlyList<string> Names = ["System", "Security", "Application"];
+
+    /// <summary>The dominant event's share of the sample, from 0 to 1, or <see langword="null"/> when nothing was sampled.</summary>
+    public double? DominantShare => DominantCount is { } count && Sampled is > 0 ? count / (double)Sampled.Value : null;
+
+    /// <summary>How far back the log reaches at <paramref name="now"/>, or <see langword="null"/> when unknown.</summary>
+    public TimeSpan? Reach(DateTimeOffset now) => OldestRecordAt is { } oldest ? now - oldest : null;
+
+    /// <summary>Whether the log reaches back less than <see cref="ShortHorizon"/>; <see langword="null"/> when unknown.</summary>
+    public bool? IsShort(DateTimeOffset now) => Reach(now) is { } reach ? reach < ShortHorizon : null;
+
+    /// <summary>
+    /// The most frequent (event ID, provider) pair among <paramref name="records"/>, at most <see cref="SampleSize"/>
+    /// of them, newest first; <see langword="null"/> when there were none.
+    /// </summary>
+    public static (int EventId, string? Provider, int Count, int Sampled)? Dominant(IEnumerable<(int EventId, string? Provider)> records)
+    {
+        ArgumentNullException.ThrowIfNull(records);
+        var counts = new Dictionary<(int, string), int>();
+        var sampled = 0;
+        foreach (var (id, provider) in records.Take(SampleSize))
+        {
+            sampled++;
+            var key = (id, provider ?? "");
+            counts[key] = counts.GetValueOrDefault(key) + 1;
+        }
+        if (sampled == 0) return null;
+        var top = counts.OrderByDescending(pair => pair.Value).ThenBy(pair => pair.Key.Item1)
+            .ThenBy(pair => pair.Key.Item2, StringComparer.Ordinal).First();
+        return (top.Key.Item1, top.Key.Item2.Length == 0 ? null : EvidenceText.Clean(top.Key.Item2, HostFacts.MaxNameLength), top.Value, sampled);
+    }
+}
 
 /// <summary>
 /// The patch level as Windows reports it, in three places that can disagree: the registry's build, the kernel
@@ -173,6 +244,15 @@ public sealed record HostHealth(
 /// <param name="LastCumulativeUpdateAt">When that install succeeded.</param>
 /// <param name="FailedInstalls30Days">Install failures (event 20) in the last 30 days.</param>
 /// <param name="UpdateLogStartsAt">The oldest record the update log still holds: "not found" means "not since then".</param>
+/// <param name="LastHotfixId">
+/// The newest installed hotfix from <c>Win32_QuickFixEngineering</c>, read when the update log names no cumulative
+/// update (updates installed from a package or by a management tool write no event 19). Cleaned and bounded.
+/// </param>
+/// <param name="LastHotfixInstalledOn">When that hotfix was installed, as Windows records it (a date, no time of day).</param>
+/// <param name="HotfixListRead">
+/// Whether the hotfix list was read: <see langword="null"/> when it was not needed (the update log named a cumulative
+/// update), <see langword="false"/> when it could not be read - unknown, never "no hotfix".
+/// </param>
 public sealed record HostPatchLevel(
     string? CurrentBuild,
     int? Ubr,
@@ -182,9 +262,18 @@ public sealed record HostPatchLevel(
     string? LastCumulativeUpdate,
     DateTimeOffset? LastCumulativeUpdateAt,
     int? FailedInstalls30Days,
-    DateTimeOffset? UpdateLogStartsAt = null)
+    DateTimeOffset? UpdateLogStartsAt = null,
+    string? LastHotfixId = null,
+    DateTimeOffset? LastHotfixInstalledOn = null,
+    bool? HotfixListRead = null)
 {
     public const int MaxTitleLength = 200;
+
+    /// <summary>Where <see cref="LastHotfixId"/> comes from, as every surface labels it.</summary>
+    public const string HotfixSource = "Win32_QuickFixEngineering";
+
+    /// <summary>The longest hotfix ID kept.</summary>
+    public const int MaxHotfixIdLength = 32;
 
     /// <summary>The window of <see cref="FailedInstalls30Days"/>.</summary>
     public static readonly TimeSpan FailureWindow = TimeSpan.FromDays(30);
@@ -202,15 +291,77 @@ public sealed record HostPatchLevel(
     /// Only the revision is compared: an enablement package raises <c>CurrentBuild</c> (26100 to 26200) while the
     /// kernel file keeps the base build.
     /// </summary>
-    public bool? KernelDiffersFromRegistry
+    public bool? KernelDiffersFromRegistry => KernelRevisionDelta is { } delta ? delta != 0 : null;
+
+    /// <summary>
+    /// The kernel file's revision minus the registry's <c>UBR</c>, or <see langword="null"/> when either is unknown. A
+    /// small negative value is normal: not every cumulative update replaces <c>ntoskrnl.exe</c>, so the kernel file
+    /// keeps the revision of the last update that did (UBR 5761 with a 5756 kernel file, on the first real host).
+    /// </summary>
+    public int? KernelRevisionDelta
     {
         get
         {
             if (Ubr is not { } ubr || KernelVersion is not { } kernel) return null;
             var dot = kernel.LastIndexOf('.');
             return dot < 0 || !int.TryParse(kernel.AsSpan(dot + 1), System.Globalization.NumberStyles.None,
-                System.Globalization.CultureInfo.InvariantCulture, out var revision) ? null : revision != ubr;
+                System.Globalization.CultureInfo.InvariantCulture, out var revision) ? null : revision - ubr;
         }
+    }
+}
+
+/// <summary>One row of <c>Win32_QuickFixEngineering</c>, reduced to what the patch level reads.</summary>
+/// <param name="InstalledOn">The text Windows records, which is a date in one of a few shapes, or nothing.</param>
+public sealed record HotfixRecord(string? HotfixId, string? InstalledOn);
+
+/// <summary>Picks the newest installed hotfix out of <c>Win32_QuickFixEngineering</c> rows.</summary>
+public static class Hotfixes
+{
+    /// <summary>The most rows read.</summary>
+    public const int MaxRows = 2000;
+
+    /// <summary>
+    /// The newest hotfix with a date, or - when no row has a readable date - the last one listed, with no date;
+    /// <see langword="null"/> when there are no rows.
+    /// </summary>
+    public static (string? Id, DateTimeOffset? InstalledOn)? Newest(IEnumerable<HotfixRecord> rows)
+    {
+        ArgumentNullException.ThrowIfNull(rows);
+        (string? Id, DateTimeOffset? InstalledOn)? newest = null;
+        string? undated = null;
+        var any = false;
+        foreach (var row in rows.Take(MaxRows))
+        {
+            any = true;
+            var id = string.IsNullOrWhiteSpace(row.HotfixId) ? null : EvidenceText.Clean(row.HotfixId.Trim(), HostPatchLevel.MaxHotfixIdLength);
+            if (ParseInstalledOn(row.InstalledOn) is { } at)
+            {
+                if (newest is null || at > newest.Value.InstalledOn) newest = (id, at);
+            }
+            else if (id is not null) undated = id;
+        }
+        if (newest is not null) return newest;
+        return any ? (undated, null) : null;
+    }
+
+    /// <summary>
+    /// <c>InstalledOn</c> as Windows writes it: <c>M/d/yyyy</c> on most systems, <c>yyyyMMdd</c>, or a 16-digit
+    /// hexadecimal FILETIME on some older entries. Anything else is unknown, never a guess.
+    /// </summary>
+    public static DateTimeOffset? ParseInstalledOn(string? text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return null;
+        var value = text.Trim();
+        var invariant = System.Globalization.CultureInfo.InvariantCulture;
+        if (value.Length == 16 && long.TryParse(value, System.Globalization.NumberStyles.AllowHexSpecifier, invariant, out var filetime) && filetime > 0)
+        {
+            try { return new DateTimeOffset(DateTime.FromFileTimeUtc(filetime), TimeSpan.Zero); }
+            catch (ArgumentOutOfRangeException) { return null; }
+        }
+        return DateTime.TryParseExact(value, ["M/d/yyyy", "MM/dd/yyyy", "yyyyMMdd", "yyyy-MM-dd"], invariant,
+            System.Globalization.DateTimeStyles.AssumeUniversal | System.Globalization.DateTimeStyles.AdjustToUniversal, out var date)
+            ? new DateTimeOffset(DateTime.SpecifyKind(date, DateTimeKind.Utc), TimeSpan.Zero)
+            : null;
     }
 }
 
@@ -287,8 +438,13 @@ public sealed record HostPorts(IReadOnlyList<HostListener> Listeners, bool Firew
 /// <param name="Binding"><c>any</c>, <c>specific</c> or <c>loopback</c>.</param>
 /// <param name="Process">The owning executable's file name, or <see langword="null"/> when it could not be read.</param>
 /// <param name="ProcessPath">Its full path; a host detail.</param>
+/// <param name="OpenedBy">
+/// For a listener judged open to any address, the display names of the enabled inbound allow rules that make it so,
+/// at most <see cref="ExposureVerdicts.MaxOpenedBy"/> - the rule an operator restricts - or why no rule was needed.
+/// <see langword="null"/> for any other verdict, and in snapshots taken before rules were named.
+/// </param>
 public sealed record HostListener(string Protocol, int Port, string Binding, string? Address, string? Process, string? ProcessPath,
-    string Verdict, bool Red);
+    string Verdict, bool Red, IReadOnlyList<string>? OpenedBy = null);
 
 /// <summary><c>rdp_sessions</c>.</summary>
 public sealed record HostSessions(IReadOnlyList<HostSession> Current, IReadOnlyList<HostRdpLogon> Recent);

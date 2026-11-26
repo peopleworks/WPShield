@@ -7,6 +7,7 @@ namespace WPShield.NetworkSensor;
 public sealed class RateLimiter
 {
     private readonly int _maxTokensPerSecond;
+    private readonly TimeProvider _time;
     private readonly object _lock = new();
     private double _tokens;
     private DateTimeOffset _lastRefill;
@@ -15,10 +16,21 @@ public sealed class RateLimiter
     /// Creates a rate limiter with the given maximum tokens per second.
     /// </summary>
     public RateLimiter(int maxTokensPerSecond)
+        : this(maxTokensPerSecond, TimeProvider.System)
     {
+    }
+
+    /// <summary>
+    /// Creates a rate limiter that reads the time from <paramref name="time"/>, so a test can move the clock instead
+    /// of sleeping on it.
+    /// </summary>
+    public RateLimiter(int maxTokensPerSecond, TimeProvider time)
+    {
+        ArgumentNullException.ThrowIfNull(time);
         _maxTokensPerSecond = maxTokensPerSecond;
+        _time = time;
         _tokens = maxTokensPerSecond;
-        _lastRefill = DateTimeOffset.UtcNow;
+        _lastRefill = time.GetUtcNow();
     }
 
     /// <summary>
@@ -43,7 +55,7 @@ public sealed class RateLimiter
 
     private void Refill()
     {
-        var now = DateTimeOffset.UtcNow;
+        var now = _time.GetUtcNow();
         var elapsed = (now - _lastRefill).TotalSeconds;
 
         if (elapsed <= 0.0)

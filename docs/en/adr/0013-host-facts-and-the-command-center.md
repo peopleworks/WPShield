@@ -392,6 +392,50 @@ above in these points:
   `network-service`, `virtual-account`, `pool-identity`, `named-account`) so the kind shows while the
   name stays behind the gate; and the signer of a signature is always returned, as untrusted text. The
   "no MCP tools yet" bullet above applied to phase 1.
+- **Refinements from the first real run (2026-11-26).** `wpshield host` on the incident host answered
+  most questions and raised six more, all answered read-only and bounded:
+  - **The rules behind an open port.** For a listener judged `open-to-any`, the snapshot keeps the
+    display names of the enabled inbound allow rules that admit any address, at most five, cleaned and
+    bounded at 120 characters - or, when no rule is needed, why (a profile in force with its firewall
+    off, or a default inbound action of allow). A rule on any port is marked `[any port]`, and one scoped
+    to a program `[program rule, any port]`: on the real host such a rule for a remote-control program
+    admitted every address on its port and on a second port the program opened, while the port rule the
+    operator had restricted by address looked like the whole story. One allow rule is enough in the
+    Windows Firewall, so the remedy names every rule. `wpshield host ports` prints them under each red
+    port, and with `--all` under every port open to any address. In MCP they are host details:
+    `withheld` without `mcp.host_details`, untrusted text with it. Two scopes the verdict now honours,
+    because a rule read through the firewall's COM interface carries them: a per-user rule
+    (`LocalUserOwner`, the kind store apps install, whose program that interface does not report) and an
+    app-container rule (`LocalAppPackageId`) do not admit traffic to a port the kernel (`System`) owns, or,
+    for the second, to a program outside a `WindowsApps` folder. An owner nobody could read still keeps
+    every rule: the open direction.
+  - **How far back the logs reach.** `host_health` records, for the System, Security and Application
+    logs, the maximum size, the record count, the time of the oldest record, and the most frequent event
+    ID and provider among the newest 5,000 records with its share. On the real host a service in a
+    start loop filled the 20 MB System log in hours and pushed a bugcheck record out before anyone read
+    it. A log shorter than a week is called out, with the manual remedy (`wevtutil sl <log> /ms:...`).
+    An unreadable log (the Security log, unelevated) is unknown with a fixed reason. The provider is a
+    host detail in MCP.
+  - **The patch level's fallback.** When the Windows Update log names no cumulative update - updates
+    installed from a package or by a management tool write no event 19, which is what the real host
+    showed - the newest installed hotfix is read from `Win32_QuickFixEngineering` (its ID and install
+    date, labelled with that source); an unreadable list is unknown, never "no hotfix". A kernel file
+    revision a little below the `UBR` is stated as normal, because not every update replaces
+    `ntoskrnl.exe` (the real host: `UBR` 5761, kernel file 5756); a revision above it is stated as a fact.
+  - **Services stuck in a start loop.** The services inventory adds `not-running` (set to start
+    automatically and start-pending, paused, or stopped after a failure event - 7000, 7009, 7011, 7023,
+    7024, 7031, 7034 - in 24 hours), `start-pending`, and `flapping` (ten or more state changes, event
+    7036, in the last hour), from at most 5,000 System records of the last 24 hours matched by display
+    name. On the real host five services sat in start-pending and wrote 4,986 of the newest 5,000
+    System records.
+  - **Microsoft task noise.** `wpshield host inventory tasks` folds the tasks under `\Microsoft\Windows\`,
+    signed by Microsoft, that are listed only because they run a script host and carry no flag but
+    `has-arguments`, into one counted line; `--all` shows them. They are still read and stored by the
+    stricter rule of the first bullet: only the default display groups them.
+  - **A bare program name is found where Windows finds it.** A task action that names `xcopy` or
+    `sc.exe` without a folder is judged for `user-writable-path` in the system folder and then in the
+    folders of `PATH`, never in the folder the collector was started from, which marked every bare name
+    on the real host. A name found nowhere is not judged.
 
 ## Revisiting this decision
 

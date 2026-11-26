@@ -81,6 +81,21 @@ internal sealed partial class EvidenceTools
                 ["holds_iis_logs"] = v.HoldsIisLogs
             }).ToArray()),
             ["patch_level"] = health is null ? null : PatchNode(health.Patch),
+            ["event_logs"] = health?.Logs is null ? null : new JsonArray(health.Logs.Take(HostLogHorizon.Names.Count).Select(l => (JsonNode)new JsonObject
+            {
+                ["log"] = Code(l.Log),
+                ["read"] = l.Readable,
+                ["problem"] = l.Problem is null ? null : Code(l.Problem),
+                ["maximum_bytes"] = l.MaximumBytes,
+                ["records"] = l.RecordCount,
+                ["oldest_record_at"] = l.OldestRecordAt is { } oldest ? Iso(oldest) : null,
+                ["reaches_back_hours"] = l.Readable && l.Reach(Now) is { } reach ? Math.Round(reach.TotalHours, 1) : null,
+                ["shorter_than_a_week"] = l.Readable ? l.IsShort(Now) : null,
+                ["sampled"] = l.Sampled,
+                ["dominant_event_id"] = l.DominantEventId,
+                ["dominant_provider"] = HostName(l.DominantProvider),
+                ["dominant_share"] = l.DominantShare is { } share ? Math.Round(share, 3) : null
+            }).ToArray()),
             ["unexpected_restarts"] = RestartsNode(restarts, readUntil),
             ["last_24_hours"] = new JsonArray(hourly.TakeLast(24).Select(h => (JsonNode)new JsonObject
             {
@@ -94,7 +109,8 @@ internal sealed partial class EvidenceTools
         if (health is not null && health.Patch is null)
             notes.Add("patch_level is null: this snapshot did not read the patch level, which is unknown, not missing.");
         notes.Add("An unexpected restart's time is the next start, when Windows wrote its records (events 41, 6008 and 1001). Restarts are counted from what the System log still held when the collector read it, so a cleared or rolled-over log can hide older ones.");
-        notes.Add("patch_level holds what Windows reports about itself. WPShield has no offline source of the latest build and never calls a host outdated.");
+        notes.Add("patch_level holds what Windows reports about itself. WPShield has no offline source of the latest build and never calls a host outdated. A kernel_revision_delta a little below zero is normal: not every update replaces ntoskrnl.exe.");
+        notes.Add("event_logs says how far back the System, Security and Application logs reach and which event fills the newest records. A log shorter than a week loses the records of crashes and logons; restarts it no longer holds cannot be counted. dominant_provider is a host detail.");
     }));
 
     private JsonObject? PatchNode(HostPatchLevel? patch)
@@ -107,12 +123,18 @@ internal sealed partial class EvidenceTools
             ["display_version"] = patch.DisplayVersion is { } display ? Code(display) : null,
             ["kernel_version"] = patch.KernelVersion is { } kernel ? Code(kernel) : null,
             ["kernel_revision_differs_from_registry"] = patch.KernelDiffersFromRegistry,
+            ["kernel_revision_delta"] = patch.KernelRevisionDelta,
             ["update_log_readable"] = readable,
             ["last_cumulative_update"] = readable && patch.LastCumulativeUpdate is { } title ? Untrusted(title, HostPatchLevel.MaxTitleLength) : null,
             ["last_cumulative_update_at"] = readable && patch.LastCumulativeUpdateAt is { } at ? Iso(at) : null,
             ["days_since_cumulative_update"] = readable ? patch.DaysSinceCumulativeUpdate(Now) : null,
             ["failed_installs_30_days"] = readable ? patch.FailedInstalls30Days : null,
-            ["update_log_starts_at"] = patch.UpdateLogStartsAt is { } from ? Iso(from) : null
+            ["update_log_starts_at"] = patch.UpdateLogStartsAt is { } from ? Iso(from) : null,
+            ["hotfix_list_read"] = patch.HotfixListRead,
+            ["hotfix_source"] = patch.HotfixListRead is null ? null : HostPatchLevel.HotfixSource,
+            ["last_hotfix"] = patch.HotfixListRead == true && patch.LastHotfixId is { } hotfix ? Untrusted(hotfix, HostPatchLevel.MaxHotfixIdLength) : null,
+            ["last_hotfix_installed_on"] = patch.HotfixListRead == true && patch.LastHotfixInstalledOn is { } on
+                ? on.UtcDateTime.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture) : null
         };
     }
 
@@ -269,11 +291,15 @@ internal sealed partial class EvidenceTools
                 ["verdict"] = Code(l.Verdict),
                 ["red"] = l.Red,
                 ["process"] = FileName(l.Process),
-                ["process_path"] = l.ProcessPath is null ? null : HostName(l.ProcessPath)
+                ["process_path"] = l.ProcessPath is null ? null : HostName(l.ProcessPath),
+                ["opened_by"] = l.Verdict != ExposureVerdicts.OpenToAny ? null
+                    : l.OpenedBy is not { Count: > 0 } rules ? JsonValue.Create("unknown")
+                    : access.HostDetails ? new JsonArray(rules.Take(ExposureVerdicts.MaxOpenedBy).Select(r => Untrusted(r, ExposureVerdicts.MaxRuleNameLength + 32)).ToArray())
+                    : JsonValue.Create(Withheld)
             }).ToArray()),
             ["truncated"] = listeners.Length > MaxLimit,
             ["red_remedy"] = listeners.Any(l => l.Red)
-                ? "By hand: restrict the firewall rule to the addresses that need it, or close the port. Never hide it."
+                ? "By hand: restrict every rule in opened_by to the addresses that need it, or close the port. One allow rule is enough in the Windows Firewall, so a program rule on any port overrides a port rule restricted by address. Never hide the port."
                 : null
         };
         notes.Add("Verdicts are by the Windows Firewall rules. Other network filters decide too, so a listener is never reported as reachable, and unknown is not closed.");

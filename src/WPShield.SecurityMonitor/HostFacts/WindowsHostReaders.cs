@@ -8,8 +8,8 @@ namespace WPShield.SecurityMonitor;
 
 /// <summary>
 /// The host facts this library can read on its own (ADR 0013): health, unexpected restarts and RDP sessions.
-/// Everything here reads; nothing writes, and nothing needs more than the System and LocalSessionManager logs,
-/// which are readable without elevation.
+/// Everything here reads; nothing writes. The System and LocalSessionManager logs are readable without elevation;
+/// the Security log's horizon needs it, and reads as unreadable, never as empty, without it.
 /// </summary>
 public static class WindowsHostReaders
 {
@@ -82,7 +82,8 @@ public static class WindowsHostReaders
         }
 
         var patch = ReadPatchLevel(now, cancellationToken, problems);
-        var health = new HostHealth(now - uptime, (long)uptime.TotalSeconds, cpu, total, available, volumes, storeBytes, patch);
+        var logs = HostLogHorizon.Names.Select(log => ReadLogHorizon(log, cancellationToken)).ToArray();
+        var health = new HostHealth(now - uptime, (long)uptime.TotalSeconds, cpu, total, available, volumes, storeBytes, patch, logs);
         return problems.Count == 0
             ? HostFactReading.Of(HostFacts.Health, null, now, health)
             : HostFactReading.Of(HostFacts.Health, null, now, health, HostFactStatus.Partial, "not-read: " + string.Join(", ", problems.Distinct()),
@@ -167,6 +168,79 @@ public static class WindowsHostReaders
             using var reader = new EventLogReader(new EventLogQuery(log, PathType.LogName, "*")) { BatchSize = 1 };
             using var record = reader.ReadEvent();
             return record?.TimeCreated is DateTime created ? new DateTimeOffset(created.ToUniversalTime(), TimeSpan.Zero) : null;
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or SecurityException or EventLogException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How far back one event log reaches, its size, and the event that fills it, from the newest
+    /// <see cref="HostLogHorizon.SampleSize"/> records. Read-only. A log this account cannot read (the Security log,
+    /// unelevated) is reported unreadable with a fixed code, its values unknown rather than zero.
+    /// </summary>
+    internal static HostLogHorizon ReadLogHorizon(string log, CancellationToken cancellationToken)
+    {
+        long? maximum = null, count = null;
+        try
+        {
+            using var configuration = new EventLogConfiguration(log);
+            maximum = configuration.MaximumSizeInBytes;
+            count = EventLogSession.GlobalSession.GetLogInformation(log, PathType.LogName).RecordCount;
+            var oldest = OldestRecord(log);
+            var sample = new List<(int, string?)>(HostLogHorizon.SampleSize);
+            using (var reader = new EventLogReader(new EventLogQuery(log, PathType.LogName, "*") { ReverseDirection = true }) { BatchSize = 256 })
+            {
+                for (var i = 0; i < HostLogHorizon.SampleSize; i++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    using var record = reader.ReadEvent();
+                    if (record is null) break;
+                    sample.Add((record.Id, record.ProviderName));
+                }
+            }
+            var dominant = HostLogHorizon.Dominant(sample);
+            return new HostLogHorizon(log, true, maximum, count, oldest, dominant?.EventId, dominant?.Provider, dominant?.Count, dominant?.Sampled ?? 0);
+        }
+        catch (OperationCanceledException)
+        {
+            return new HostLogHorizon(log, false, maximum, count, null, null, null, null, null, "time-budget");
+        }
+        catch (Exception exception) when (exception is UnauthorizedAccessException or SecurityException)
+        {
+            return new HostLogHorizon(log, false, maximum, count, null, null, null, null, null, "access-denied");
+        }
+        catch (EventLogException)
+        {
+            return new HostLogHorizon(log, false, maximum, count, null, null, null, null, null, "query-failed");
+        }
+    }
+
+    /// <summary>
+    /// The System log's service-control records of the last 24 hours (state changes and failures), newest first and
+    /// at most <see cref="ServiceStates.MaxEvents"/>, for the start-loop flags of the services inventory. Read-only.
+    /// <see langword="null"/> when the log cannot be read: unknown, which adds no flag.
+    /// </summary>
+    public static IReadOnlyList<ServiceControlEvent>? ReadServiceControlEvents(DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        var start = (now - ServiceStates.FailureWindow).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ss.fffZ", CultureInfo.InvariantCulture);
+        var ids = string.Join(" or ", ServiceStates.EventIds.Select(id => "EventID=" + id.ToString(CultureInfo.InvariantCulture)));
+        var filter = $"*[System[Provider[@Name='Service Control Manager'] and ({ids}) and TimeCreated[@SystemTime >= '{start}']]]";
+        var events = new List<ServiceControlEvent>();
+        try
+        {
+            using var reader = new EventLogReader(new EventLogQuery(SystemLog, PathType.LogName, filter) { ReverseDirection = true }) { BatchSize = 256 };
+            for (var i = 0; i < ServiceStates.MaxEvents; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                using var record = reader.ReadEvent();
+                if (record is null || record.TimeCreated is not DateTime created) break;
+                var index = ServiceStates.NameIndex(record.Id);
+                var name = record.Properties.Count > index ? record.Properties[index].Value as string : null;
+                events.Add(new ServiceControlEvent(new DateTimeOffset(created.ToUniversalTime(), TimeSpan.Zero), record.Id, name));
+            }
+            return events;
         }
         catch (Exception exception) when (exception is UnauthorizedAccessException or SecurityException or EventLogException)
         {

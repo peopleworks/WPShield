@@ -203,3 +203,135 @@ public static class FullNameIndicator
         return builder.ToString();
     }
 }
+
+/// <summary>One service-control record of the System log, reduced to what the start-loop flags count.</summary>
+/// <param name="Service">The service's display name, which is how the service control manager names it in these records.</param>
+public sealed record ServiceControlEvent(DateTimeOffset At, int EventId, string? Service);
+
+/// <summary>
+/// Services stuck in a start loop (ADR 0013, as built). On the first real host five services set to start
+/// automatically sat in "start pending" and wrote 4,986 of the newest 5,000 System records, which pushed a bugcheck
+/// record out of the log. A service that is meant to run and does not is a fact worth a flag; one that changes state
+/// every few minutes is a second.
+/// </summary>
+public static class ServiceStates
+{
+    /// <summary>Set to start automatically and not running: start pending, paused, or stopped after a recent failure.</summary>
+    public const string NotRunning = "not-running";
+
+    /// <summary>Waiting to start, whatever its start type.</summary>
+    public const string StartPending = "start-pending";
+
+    /// <summary>At least <see cref="FlappingThreshold"/> state changes (event 7036) in the last hour.</summary>
+    public const string Flapping = "flapping";
+
+    public const int FlappingThreshold = 10;
+
+    /// <summary>The most System records one reading counts.</summary>
+    public const int MaxEvents = 5000;
+
+    /// <summary>The window of the state changes that make a service <see cref="Flapping"/>.</summary>
+    public static readonly TimeSpan ChangeWindow = TimeSpan.FromHours(1);
+
+    /// <summary>The window of the failures that make a stopped automatic service <see cref="NotRunning"/>.</summary>
+    public static readonly TimeSpan FailureWindow = TimeSpan.FromHours(24);
+
+    /// <summary>7036: a service entered a state.</summary>
+    public const int StateChange = 7036;
+
+    /// <summary>
+    /// The records that say a service failed: 7000 failed to start, 7009 and 7011 timed out, 7023 and 7024 ended with
+    /// an error, 7031 and 7034 ended unexpectedly.
+    /// </summary>
+    public static readonly IReadOnlySet<int> Failures = new HashSet<int> { 7000, 7009, 7011, 7023, 7024, 7031, 7034 };
+
+    /// <summary>Every event ID a reader asks the System log for.</summary>
+    public static readonly IReadOnlyList<int> EventIds = [StateChange, 7000, 7009, 7011, 7023, 7024, 7031, 7034];
+
+    /// <summary>
+    /// The index of the record's property that holds the service's display name: 7009 and 7011 put a timeout first.
+    /// </summary>
+    public static int NameIndex(int eventId) => eventId is 7009 or 7011 ? 1 : 0;
+
+    /// <summary>
+    /// State changes in the last hour and failures in the last 24 hours, per display name (compared ignoring case),
+    /// from at most <see cref="MaxEvents"/> records.
+    /// </summary>
+    public static (IReadOnlyDictionary<string, int> Changes, IReadOnlyDictionary<string, int> Failures) Count(
+        IEnumerable<ServiceControlEvent> events, DateTimeOffset now)
+    {
+        ArgumentNullException.ThrowIfNull(events);
+        var changes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var failures = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var record in events.Take(MaxEvents))
+        {
+            if (string.IsNullOrWhiteSpace(record.Service) || record.At > now) continue;
+            var name = HostFacts.Clean(record.Service.Trim());
+            if (record.EventId == StateChange && record.At >= now - ChangeWindow) changes[name] = changes.GetValueOrDefault(name) + 1;
+            else if (Failures.Contains(record.EventId) && record.At >= now - FailureWindow) failures[name] = failures.GetValueOrDefault(name) + 1;
+        }
+        return (changes, failures);
+    }
+
+    /// <summary>
+    /// The flags for one service. <paramref name="state"/> is the service controller's status in lower case
+    /// (<c>running</c>, <c>startpending</c>, <c>paused</c>, <c>stopped</c>, ...); <paramref name="startMode"/> is
+    /// <c>automatic</c>, <c>manual</c>, <c>disabled</c>, ... Unknown counts add no flag rather than a guess.
+    /// </summary>
+    public static IReadOnlyList<string> Flags(string? state, string? startMode, int? changesLastHour, int? failuresLastDay)
+    {
+        var flags = new List<string>(3);
+        var automatic = string.Equals(startMode, "automatic", StringComparison.OrdinalIgnoreCase);
+        var pending = string.Equals(state, "startpending", StringComparison.OrdinalIgnoreCase);
+        var paused = string.Equals(state, "paused", StringComparison.OrdinalIgnoreCase) || string.Equals(state, "pausepending", StringComparison.OrdinalIgnoreCase);
+        var stopped = string.Equals(state, "stopped", StringComparison.OrdinalIgnoreCase);
+        if (automatic && (pending || paused || (stopped && failuresLastDay > 0))) flags.Add(NotRunning);
+        if (pending) flags.Add(StartPending);
+        if (changesLastHour >= FlappingThreshold) flags.Add(Flapping);
+        return flags;
+    }
+}
+
+/// <summary>
+/// The Microsoft binaries that run a payload given to them: a service or a task that runs one of these is listed even
+/// though its binary is Microsoft's, because <c>cmd /c powershell -enc ...</c> is signed by Microsoft too.
+/// </summary>
+public static class ScriptHosts
+{
+    public static readonly IReadOnlySet<string> Names = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "cmd.exe", "powershell.exe", "pwsh.exe", "powershell_ise.exe", "mshta.exe", "wscript.exe", "cscript.exe", "rundll32.exe",
+        "regsvr32.exe", "certutil.exe", "bitsadmin.exe", "wmic.exe", "forfiles.exe", "curl.exe"
+    };
+
+    /// <summary>Whether <paramref name="executable"/> (a path or a file name) is one of <see cref="Names"/>.</summary>
+    public static bool Is(string? executable)
+    {
+        if (string.IsNullOrWhiteSpace(executable)) return false;
+        var trimmed = executable.Trim().Trim('"');
+        var slash = trimmed.LastIndexOfAny(['\\', '/']);
+        return Names.Contains(slash >= 0 ? trimmed[(slash + 1)..] : trimmed);
+    }
+}
+
+/// <summary>
+/// How <c>wpshield host inventory tasks</c> groups what it shows (ADR 0013, as built). Every task is still read and
+/// stored by the stricter listing rule; only the default display folds the quiet ones into a count.
+/// </summary>
+public static class TaskGroups
+{
+    /// <summary>
+    /// A task Windows itself ships under <c>\Microsoft\Windows\</c>, signed by Microsoft, that is listed only because it
+    /// runs a script host, and carries no flag but <c>has-arguments</c>. Any other flag - an encoded command, a URL, a
+    /// path users can write - keeps it in the main list.
+    /// </summary>
+    public static bool IsMicrosoftScriptHostOnly(HostTask task)
+    {
+        ArgumentNullException.ThrowIfNull(task);
+        return task.Path.StartsWith(@"\Microsoft\Windows\", StringComparison.OrdinalIgnoreCase)
+            && task.Signature == HostSignature.Signed
+            && task.Signer is { } signer && signer.StartsWith("Microsoft", StringComparison.OrdinalIgnoreCase)
+            && ScriptHosts.Is(task.Executable)
+            && task.Flags.All(flag => flag == CommandFlags.HasArguments);
+    }
+}

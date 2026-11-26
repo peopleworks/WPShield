@@ -70,6 +70,11 @@ follow `mcp.host_details`: without it only the reason code is returned and the r
 `tasks`. None takes a path, a name or a command. Exposure verdicts are "by the Windows Firewall rules"
 and never "reachable"; the patch level is what Windows reports, never a verdict of "outdated"; and the
 inventory never holds a command line's arguments, only flags for what they contained.
+`listening_ports` names, for each listener open to any address, the firewall rules that open it
+(`opened_by`), and `host_health` says how far back the System, Security and Application logs reach and
+which event fills them (`event_logs`), plus the newest installed hotfix when the update log names no
+cumulative update. A rule's name and a log's dominant provider are host details: `withheld` without
+`mcp.host_details`, untrusted text with it.
 
 It **cannot** block, unblock, allow or change anything. If you ask it to, it says the action has to be
 done by you, outside the conversation. It opens no listener and modifies nothing on the server: no
