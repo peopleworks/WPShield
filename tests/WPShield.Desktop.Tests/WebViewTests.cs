@@ -73,8 +73,17 @@ public sealed class WebViewTests
     public Task TheAddressTableFitsAtTheDefaultWidthAndShowsFullHeaderTooltips(bool spanish, string last) =>
         Verify(Seed, (window, _) =>
         {
-            Assert.Equal(1280, window.Width);
+            // The window is designed 1280 x 820, but Windows clamps a shown window to the desktop, and a CI
+            // desktop can be narrower (1044 on the hosted runner). Lay the content out at the design size
+            // explicitly, so the check measures the table rather than the machine that runs the test.
             window.UpdateLayout();
+            var root = Assert.IsAssignableFrom<FrameworkElement>(window.Content);
+            var design = new Size(DesignWidth - (window.ActualWidth - root.ActualWidth), DesignHeight - (window.ActualHeight - root.ActualHeight));
+            for (var pass = 0; pass < 2; pass++)
+            {
+                root.Measure(design);
+                root.Arrange(new Rect(design));
+            }
             var scroll = Assert.IsType<ScrollViewer>(window.WebRows.Template.FindName("DG_ScrollViewer", window.WebRows));
             Assert.True(scroll.ViewportWidth > 0);
             Assert.Equal(Visibility.Collapsed, scroll.ComputedHorizontalScrollBarVisibility);
@@ -199,6 +208,9 @@ public sealed class WebViewTests
         });
 
     private static string AutomationName(DependencyObject item) => System.Windows.Automation.AutomationProperties.GetName(item);
+
+    private const double DesignWidth = 1280;
+    private const double DesignHeight = 820;
 
     private static AttacksWindow.WebCard Card(AttacksWindow window, string title) =>
         Assert.Single(window.WebCards.Items.Cast<AttacksWindow.WebCard>(), card => card.Title == title);
