@@ -13,7 +13,8 @@ internal sealed class CliHostFactSource : IHostFactSource
     private readonly HostInventoryReader inventory = new(new Authenticode());
 
     public HostFactReading ReadHealth(string? storePath, CancellationToken cancellationToken) =>
-        WindowsHostReaders.ReadHealth(storePath, LogDirectory(), cancellationToken);
+        HostHotfixReader.WithHotfix(WindowsHostReaders.ReadHealth(storePath, LogDirectory(), cancellationToken),
+            () => HostHotfixReader.Read(cancellationToken));
 
     public HostRestartReading ReadRestarts(DateTimeOffset since, CancellationToken cancellationToken) =>
         WindowsHostReaders.ReadRestarts(since, cancellationToken);

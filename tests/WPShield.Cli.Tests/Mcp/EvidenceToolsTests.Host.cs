@@ -19,6 +19,8 @@ public sealed partial class EvidenceToolsTests
     private const string TaskPath = @"\SyntheticVendor\Updater";
     private const string RdpSource = "203.0.113.50";
     private const string SpecificAddress = "198.51.100.10";
+    private const string OpeningRule = "Synthetic file sharing rule";
+    private const string LogProvider = "SyntheticVendorProvider";
 
     internal static IReadOnlyList<(string Name, Func<EvidenceTools, ToolAnswer> Call)> HostTools { get; } =
     [
@@ -46,7 +48,7 @@ public sealed partial class EvidenceToolsTests
         {
             var text = Ok(call(tools)).ToJsonString();
             foreach (var secret in new[] { SiteName, PoolName, AccountName, "svc-synthetic-backup", ServiceName, "Synthetic Vendor Service",
-                         "SyntheticVendor", RdpSource, SpecificAddress, @"Program Files", "MountPoint" })
+                         "SyntheticVendor", RdpSource, SpecificAddress, @"Program Files", "MountPoint", OpeningRule, LogProvider })
                 Assert.DoesNotContain(secret, text, StringComparison.Ordinal);
             Assert.Contains("mcp.host_details", text, StringComparison.Ordinal);
             Assert.False((bool)JsonNode.Parse(text)!["detail"]!["host_details_allowed"]!, name);
@@ -58,6 +60,10 @@ public sealed partial class EvidenceToolsTests
         Assert.Equal("mysqld.exe", (string)mysql["process"]!["untrusted"]!);
         Assert.Equal("withheld", (string)mysql["address"]!);
         Assert.Equal("withheld", (string)mysql["process_path"]!);
+        Assert.Null(mysql["opened_by"]);
+        var smb = ports["listeners"]!.AsArray().Single(l => (long)l!["port"]! == 445)!;
+        Assert.Equal("withheld", (string)smb["opened_by"]!);
+        Assert.Equal("withheld", (string)Ok(tools.HostHealth())["result"]!["event_logs"]![0]!["dominant_provider"]!);
 
         var accounts = Ok(tools.HostInventory("accounts"))["result"]!;
         Assert.True((bool)accounts["full_name_targeted"]!);
@@ -97,6 +103,45 @@ public sealed partial class EvidenceToolsTests
         var recent = Ok(tools.RdpSessions())["result"]!["recent"]!.AsArray();
         Assert.Contains(recent, l => l!["address"] is JsonValue v && (string)v! == RdpSource);
         Assert.DoesNotContain(Notes(Ok(tools.HostHealth())), n => n.Contains("withheld", StringComparison.Ordinal));
+
+        var smb = Ok(tools.ListeningPorts())["result"]!["listeners"]!.AsArray().Single(l => (long)l!["port"]! == 445)!;
+        Assert.Equal(OpeningRule, (string)smb["opened_by"]![0]!["untrusted"]!);
+        Assert.Equal(LogProvider, (string)Ok(tools.HostHealth())["result"]!["event_logs"]![0]!["dominant_provider"]!["untrusted"]!);
+    }
+
+    [Fact]
+    public void HostHealthSaysHowFarBackTheLogsReachAndANewestHotfixIsAFact()
+    {
+        Seed(extra: store =>
+        {
+            SeedHost(store);
+            new HostFactsWriter(store).Write(HostFactReading.Of(HostFacts.Health, null, Now.AddMinutes(-1), new HostHealth(Now.AddDays(-1), 86_400, 5, 100, 50, [], 1,
+                new HostPatchLevel("20348", 5761, "21H2", "10.0.20348.5756", true, null, null, 0, Now.AddDays(-200), "KB5090002",
+                    new DateTimeOffset(2026, 11, 2, 0, 0, 0, TimeSpan.Zero), true),
+                [new HostLogHorizon("System", true, 20L << 20, 63_818, Now.AddHours(-6), 7036, LogProvider, 4986, 5000),
+                 new HostLogHorizon("Security", false, null, null, null, null, null, null, null, "access-denied")])));
+        });
+
+        var result = Ok(Tools().HostHealth())["result"]!;
+
+        var system = result["event_logs"]![0]!;
+        Assert.Equal("System", (string)system["log"]!);
+        Assert.Equal(6.0, (double)system["reaches_back_hours"]!);
+        Assert.True((bool)system["shorter_than_a_week"]!);
+        Assert.Equal(7036, (int)system["dominant_event_id"]!);
+        Assert.Equal(0.997, (double)system["dominant_share"]!);
+        var security = result["event_logs"]![1]!;
+        Assert.False((bool)security["read"]!);
+        Assert.Equal("access-denied", (string)security["problem"]!);
+        Assert.Null(security["reaches_back_hours"]);
+        Assert.Null(security["shorter_than_a_week"]);
+
+        var patch = result["patch_level"]!;
+        Assert.Equal(-5, (int)patch["kernel_revision_delta"]!);
+        Assert.True((bool)patch["hotfix_list_read"]!);
+        Assert.Equal("Win32_QuickFixEngineering", (string)patch["hotfix_source"]!);
+        Assert.Equal("KB5090002", (string)patch["last_hotfix"]!["untrusted"]!);
+        Assert.Equal("2026-11-02", (string)patch["last_hotfix_installed_on"]!);
     }
 
     [Fact]
@@ -350,7 +395,8 @@ public sealed partial class EvidenceToolsTests
 
         Insert(HostFacts.Health, null, HostFactStatus.Ok, null, null, new HostHealth(Now.AddDays(-1), 86_400, 5, 100, 50,
             [new HostVolume(@"D:\MARK-VOLUME" + Evil, 10, 5, false)], 1,
-            new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.2849", true, "MARK-KB" + Evil, Now.AddDays(-3), 0)));
+            new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.2849", true, "MARK-KB" + Evil, Now.AddDays(-3), 0, null, "MARK-HOTFIX" + Evil, null, true),
+            [new HostLogHorizon("System", true, 1, 1, Now.AddDays(-1), 7036, "MARK-PROVIDER" + Evil, 1, 1)]));
         Insert(HostFacts.Sites, null, HostFactStatus.Ok, null, null, new HostSites(
             [new HostSite(1, "MARK-SITE" + Evil, "Started", [new HostBinding("https", 443, "MARK-HOST" + Evil, false)], "MARK-POOL" + Evil,
                 "MARK-IDENTITY" + Evil, true)]));
@@ -358,7 +404,8 @@ public sealed partial class EvidenceToolsTests
             [new HostPostureFinding("AUDIT-002", "critical", "MARK-TITLE" + Evil, 1)], 1, 1, false, 0, 0));
         Insert(HostFacts.Ports, null, HostFactStatus.Partial, "MARK-REASON" + Evil, "MARK-REMEDY" + Evil, new HostPorts(
             [new HostListener("tcp", 8080, "specific", "MARK-ADDRESS" + Evil, "MARK-PROCESS" + Evil + ".exe", @"C:\MARK-PATH" + Evil + @"\x.exe",
-                ExposureVerdicts.Restricted, false)], true));
+                ExposureVerdicts.Restricted, false),
+             new HostListener("tcp", 5900, "any", null, "MARK-PROCESS" + Evil + ".exe", null, ExposureVerdicts.OpenToAny, true, ["MARK-RULE" + Evil])], true));
         Insert(HostFacts.Sessions, null, HostFactStatus.Ok, null, null, new HostSessions(
             [new HostSession(2, "active", "MARK-USER" + Evil, Now.AddHours(-1))], [new HostRdpLogon(Now.AddHours(-1), "MARK-USER" + Evil, "MARK-RDP" + Evil, "logon")]));
         Insert(HostFacts.Inventory, HostFacts.Accounts, HostFactStatus.Ok, null, null, new HostAccounts(
@@ -391,9 +438,9 @@ public sealed partial class EvidenceToolsTests
         }
 
         Assert.Equal(
-            ["MARK-ADDRESS", "MARK-DISPLAY", "MARK-FLAG", "MARK-HOST", "MARK-IDENTITY", "MARK-ITEM", "MARK-KB", "MARK-PATH", "MARK-POOL",
-             "MARK-PROCESS", "MARK-RDP", "MARK-REASON", "MARK-REMEDY", "MARK-RUNAS", "MARK-SERVICE", "MARK-SIGNER", "MARK-SITE", "MARK-TASK",
-             "MARK-TITLE", "MARK-USER", "MARK-VOLUME"],
+            ["MARK-ADDRESS", "MARK-DISPLAY", "MARK-FLAG", "MARK-HOST", "MARK-HOTFIX", "MARK-IDENTITY", "MARK-ITEM", "MARK-KB", "MARK-PATH",
+             "MARK-POOL", "MARK-PROCESS", "MARK-PROVIDER", "MARK-RDP", "MARK-REASON", "MARK-REMEDY", "MARK-RULE", "MARK-RUNAS", "MARK-SERVICE",
+             "MARK-SIGNER", "MARK-SITE", "MARK-TASK", "MARK-TITLE", "MARK-USER", "MARK-VOLUME"],
             seen.Order(StringComparer.Ordinal));
     }
 
@@ -413,7 +460,11 @@ public sealed partial class EvidenceToolsTests
             [new HostVolume(@"C:\", 200L << 30, 40L << 30, true), new HostVolume(@"C:\MountPoint\Data", 100L << 30, 10L << 30, false)],
             64L << 20,
             new HostPatchLevel("20348", 2849, "21H2", "10.0.20348.2849", true,
-                "2025-11 Cumulative Update for Microsoft server operating system (KB0000001)", Now.AddDays(-370), 2, Now.AddDays(-400)));
+                "2025-11 Cumulative Update for Microsoft server operating system (KB0000001)", Now.AddDays(-370), 2, Now.AddDays(-400)),
+            [
+                new HostLogHorizon("System", true, 20L << 20, 63_818, Now.AddHours(-6), 7036, LogProvider, 4986, 5000),
+                new HostLogHorizon("Security", false, null, null, null, null, null, null, null, "access-denied")
+            ]);
         writer.Write(HostFactReading.Of(HostFacts.Health, null, Now.AddMinutes(-2), health));
         writer.RecordHealth(health, Now.AddHours(-1));
         writer.RecordRestarts(
@@ -439,7 +490,7 @@ public sealed partial class EvidenceToolsTests
 
         writer.Write(HostFactReading.Of(HostFacts.Ports, null, Now.AddMinutes(-3), new HostPorts(
         [
-            new HostListener("tcp", 445, "any", "0.0.0.0", "System", null, ExposureVerdicts.OpenToAny, true),
+            new HostListener("tcp", 445, "any", "0.0.0.0", "System", null, ExposureVerdicts.OpenToAny, true, [OpeningRule]),
             new HostListener("tcp", 3306, "specific", SpecificAddress, "mysqld.exe", @"C:\Program Files\MySQL\bin\mysqld.exe",
                 ExposureVerdicts.Restricted, false)
         ], true)));

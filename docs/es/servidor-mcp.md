@@ -74,7 +74,12 @@ son `null`: desconocido, nunca ninguno. Cuatro no aceptan argumentos; `rdp_sessi
 `services` o `tasks`. Ninguna acepta una ruta, un nombre ni un comando. Los veredictos de exposición son
 "según las reglas del Firewall de Windows" y nunca "alcanzable"; el nivel de parches es lo que Windows
 dice de sí mismo, nunca un veredicto de "desactualizado"; y el inventario nunca guarda los argumentos de
-un comando, solo marcas de lo que contenían.
+un comando, solo marcas de lo que contenían. `listening_ports` nombra, para cada puerto abierto a
+cualquier dirección, las reglas del firewall que lo abren (`opened_by`), y `host_health` dice hasta dónde
+llegan los logs de Sistema, Seguridad y Aplicación y qué evento los llena (`event_logs`), además de la
+revisión más reciente instalada cuando el log de actualizaciones no nombra ninguna acumulativa. El nombre
+de una regla y el proveedor dominante de un log son detalles del servidor: `withheld` sin
+`mcp.host_details`, texto no confiable con él.
 
 **No puede** bloquear, desbloquear, permitir ni cambiar nada. Si se le pide, dice que esa acción la
 tiene que hacer usted, fuera de la conversación. No abre nada que escuche y no modifica nada en el

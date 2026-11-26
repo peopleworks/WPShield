@@ -420,6 +420,53 @@ del texto anterior en estos puntos:
   `pool-identity`, `named-account`) para que se vea el tipo mientras el nombre queda tras la compuerta;
   y el firmante de una firma siempre se devuelve, como texto no confiable. La viñeta de arriba,
   "todavía no hay herramientas MCP", valía para la fase 1.
+- **Ajustes de la primera ejecución real (2026-11-26).** `wpshield host` en el servidor del incidente
+  respondió casi todas las preguntas y planteó seis más, todas resueltas en solo lectura y con límites:
+  - **Las reglas detrás de un puerto abierto.** Para un listener juzgado `open-to-any`, la instantánea
+    guarda los nombres visibles de las reglas de entrada que permiten y admiten cualquier dirección, cinco
+    como máximo, limpios y acotados a 120 caracteres; o, cuando no hace falta ninguna regla, el porqué (un
+    perfil activo con el firewall apagado, o una acción de entrada por defecto que permite). Una regla
+    para cualquier puerto se marca `[any port]`, y una limitada a un programa `[program rule, any port]`:
+    en el servidor real una regla así para un programa de control remoto admitía cualquier dirección en su
+    puerto y en un segundo puerto que el programa abría, mientras la regla de puerto que el operador había
+    restringido por dirección parecía toda la historia. En el Firewall de Windows basta una regla que
+    permita, así que el remedio nombra todas. `wpshield host ports` las imprime bajo cada puerto rojo, y con
+    `--all` bajo todo puerto abierto a cualquiera. En MCP son detalles del servidor: `withheld` sin
+    `mcp.host_details`, texto no confiable con él. El veredicto respeta ahora dos ámbitos que una regla
+    leída por la interfaz COM del firewall trae: una regla de usuario (`LocalUserOwner`, las que instalan
+    las apps de la tienda, cuyo programa esa interfaz no informa) y una de contenedor de aplicación
+    (`LocalAppPackageId`) no admiten tráfico hacia un puerto que es del kernel (`System`), ni, la segunda,
+    hacia un programa fuera de una carpeta `WindowsApps`. Un propietario que nadie pudo leer conserva todas
+    las reglas: la dirección abierta.
+  - **Hasta dónde llegan los logs.** `host_health` guarda, para los logs de Sistema, Seguridad y
+    Aplicación, el tamaño máximo, el número de registros, la hora del registro más antiguo y el ID de evento
+    y el proveedor más frecuentes entre los 5.000 registros más nuevos, con su proporción. En el servidor
+    real un servicio en bucle de arranque llenó en horas el log de Sistema de 20 MB y expulsó un registro de
+    pantallazo antes de que nadie lo leyera. Un log que no llega a una semana se señala, con el remedio
+    manual (`wevtutil sl <log> /ms:...`). Un log ilegible (el de Seguridad, sin elevar) es desconocido, con
+    un motivo fijo. El proveedor es un detalle del servidor en MCP.
+  - **La alternativa del nivel de parches.** Cuando el log de Windows Update no nombra ninguna
+    actualización acumulativa (lo que se instala desde un paquete o con una herramienta de gestión no
+    escribe el evento 19, y eso mostró el servidor real), se lee la revisión más reciente instalada en
+    `Win32_QuickFixEngineering` (su ID y su fecha, etiquetados con esa fuente); una lista ilegible es
+    desconocida, nunca "ninguna". Una revisión del archivo del kernel un poco por debajo del `UBR` se
+    presenta como normal, porque no toda actualización reemplaza `ntoskrnl.exe` (el servidor real: `UBR`
+    5761, archivo del kernel 5756); una por encima se presenta como un hecho.
+  - **Servicios atascados en un bucle de arranque.** El inventario de servicios añade `not-running`
+    (configurado para arrancar automáticamente y en arranque pendiente, en pausa, o detenido tras un evento
+    de fallo - 7000, 7009, 7011, 7023, 7024, 7031, 7034 - en 24 horas), `start-pending` y `flapping` (diez
+    o más cambios de estado, evento 7036, en la última hora), a partir de como mucho 5.000 registros de
+    Sistema de las últimas 24 horas, emparejados por nombre visible. En el servidor real cinco servicios
+    seguían en arranque pendiente y escribieron 4.986 de los 5.000 registros más nuevos de Sistema.
+  - **El ruido de las tareas de Microsoft.** `wpshield host inventory tasks` agrupa en una línea con su
+    recuento las tareas bajo `\Microsoft\Windows\`, firmadas por Microsoft, que aparecen solo porque
+    ejecutan un intérprete de scripts y no llevan más marca que `has-arguments`; `--all` las muestra.
+    Se siguen leyendo y guardando con la regla más estricta de la primera viñeta: solo la vista por defecto
+    las agrupa.
+  - **Un nombre de programa sin carpeta se busca donde lo busca Windows.** Una acción de tarea que nombra
+    `xcopy` o `sc.exe` sin carpeta se juzga para `user-writable-path` en la carpeta del sistema y luego en
+    las carpetas de `PATH`, nunca en la carpeta desde la que se arrancó el recolector, que en el servidor
+    real marcaba cada nombre sin carpeta. Un nombre que no se encuentra no se juzga.
 
 ## Cuándo revisar esta decisión
 

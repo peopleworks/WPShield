@@ -47,10 +47,11 @@ internal static class HostPortsReader
             string? path = null;
             if (endpoint.Owner?.ProcessId is uint pid && !paths.TryGetValue(pid, out path)) paths[pid] = path = ProcessPath(pid);
             var verdict = ExposureVerdicts.Classify(protocol, endpoint.Port, binding, path, policy);
+            var openedBy = verdict == ExposureVerdicts.OpenToAny ? ExposureVerdicts.OpenedBy(protocol, endpoint.Port, binding, path, policy) : null;
             listeners.Add(new HostListener(protocol, endpoint.Port, binding,
                 binding == "any" ? null : HostFacts.Clean(endpoint.Address),
                 path is null ? null : HostFacts.Clean(Path.GetFileName(path)), path is null ? null : HostFacts.Clean(path),
-                verdict, ExposureVerdicts.IsRed(protocol, endpoint.Port, verdict)));
+                verdict, ExposureVerdicts.IsRed(protocol, endpoint.Port, verdict), openedBy is { Count: > 0 } ? openedBy : null));
         }
         var value = new HostPorts(listeners, policy is not null);
         return problems.Count == 0
@@ -81,7 +82,8 @@ internal static class HostPortsReader
                 if (ComLateBound.GetInt(rule, "Direction") != 1) continue;
                 rules.Add(new FirewallRule(ComLateBound.GetBool(rule, "Enabled"), true, ComLateBound.GetInt(rule, "Action") == 1,
                     ComLateBound.GetInt(rule, "Protocol"), ComLateBound.GetString(rule, "LocalPorts"), ComLateBound.GetString(rule, "RemoteAddresses"),
-                    ComLateBound.GetInt(rule, "Profiles"), ComLateBound.GetString(rule, "ApplicationName")));
+                    ComLateBound.GetInt(rule, "Profiles"), ComLateBound.GetString(rule, "ApplicationName"), ComLateBound.GetString(rule, "Name"),
+                    Optional(rule, "LocalAppPackageId"), Optional(rule, "LocalUserOwner")));
             }
             return (new FirewallPolicy(active, disabled, allow, rules), null);
         }
@@ -89,6 +91,22 @@ internal static class HostPortsReader
             or MissingMethodException or MissingMemberException or FormatException or OverflowException)
         {
             return (null, "firewall-unreadable: " + exception.GetType().Name);
+        }
+    }
+
+    /// <summary>
+    /// A property only newer rule interfaces carry (<c>LocalAppPackageId</c> is INetFwRule3's). Missing reads as
+    /// <see langword="null"/>, which scopes nothing - the open direction - rather than failing the whole policy.
+    /// </summary>
+    private static string? Optional(object rule, string property)
+    {
+        try
+        {
+            return ComLateBound.GetString(rule, property);
+        }
+        catch (Exception exception) when (exception is COMException or MissingMethodException or MissingMemberException)
+        {
+            return null;
         }
     }
 

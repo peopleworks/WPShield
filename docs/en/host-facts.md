@@ -19,14 +19,15 @@ stored snapshots only.
 | Fact | What it holds | Read from | Cadence | Needs elevation |
 | --- | --- | --- | --- | --- |
 | `host_health` | Uptime, CPU, memory, free space per fixed volume (the IIS log volume marked), store size | `GetTickCount64`, `GetSystemTimes`, `GlobalMemoryStatusEx`, `DriveInfo` | 5 minutes | No |
-| Patch level (in `host_health`) | `CurrentBuild`, `UBR` and `DisplayVersion`; the kernel file's version; the newest successful cumulative update with its date and the days since; failed installs in 30 days | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, `ntoskrnl.exe` ProductVersion, `WindowsUpdateClient/Operational` events 19 and 20 | 5 minutes | No |
+| Patch level (in `host_health`) | `CurrentBuild`, `UBR` and `DisplayVersion`; the kernel file's version; the newest successful cumulative update with its date and the days since; failed installs in 30 days; when the update log names no cumulative update, the newest installed hotfix and its date | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, `ntoskrnl.exe` ProductVersion, `WindowsUpdateClient/Operational` events 19 and 20, `Win32_QuickFixEngineering` | 5 minutes | No |
+| Log horizons (in `host_health`) | For the System, Security and Application logs: maximum size, record count, oldest record, and the event that fills the newest 5,000 records | The event log service, read-only | 5 minutes | For the Security log |
 | Unexpected restarts | Each crash once, with its bugcheck code (`0x133 DPC_WATCHDOG_VIOLATION`) | System log 41, 6008 and 1001, grouped per crash | At start and every 15 minutes | No |
 | `iis_sites` | ID, name, state, bindings, pool and pool identity **type** | The read-only IIS reader `wpshield audit` uses | 15 minutes | Yes |
 | `iis_posture` | The audit's finding IDs, severities and counts, and "pools as an administrator: N of M" | The audit's own checks, read-only | At start and every 6 hours, and after every manual `wpshield audit` | Yes |
-| `listening_ports` | Protocol, port, binding, owning executable, exposure verdict | The TCP and UDP listener tables and the firewall policy (COM, read-only) | 15 minutes | For process names and some rules |
+| `listening_ports` | Protocol, port, binding, owning executable, exposure verdict, and for a port open to any address the rules that open it | The TCP and UDP listener tables and the firewall policy (COM, read-only) | 15 minutes | For process names and some rules |
 | `rdp_sessions` | Current sessions; RDP logons and reconnections of 7 days with their source address | `WTSEnumerateSessions`; LocalSessionManager 21 and 25 | 15 minutes | No |
 | `host_inventory` accounts | Name, enabled, Administrators and Remote Desktop Users membership, last logon, password age | `NetUserEnum`, `NetLocalGroupGetMembers` | At start and every 6 hours | Yes |
-| `host_inventory` services | Non-Microsoft Win32 services: state, start mode, run-as account, executable, signature, flags | The services registry key and the service control manager | At start and every 6 hours | Yes |
+| `host_inventory` services | Non-Microsoft Win32 services: state, start mode, run-as account, executable, signature, flags, and whether one is stuck in a start loop | The services registry key, the service control manager, and the System log's service-control records of 24 hours | At start and every 6 hours | Yes |
 | `host_inventory` tasks | Non-Microsoft scheduled tasks: path, state, principal, last and next run, executable, signature, flags | The Task Scheduler (COM, read-only) | At start and every 6 hours | Yes |
 
 Outbound connections from web worker processes (`w3wp.exe`, `php-cgi.exe`) are **not measured yet**: a
@@ -37,9 +38,28 @@ snapshot misses a two-second callback. They get their own ADR and sensor.
 The registry's build, the kernel file's version and the Windows Update log can disagree: a crash dump
 can show an older kernel than the updates the update history lists. `wpshield host health` shows all
 three side by side, says when the kernel file's revision differs from the registry's `UBR`, and counts
-the days since the last successful cumulative update. An unreadable update log reads `unknown`, never
-"none"; "not found in the Windows Update log" says how far back the log reaches. WPShield has no
-offline source of the latest build, so it never calls a host outdated.
+the days since the last successful cumulative update. A kernel revision a little **below** the `UBR` is
+normal - not every update replaces `ntoskrnl.exe` - and is said so, as a fact. An unreadable update log
+reads `unknown`, never "none"; "not found in the Windows Update log" says how far back the log reaches.
+
+Updates installed from a package or by a management tool write no install event to that log. When it names
+no cumulative update, `wpshield host health` adds the newest installed hotfix from
+`Win32_QuickFixEngineering` - its ID and install date, labelled with that source - so "not found" still comes
+with the last update Windows recorded. WPShield has no offline source of the latest build, so it never calls
+a host outdated.
+
+### How far back the logs reach
+
+A crash is only countable while its record is still in the System log. `wpshield host health` shows, for the
+System, Security and Application logs, how far back each one reaches, its size, and which event fills it:
+
+```text
+System log        reaches back 6 h (20.0 MB, 63,818 records); 99.7% of the newest 5,000 records are 7036 Service Control Manager
+```
+
+That line is a service in a start loop pushing the crash records out of a 20 MB log. A log shorter than a
+week is called out with the manual remedy, `wevtutil sl <log> /ms:<bytes>`. The Security log needs
+elevation; unelevated it reads `unknown (access-denied)`, never empty.
 
 ## Honest about what it could not read
 
@@ -58,9 +78,21 @@ network filters, an endpoint product or a provider's edge firewall decide too.
 When unsure, the verdict leans open: a rule scoped to a program whose path could not be read is taken to
 apply, and a remote-address list is "restricted" unless it is `*` or `Internet`.
 
+A per-user rule (the kind store apps install) and an app-container rule admit traffic for their own app only:
+they do not open a port the kernel (`System`) owns, such as 139 and 445. An owner nobody could read still
+keeps every rule.
+
 **Red:** SMB (139, 445), RPC (135), SQL Server (1433), MySQL (3306, 33060), PostgreSQL (5432), VNC (5900)
 and WinRM (5985, 5986) when open to any address. Restricted to the addresses that need them, they are not
 red. The remedy is to restrict the rule by hand, never to hide the finding.
+
+**Which rule opens it.** For every port open to any address the snapshot names the allow rules that admit
+any address, at most five: `wpshield host ports` prints them under each red port, and `--all` under every
+other port open to any address. A rule on any port is marked `[any port]`, and one scoped to a program
+`[program rule, any port]`. In the Windows Firewall one allow rule is enough, so a program rule that admits
+any address on any port overrides a port rule restricted by address - restrict every rule listed. When no
+rule is needed, the line says why: the firewall is off for a profile in force, or the default inbound action
+is allow.
 
 ## The inventory never stores secrets
 
@@ -78,6 +110,16 @@ red. The remedy is to restrict the rule by hand, never to hide the finding.
   comparison and dropped (below).
 - **Changes are events.** An item added, removed or changed (executable, account or signature) between two
   snapshots is recorded as `host.inventory-change`, at most 500 a day per kind; beyond that they are counted.
+- **A bare program name is found where Windows finds it.** A task that runs `xcopy` or `sc.exe` without a
+  folder is judged for `user-writable-path` in the system folder and then the folders of `PATH` - never in
+  the folder the collector was started from. A name found nowhere is not judged.
+- **Services stuck in a start loop are flagged.** `not-running`: set to start automatically but start-pending,
+  paused, or stopped after a failure event in 24 hours. `start-pending`: waiting to start. `flapping`: ten or
+  more state changes (System event 7036) in the last hour. A service in a start loop fills the System log and
+  pushes the crash records out; stopping or fixing it is done by hand.
+- **Quiet Microsoft tasks are folded.** `wpshield host inventory tasks` folds into one counted line the tasks
+  under `\Microsoft\Windows\`, signed by Microsoft, listed only because they run a script host and carrying no
+  flag but `has-arguments`. They are still read and stored; `--all` shows them.
 
 ### Do attackers know your account names?
 
@@ -92,9 +134,12 @@ match means the names leaked from this server, through its login screen or an in
 
 ```text
 wpshield host                                  every fact with its age and status
-wpshield host health                           uptime, restarts with bugcheck codes, CPU, memory, volumes
+wpshield host health                           uptime, restarts with bugcheck codes, CPU, memory, volumes,
+                                               patch level, how far back the logs reach
 wpshield host sites | posture | ports | sessions
+wpshield host ports --all                      the rules behind every port open to any address
 wpshield host inventory accounts|services|tasks
+wpshield host inventory tasks --all            also the quiet Microsoft script-host tasks
 wpshield host ... --json                       one JSON document
 wpshield host ... --live                       read now, write nothing (run it elevated)
 ```

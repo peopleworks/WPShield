@@ -8,8 +8,17 @@ namespace WPShield.Evidence;
 /// <param name="RemoteAddresses">The rule's <c>RemoteAddresses</c> text; <c>*</c> is any.</param>
 /// <param name="Profiles">The profile mask: 1 domain, 2 private, 4 public.</param>
 /// <param name="Application">The program the rule is scoped to, or <see langword="null"/> for any.</param>
+/// <param name="Name">The rule's display name, which is what an operator finds and restricts; <see langword="null"/> when unread.</param>
+/// <param name="AppPackage">
+/// The app container (package SID) the rule is scoped to, or <see langword="null"/> for none. Such a rule admits traffic
+/// for that packaged app only - a store app's "any port, any address" rule says nothing about a port <c>System</c> owns.
+/// </param>
+/// <param name="UserOwner">
+/// The user the rule belongs to (<c>LocalUserOwner</c>), or <see langword="null"/>. Per-user rules - the ones store apps
+/// install, whose program the firewall's COM interface does not even report - admit that user's processes only.
+/// </param>
 public sealed record FirewallRule(bool Enabled, bool Inbound, bool Allow, int Protocol, string? LocalPorts, string? RemoteAddresses,
-    int Profiles, string? Application);
+    int Profiles, string? Application, string? Name = null, string? AppPackage = null, string? UserOwner = null);
 
 /// <summary>The firewall state that decides a verdict.</summary>
 /// <param name="ActiveProfiles">The mask of the profiles in force now.</param>
@@ -74,12 +83,7 @@ public static class ExposureVerdicts
         // A profile in force with its firewall turned off admits everything on its interfaces.
         if ((policy.Disabled & active) != 0) return OpenToAny;
 
-        var number = string.Equals(protocol, "TCP", StringComparison.OrdinalIgnoreCase) ? ProtocolTcp
-            : string.Equals(protocol, "UDP", StringComparison.OrdinalIgnoreCase) ? ProtocolUdp : -1;
-        var applicable = policy.Rules.Where(rule => rule.Enabled && rule.Inbound && (rule.Profiles & active) != 0
-            && (rule.Protocol == ProtocolAny || rule.Protocol == number)
-            && PortMatches(rule.LocalPorts, port)
-            && ApplicationMatches(rule.Application, processPath)).ToArray();
+        var applicable = Applicable(protocol, port, processPath, policy, active);
 
         // Block wins over allow in the Windows Firewall.
         if (applicable.Any(rule => !rule.Allow && IsAnyRemote(rule.RemoteAddresses))) return Blocked;
@@ -87,6 +91,78 @@ public static class ExposureVerdicts
         if (allows.Any(rule => IsAnyRemote(rule.RemoteAddresses))) return OpenToAny;
         if (allows.Length > 0) return Restricted;
         return (policy.DefaultInboundAllow & active) != 0 ? OpenToAny : Blocked;
+    }
+
+    /// <summary>The most rule names kept for one listener.</summary>
+    public const int MaxOpenedBy = 5;
+
+    /// <summary>The longest rule name kept.</summary>
+    public const int MaxRuleNameLength = 120;
+
+    /// <summary>Stands for the cause when a profile in force has its firewall turned off.</summary>
+    public const string FirewallTurnedOff = "(no rule: the firewall is turned off for a profile in force)";
+
+    /// <summary>Stands for the cause when no rule admits the port but the default inbound action is allow.</summary>
+    public const string DefaultInboundAllow = "(no rule: the default inbound action of a profile in force is allow)";
+
+    /// <summary>
+    /// For a listener <see cref="Classify"/> judges open to any address, what makes it so: the display names of the
+    /// enabled inbound allow rules that admit any address, at most <see cref="MaxOpenedBy"/>, or why no rule was
+    /// needed. Empty for any other verdict.
+    /// </summary>
+    /// <remarks>
+    /// A rule scoped to a program with any local port is marked <c>[program rule, any port]</c>: on the first real host
+    /// such a rule for a remote-control program admitted every address on its port and on a second one it opened,
+    /// although the port rule an operator had restricted by address looked like the whole story. In the Windows
+    /// Firewall one allow rule is enough, so the remedy is to restrict every rule listed, not only the obvious one.
+    /// </remarks>
+    public static IReadOnlyList<string> OpenedBy(string protocol, int port, string binding, string? processPath, FirewallPolicy? policy)
+    {
+        if (policy is null || Classify(protocol, port, binding, processPath, policy) != OpenToAny) return [];
+        var active = policy.ActiveProfiles & 7;
+        if ((policy.Disabled & active) != 0) return [FirewallTurnedOff];
+        var names = Applicable(protocol, port, processPath, policy, active)
+            .Where(rule => rule.Allow && IsAnyRemote(rule.RemoteAddresses))
+            .Select(RuleLabel)
+            .Distinct(StringComparer.Ordinal)
+            .Take(MaxOpenedBy)
+            .ToArray();
+        return names.Length > 0 ? names : [DefaultInboundAllow];
+    }
+
+    private static FirewallRule[] Applicable(string protocol, int port, string? processPath, FirewallPolicy policy, int active)
+    {
+        var number = string.Equals(protocol, "TCP", StringComparison.OrdinalIgnoreCase) ? ProtocolTcp
+            : string.Equals(protocol, "UDP", StringComparison.OrdinalIgnoreCase) ? ProtocolUdp : -1;
+        return policy.Rules.Where(rule => rule.Enabled && rule.Inbound && (rule.Profiles & active) != 0
+            && (rule.Protocol == ProtocolAny || rule.Protocol == number)
+            && PortMatches(rule.LocalPorts, port)
+            && ApplicationMatches(rule.Application, processPath)
+            && ScopeMatches(rule, processPath)).ToArray();
+    }
+
+    /// <summary>
+    /// A rule scoped to an app container applies to a packaged app, which runs from a <c>WindowsApps</c> folder; a rule
+    /// owned by a user applies to that user's processes, and the kernel (<c>System</c>, which owns 139 and 445) is never
+    /// one. When the owner is known and falls outside the scope, the rule does not apply. An unknown owner keeps it: the
+    /// open direction.
+    /// </summary>
+    private static bool ScopeMatches(FirewallRule rule, string? processPath)
+    {
+        if (processPath is null) return true;
+        if (!string.IsNullOrWhiteSpace(rule.AppPackage) && rule.AppPackage != "*" &&
+            !processPath.Contains(@"\WindowsApps\", StringComparison.OrdinalIgnoreCase))
+            return false;
+        return string.IsNullOrWhiteSpace(rule.UserOwner) || !string.Equals(processPath, "System", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string RuleLabel(FirewallRule rule)
+    {
+        var name = string.IsNullOrWhiteSpace(rule.Name) ? "(unnamed rule)" : EvidenceText.Clean(rule.Name.Trim(), MaxRuleNameLength);
+        var anyPort = string.IsNullOrWhiteSpace(rule.LocalPorts) || rule.LocalPorts.Trim() is "*" ||
+                      rule.LocalPorts.Trim().Equals("Any", StringComparison.OrdinalIgnoreCase);
+        var program = !string.IsNullOrWhiteSpace(rule.Application) && rule.Application != "*";
+        return anyPort ? name + (program ? " [program rule, any port]" : " [any port]") : name;
     }
 
     /// <summary>Whether a rule's <c>LocalPorts</c> covers <paramref name="port"/>.</summary>

@@ -20,14 +20,15 @@ siguiente fase solo leerán fotos guardadas.
 | Dato | Qué contiene | Se lee de | Cadencia | Necesita elevación |
 | --- | --- | --- | --- | --- |
 | `host_health` | Tiempo encendido, CPU, memoria, espacio libre por volumen fijo (marcando el de los logs de IIS), tamaño del almacén | `GetTickCount64`, `GetSystemTimes`, `GlobalMemoryStatusEx`, `DriveInfo` | 5 minutos | No |
-| Nivel de parches (en `host_health`) | `CurrentBuild`, `UBR` y `DisplayVersion`; la versión del archivo del kernel; la última actualización acumulativa correcta con su fecha y los días transcurridos; instalaciones fallidas en 30 días | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, ProductVersion de `ntoskrnl.exe`, eventos 19 y 20 de `WindowsUpdateClient/Operational` | 5 minutos | No |
+| Nivel de parches (en `host_health`) | `CurrentBuild`, `UBR` y `DisplayVersion`; la versión del archivo del kernel; la última actualización acumulativa correcta con su fecha y los días transcurridos; instalaciones fallidas en 30 días; cuando el log de actualizaciones no nombra ninguna acumulativa, la revisión más reciente instalada y su fecha | `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`, ProductVersion de `ntoskrnl.exe`, eventos 19 y 20 de `WindowsUpdateClient/Operational`, `Win32_QuickFixEngineering` | 5 minutos | No |
+| Horizonte de los logs (en `host_health`) | Para los logs de Sistema, Seguridad y Aplicación: tamaño máximo, número de registros, registro más antiguo y el evento que llena los 5.000 más nuevos | El servicio de registro de eventos, en solo lectura | 5 minutos | Para el log de Seguridad |
 | Reinicios inesperados | Cada caída una vez, con su código (`0x133 DPC_WATCHDOG_VIOLATION`) | Log de Sistema 41, 6008 y 1001, agrupados por caída | Al arrancar y cada 15 minutos | No |
 | `iis_sites` | ID, nombre, estado, bindings, grupo y **tipo** de identidad del grupo | El lector de IIS de solo lectura que usa `wpshield audit` | 15 minutos | Sí |
 | `iis_posture` | Los ID, severidades y recuentos del audit, y "grupos como administrador: N de M" | Las propias comprobaciones del audit, de solo lectura | Al arrancar, cada 6 horas y tras cada `wpshield audit` manual | Sí |
-| `listening_ports` | Protocolo, puerto, enlace, ejecutable dueño y veredicto de exposición | Las tablas de escucha TCP y UDP y la política del firewall (COM, solo lectura) | 15 minutos | Para nombres de procesos y algunas reglas |
+| `listening_ports` | Protocolo, puerto, enlace, ejecutable dueño, veredicto de exposición y, para un puerto abierto a cualquiera, las reglas que lo abren | Las tablas de escucha TCP y UDP y la política del firewall (COM, solo lectura) | 15 minutos | Para nombres de procesos y algunas reglas |
 | `rdp_sessions` | Sesiones actuales; inicios y reconexiones RDP de 7 días con su dirección de origen | `WTSEnumerateSessions`; LocalSessionManager 21 y 25 | 15 minutos | No |
 | `host_inventory` cuentas | Nombre, habilitada, pertenencia a Administradores y a Usuarios de escritorio remoto, último inicio, edad de la contraseña | `NetUserEnum`, `NetLocalGroupGetMembers` | Al arrancar y cada 6 horas | Sí |
-| `host_inventory` servicios | Servicios Win32 que no son de Microsoft: estado, inicio, cuenta, ejecutable, firma, marcas | La clave de servicios del registro y el administrador de servicios | Al arrancar y cada 6 horas | Sí |
+| `host_inventory` servicios | Servicios Win32 que no son de Microsoft: estado, inicio, cuenta, ejecutable, firma, marcas, y si alguno está atascado en un bucle de arranque | La clave de servicios del registro, el administrador de servicios y los registros de control de servicios del log de Sistema de 24 horas | Al arrancar y cada 6 horas | Sí |
 | `host_inventory` tareas | Tareas programadas que no son de Microsoft: ruta, estado, principal, última y próxima ejecución, ejecutable, firma, marcas | El Programador de tareas (COM, solo lectura) | Al arrancar y cada 6 horas | Sí |
 
 Las conexiones salientes de los procesos web (`w3wp.exe`, `php-cgi.exe`) **todavía no se miden**: una foto
@@ -38,10 +39,30 @@ no ve una llamada de dos segundos. Tendrán su propio ADR y su propio sensor.
 La compilación del registro, la versión del archivo del kernel y el log de Windows Update pueden no
 coincidir: un volcado de memoria puede mostrar un kernel más antiguo que las actualizaciones que lista el
 historial. `wpshield host health` muestra los tres juntos, dice cuándo la revisión del archivo del kernel
-difiere del `UBR` del registro y cuenta los días desde la última actualización acumulativa correcta. Un log
-de Windows Update ilegible dice `unknown`, nunca "ninguno"; "not found in the Windows Update log" dice
-hasta cuándo llega el log. WPShield no tiene una fuente sin conexión de la última compilación, así que
-nunca califica un servidor de desactualizado.
+difiere del `UBR` del registro y cuenta los días desde la última actualización acumulativa correcta. Una
+revisión del kernel un poco **por debajo** del `UBR` es normal (no toda actualización reemplaza
+`ntoskrnl.exe`) y se dice así, como un hecho. Un log de Windows Update ilegible dice `unknown`, nunca
+"ninguno"; "not found in the Windows Update log" dice hasta cuándo llega el log.
+
+Lo que se instala desde un paquete o con una herramienta de gestión no escribe ningún evento de instalación
+en ese log. Cuando no nombra ninguna actualización acumulativa, `wpshield host health` añade la revisión más
+reciente instalada según `Win32_QuickFixEngineering` (su ID y su fecha, etiquetados con esa fuente), así que
+"not found" viene acompañado de la última actualización que Windows registró. WPShield no tiene una fuente
+sin conexión de la última compilación, así que nunca califica un servidor de desactualizado.
+
+### Hasta dónde llegan los logs
+
+Una caída solo se puede contar mientras su registro siga en el log de Sistema. `wpshield host health`
+muestra, para los logs de Sistema, Seguridad y Aplicación, hasta dónde llega cada uno, su tamaño y qué evento
+lo llena:
+
+```text
+System log        reaches back 6 h (20.0 MB, 63,818 records); 99.7% of the newest 5,000 records are 7036 Service Control Manager
+```
+
+Esa línea es un servicio en bucle de arranque expulsando los registros de caídas de un log de 20 MB. Un log
+que no llega a una semana se señala con el remedio manual, `wevtutil sl <log> /ms:<bytes>`. El log de
+Seguridad necesita elevación; sin ella dice `unknown (access-denied)`, nunca vacío.
 
 ## Honesto con lo que no pudo leer
 
@@ -61,9 +82,21 @@ seguridad o el firewall del proveedor también deciden.
 Ante la duda, el veredicto se inclina a abierto: una regla limitada a un programa cuya ruta no se pudo leer
 se toma como aplicable, y una lista de direcciones remotas es "restringida" salvo que sea `*` o `Internet`.
 
+Una regla de usuario (las que instalan las apps de la tienda) y una de contenedor de aplicación admiten
+tráfico solo para su propia app: no abren un puerto que es del kernel (`System`), como el 139 y el 445. Un
+propietario que nadie pudo leer conserva todas las reglas.
+
 **Rojo:** SMB (139, 445), RPC (135), SQL Server (1433), MySQL (3306, 33060), PostgreSQL (5432), VNC (5900) y
 WinRM (5985, 5986) cuando están abiertos a cualquier dirección. Restringidos a las direcciones que los
 necesitan, no salen en rojo. El remedio es restringir la regla a mano, nunca esconder el aviso.
+
+**Qué regla lo abre.** Para cada puerto abierto a cualquiera, la foto nombra las reglas que permiten y
+admiten cualquier dirección, cinco como máximo: `wpshield host ports` las imprime bajo cada puerto rojo, y
+`--all` bajo todo otro puerto abierto a cualquiera. Una regla para cualquier puerto se marca `[any port]`, y
+una limitada a un programa `[program rule, any port]`. En el Firewall de Windows basta una regla que permita,
+así que una regla de programa que admite cualquier dirección en cualquier puerto anula una regla de puerto
+restringida por dirección: restringe todas las reglas de la lista. Cuando no hace falta ninguna regla, la
+línea dice por qué: el firewall está apagado en un perfil activo, o la acción de entrada por defecto permite.
 
 ## El inventario nunca guarda secretos
 
@@ -81,6 +114,19 @@ necesitan, no salen en rojo. El remedio es restringir la regla a mano, nunca esc
   para una comparación y se descartan (abajo).
 - **Los cambios son eventos.** Un elemento añadido, quitado o cambiado (ejecutable, cuenta o firma) entre dos
   fotos se registra como `host.inventory-change`, como máximo 500 al día por tipo; los demás se cuentan.
+- **Un nombre de programa sin carpeta se busca donde lo busca Windows.** Una tarea que ejecuta `xcopy` o
+  `sc.exe` sin carpeta se juzga para `user-writable-path` en la carpeta del sistema y luego en las carpetas
+  de `PATH`, nunca en la carpeta desde la que se arrancó el recolector. Un nombre que no se encuentra no se
+  juzga.
+- **Los servicios atascados en un bucle de arranque se marcan.** `not-running`: configurado para arrancar
+  automáticamente pero en arranque pendiente, en pausa, o detenido tras un evento de fallo en 24 horas.
+  `start-pending`: esperando arrancar. `flapping`: diez o más cambios de estado (evento 7036 de Sistema) en la
+  última hora. Un servicio en bucle llena el log de Sistema y expulsa los registros de caídas; detenerlo o
+  arreglarlo se hace a mano.
+- **Las tareas tranquilas de Microsoft se agrupan.** `wpshield host inventory tasks` agrupa en una línea con
+  su recuento las tareas bajo `\Microsoft\Windows\`, firmadas por Microsoft, que aparecen solo porque ejecutan
+  un intérprete de scripts y no llevan más marca que `has-arguments`. Se siguen leyendo y guardando; `--all`
+  las muestra.
 
 ### ¿Conocen los atacantes los nombres de tus cuentas?
 
@@ -96,9 +142,12 @@ inicio de sesión o por una intrusión.
 
 ```text
 wpshield host                                  cada dato con su antigüedad y estado
-wpshield host health                           tiempo encendido, reinicios con su código, CPU, memoria, volúmenes
+wpshield host health                           tiempo encendido, reinicios con su código, CPU, memoria, volúmenes,
+                                               nivel de parches, hasta dónde llegan los logs
 wpshield host sites | posture | ports | sessions
+wpshield host ports --all                      las reglas detrás de todo puerto abierto a cualquiera
 wpshield host inventory accounts|services|tasks
+wpshield host inventory tasks --all            también las tareas tranquilas de Microsoft
 wpshield host ... --json                       un documento JSON
 wpshield host ... --live                       lee ahora, no escribe nada (ejecútalo elevado)
 ```

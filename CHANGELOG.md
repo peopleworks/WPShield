@@ -14,6 +14,21 @@ must complete first.
 
 ### Added
 
+- Host facts refined after the first real `wpshield host` run (ADR 0013, as built), all read-only and bounded:
+  - `listening_ports` names, for each port open to any address, the enabled allow rules that open it (at most five, a
+    program rule on any port marked as such) or why no rule was needed; `wpshield host ports` prints them under each red
+    port and, with `--all`, under every port open to any address. In MCP (`opened_by`) they are host details behind
+    `mcp.host_details`.
+  - `host_health` records how far back the System, Security and Application logs reach, their size, and the event that fills
+    the newest 5,000 records; a log shorter than a week is called out with the manual `wevtutil` remedy. An unreadable log is
+    unknown, never empty. In MCP (`event_logs`) the dominant provider is a host detail.
+  - When the Windows Update log names no cumulative update, the patch level adds the newest installed hotfix from
+    `Win32_QuickFixEngineering`, labelled with that source; an unreadable list is unknown. A kernel file revision a little
+    below the `UBR` is stated as normal, because not every update replaces `ntoskrnl.exe`.
+  - The services inventory flags `not-running` (automatic, but start-pending, paused, or stopped after a failure in 24 hours),
+    `start-pending` and `flapping` (ten or more state changes in an hour), from at most 5,000 System records.
+  - `wpshield host inventory tasks` folds the Microsoft-signed tasks under `\Microsoft\Windows\` that are listed only for
+    running a script host into one counted line; `--all` shows them. They are still read and stored.
 - Six read-only host tools in `wpshield mcp`, which the AI analyst gets too (ADR 0013 as built, ADR 0008 table):
   `host_health` (uptime, CPU, memory, disk, the patch level as Windows reports it, the unexpected restarts of the last 30 days
   with their bugcheck codes, and the last 24 hours), `iis_sites`, `iis_posture` (the audit's summary and the history of pools
@@ -238,6 +253,14 @@ must complete first.
 
 ### Fixed
 
+- A task action that names a program without a folder (`xcopy`, `sc.exe`) is judged for `user-writable-path` where Windows
+  finds it - the system folder, then `PATH` - instead of in the folder the collector was started from, which marked every
+  bare name when that folder was writable by users. A name found nowhere is not judged.
+- An exposure verdict no longer lets a per-user firewall rule (`LocalUserOwner`, the kind store apps install) or an
+  app-container rule (`LocalAppPackageId`) open a port the kernel owns, such as SMB's 139 and 445: those rules admit their
+  own app only. An owner nobody could read still keeps every rule, as before.
+- `RateLimiterTests` no longer sleep on the real clock: the limiter takes a `TimeProvider`, and the tests move a manual one,
+  so `RefillsOverTime` cannot fail on a busy machine. The limiter's behaviour is unchanged.
 - `WEB-OBS-001` no longer fires on a GET or HEAD of WordPress core's three "Silence is golden"
   placeholders (`wp-content/index.php`, `wp-content/plugins/index.php`, `wp-content/themes/index.php`),
   which scanners request to fingerprint WordPress and every healthy install answers with 200. A POST to
