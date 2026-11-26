@@ -79,8 +79,16 @@ loopback) o `unknown` (no se pudo leer la política). El veredicto siempre va et
 del Firewall de Windows"** y nunca se presenta como "alcanzable": otros filtros de red, un producto de
 seguridad o el firewall del proveedor también deciden.
 
-Ante la duda, el veredicto se inclina a abierto: una regla limitada a un programa cuya ruta no se pudo leer
-se toma como aplicable, y una lista de direcciones remotas es "restringida" salvo que sea `*` o `Internet`.
+**El programa dueño del puerto.** El recolector abre el proceso dueño para leer su ruta. Un proceso que se
+niega incluso a eso, como hacen algunos procesos de servicio ante un recolector elevado, se nombra con el nombre
+de imagen que guarda el propio kernel, que no necesita acceso al proceso, y solo cuando ese nombre corresponde a
+una letra de unidad. Un puerto cuyo programa sigue sin poder nombrarse dice
+`unknown`.
+
+Ante la duda, el veredicto se inclina a abierto. Con el programa desconocido, una regla que permite y está
+limitada a un programa se toma como aplicable, y una que bloquea y está limitada a uno, no: un veredicto nunca
+es `blocked` por una regla que quizá no aplica. Una lista de direcciones remotas es "restringida" salvo
+que sea `*` o `Internet`.
 
 Una regla de usuario (las que instalan las apps de la tienda) y una de contenedor de aplicación admiten
 tráfico solo para su propia app: no abren un puerto que es del kernel (`System`), como el 139 y el 445. Un

@@ -36,9 +36,9 @@ public sealed record FirewallPolicy(int ActiveProfiles, int Disabled, int Defaul
 /// reachable, and the verdict is labelled with its source wherever it is shown.
 /// </para>
 /// <para>
-/// <b>When unsure, the open direction.</b> A rule scoped to a program whose path could not be read is taken
-/// to apply; a remote-address keyword that means the internet is taken as any. An exposure check that
-/// guesses closed is the one that hides the open port.
+/// <b>When unsure, the open direction.</b> With the owning program unknown, an allow rule scoped to a program is
+/// taken to apply and a block rule scoped to one is not; a remote-address keyword that means the internet is taken
+/// as any. An exposure check that guesses closed is the one that hides the open port.
 /// </para>
 /// </remarks>
 public static class ExposureVerdicts
@@ -85,8 +85,10 @@ public static class ExposureVerdicts
 
         var applicable = Applicable(protocol, port, processPath, policy, active);
 
-        // Block wins over allow in the Windows Firewall.
-        if (applicable.Any(rule => !rule.Allow && IsAnyRemote(rule.RemoteAddresses))) return Blocked;
+        // Block wins over allow in the Windows Firewall - but only a block rule certain to apply. With the owner unknown,
+        // a block rule for a program, an app container or a user may well not; taking it to apply hid an open port.
+        if (applicable.Any(rule => !rule.Allow && IsAnyRemote(rule.RemoteAddresses) && (processPath is not null || !IsScoped(rule))))
+            return Blocked;
         var allows = applicable.Where(rule => rule.Allow).ToArray();
         if (allows.Any(rule => IsAnyRemote(rule.RemoteAddresses))) return OpenToAny;
         if (allows.Length > 0) return Restricted;
@@ -155,6 +157,12 @@ public static class ExposureVerdicts
             return false;
         return string.IsNullOrWhiteSpace(rule.UserOwner) || !string.Equals(processPath, "System", StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>Whether a rule applies to some processes only: a program, an app container or a user.</summary>
+    private static bool IsScoped(FirewallRule rule) =>
+        (!string.IsNullOrWhiteSpace(rule.Application) && rule.Application != "*") ||
+        (!string.IsNullOrWhiteSpace(rule.AppPackage) && rule.AppPackage != "*") ||
+        !string.IsNullOrWhiteSpace(rule.UserOwner);
 
     private static string RuleLabel(FirewallRule rule)
     {

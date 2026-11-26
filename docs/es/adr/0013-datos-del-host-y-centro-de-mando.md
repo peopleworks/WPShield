@@ -388,6 +388,11 @@ del texto anterior en estos puntos:
   direcciones remotas son `*`, `Any`, `Internet` o un rango completo literal. Una regla de bloqueo con
   una lista que cubre casi todas las direcciones se trata como si cubriera solo algunas, así que no
   vuelve `blocked` a un puerto: el veredicto se inclina a abierto, como pide la sección 1.1 ante la duda.
+- **Con el dueño desconocido, una regla de bloqueo de un programa no bloquea.** Una regla que permite y está
+  limitada a un programa, a un contenedor de aplicación o a un usuario se toma como aplicable a un puerto cuyo
+  programa no se pudo nombrar; una que bloquea con el mismo alcance, no, así que un veredicto nunca es
+  `blocked` por una regla que quizá no aplica. El programa se lee del nombre de imagen del kernel cuando el
+  proceso se niega a abrirse.
 - **Todavía no hay herramientas MCP, y solo `evidence collect`.** Las herramientas de los datos del
   host y el ajuste `mcp.host_details` que respetan llegan en la siguiente fase; el ajuste existe y se
   audita, pero aún no cambia nada. El recolector alojado en el servicio no toma datos del host.

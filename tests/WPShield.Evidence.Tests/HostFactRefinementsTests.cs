@@ -87,6 +87,27 @@ public sealed class HostFactRefinementsTests
         Assert.Equal(["Synthetic any [any port]"], ExposureVerdicts.OpenedBy("TCP", 445, "any", null, Policy(Allow(null, name: "Synthetic any"))));
     }
 
+    [Fact]
+    public void ABlockRuleForAProgramDoesNotCloseAPortWhoseOwnerIsUnknown()
+    {
+        // Measured on a workstation: two program-scoped block rules decided "blocked" for every listener whose owner
+        // could not be read, although nothing said they applied to it.
+        static FirewallRule Block(string? app = null, string? package = null, string? user = null) =>
+            new(true, true, false, ExposureVerdicts.ProtocolAny, null, "*", 7, app, "Synthetic block", package, user);
+        var portRule = Allow("1433", name: "Synthetic SQL");
+
+        foreach (var scoped in new[] { Block(app: @"C:\Program Files\Synthetic\updater.exe"), Block(package: "S-1-15-2-1"), Block(user: "S-1-5-21-1-2-3-1001") })
+        {
+            Assert.Equal(ExposureVerdicts.OpenToAny, ExposureVerdicts.Classify("TCP", 1433, "any", null, Policy(scoped, portRule)));
+            Assert.Equal(["Synthetic SQL"], ExposureVerdicts.OpenedBy("TCP", 1433, "any", null, Policy(scoped, portRule)));
+        }
+
+        // A block rule for the program that owns the port, or for every program, still wins.
+        var updater = @"C:\Program Files\Synthetic\updater.exe";
+        Assert.Equal(ExposureVerdicts.Blocked, ExposureVerdicts.Classify("TCP", 1433, "any", updater, Policy(Block(app: updater), portRule)));
+        Assert.Equal(ExposureVerdicts.Blocked, ExposureVerdicts.Classify("TCP", 1433, "any", null, Policy(Block(), portRule)));
+    }
+
     // ---------------------------------------------------------------------------------------------
     //  How far back a log reaches
     // ---------------------------------------------------------------------------------------------

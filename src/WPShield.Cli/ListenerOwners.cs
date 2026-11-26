@@ -85,7 +85,9 @@ internal static class ListenerOwners
         {
             var row = table.Slice(i * stride, stride);
             var addressOffset = tcp && !ipv6 ? 4 : 0;
-            var address = ipv6 ? new IPAddress(row[..16], BinaryPrimitives.ReadUInt32BigEndian(row[16..])) :
+            // The scope ID is documented as network byte order, but Windows writes it in host order: measured in both the TCP
+            // and UDP tables, a link-local listener on interface 5 carries 05 00 00 00, and IPGlobalProperties reports scope 5.
+            var address = ipv6 ? new IPAddress(row[..16], BinaryPrimitives.ReadUInt32LittleEndian(row[16..])) :
                 new IPAddress(row.Slice(addressOffset, 4));
             var port = BinaryPrimitives.ReadUInt16BigEndian(row[(ipv6 ? 20 : addressOffset + 4)..]);
             var endpoint = new IPEndPoint(address, port);

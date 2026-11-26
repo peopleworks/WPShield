@@ -29,6 +29,7 @@ internal static class HostPortsReader
         cancellationToken.ThrowIfCancellationRequested();
         var (policy, firewallProblem) = ReadPolicy(cancellationToken);
         var paths = new Dictionary<uint, string?>();
+        var devices = new Lazy<IReadOnlyList<ProcessImagePath.DosDevice>>(ProcessImagePath.DosDevices);
         var listeners = new List<HostListener>();
         var problems = new List<string>();
         if (firewallProblem is not null) problems.Add(firewallProblem);
@@ -45,7 +46,8 @@ internal static class HostPortsReader
             }
             var binding = endpoint.Binding switch { "wildcard" => "any", "loopback" => "loopback", _ => "specific" };
             string? path = null;
-            if (endpoint.Owner?.ProcessId is uint pid && !paths.TryGetValue(pid, out path)) paths[pid] = path = ProcessPath(pid);
+            if (endpoint.Owner?.ProcessId is uint pid && !paths.TryGetValue(pid, out path))
+                paths[pid] = path = ProcessImagePath.Read(pid, () => devices.Value);
             var verdict = ExposureVerdicts.Classify(protocol, endpoint.Port, binding, path, policy);
             var openedBy = verdict == ExposureVerdicts.OpenToAny ? ExposureVerdicts.OpenedBy(protocol, endpoint.Port, binding, path, policy) : null;
             listeners.Add(new HostListener(protocol, endpoint.Port, binding,
@@ -109,35 +111,4 @@ internal static class HostPortsReader
             return null;
         }
     }
-
-    private static string? ProcessPath(uint pid)
-    {
-        if (pid == 4) return "System";
-        var handle = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, pid);
-        if (handle == IntPtr.Zero) return null;
-        try
-        {
-            var buffer = new StringBuilder(1024);
-            var size = buffer.Capacity;
-            return QueryFullProcessImageName(handle, 0, buffer, ref size) ? buffer.ToString(0, size) : null;
-        }
-        finally
-        {
-            CloseHandle(handle);
-        }
-    }
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    private static extern IntPtr OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, uint processId);
-
-    [DllImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW", CharSet = CharSet.Unicode, SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool QueryFullProcessImageName(IntPtr process, uint flags, StringBuilder name, ref int size);
-
-    [DllImport("kernel32.dll", SetLastError = true)]
-    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool CloseHandle(IntPtr handle);
 }
