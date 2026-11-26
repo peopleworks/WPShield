@@ -157,12 +157,12 @@ internal static class DemoData
         for (var hoursAgo = 23; hoursAgo >= 0; hoursAgo--) writer.RecordHealth(HealthSample(hoursAgo), Hour.AddHours(-hoursAgo));
         writer.Write(HostFactReading.Of(HostFacts.Health, null, Now.AddMinutes(-2), HealthSample(0)));
         writer.RecordRestarts(Enumerable.Range(0, 5).Select(i => new HostRestart($"demo-restart-{i}",
-            Now.AddDays(-3 - 5 * i), [41, 1001], 0x133)).ToArray());
+            Now.AddDays(-3 - 5d * i), [41, 1001], 0x133)).ToArray());
         writer.SetRestartsReadUntil(Now.AddMinutes(-2));
 
         for (var i = 0; i < 4; i++)
         {
-            var taken = i == 3 ? Now.AddHours(-1) : Now.AddDays(-21 + i * 7);
+            var taken = i == 3 ? Now.AddHours(-1) : Now.AddDays(-21 + i * 7d);
             writer.Write(HostFactReading.Of(HostFacts.Posture, null, taken, new HostPosture("collector", true,
                 [new("AUDIT-002", "critical", "Demo pools running as administrator", 9 - i)], 10, 9 - i, i < 2, 4 - i, 1)));
         }
