@@ -22,10 +22,18 @@ public partial class ListenerWindow : Window
     private ProtectionWindow? protectionWindow;
     private IReadOnlyList<LocalListenerInventory.Table> latest = [];
 
-    public ListenerWindow()
+    internal CommandCenterView Home { get; }
+
+    public ListenerWindow() : this(App.Spanish(), new CommandCenterView())
     {
-        spanish = App.Spanish();
+    }
+
+    internal ListenerWindow(bool spanish, CommandCenterView home)
+    {
+        this.spanish = spanish;
+        Home = home;
         InitializeComponent();
+        HomeSlot.Content = Home;
         HomeButton.Content = L("Command center", "Centro de mando");
         ListenersButton.Content = L("Local ports", "Puertos locales");
         Home.OpenTile = OpenCommandTile;

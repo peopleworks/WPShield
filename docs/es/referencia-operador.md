@@ -110,6 +110,31 @@ acota la longitud. Además, recibe un `'` delante cuando, tras los espacios inic
 hoja de cálculo lee `=HYPERLINK(...)` o `+cmd|...` como texto, nunca como fórmula. La decisión sigue
 el tipo de la columna, no el valor: una columna de texto con `-2+3` sigue siendo texto.
 
+### Regenerar las capturas del escritorio
+
+Desde la raíz del repositorio, en Windows con el SDK de .NET 10 y una sesión de escritorio, ejecuta:
+
+```powershell
+dotnet run --project tools/WPShield.Desktop.Demo -c Release
+```
+
+La herramienta genera un almacén temporal con el esquema actual y un informe de auditoría sintético.
+Renderiza Centro de mando, Ataques, Web, Protección, Ajustes y Referencias de auditoría en inglés y
+español a 1440 × 900 y 96 DPI. Reemplaza los PNG de `docs/assets/screenshots/` cuando termina de
+renderizar todas las vistas y elimina los datos temporales. La captura contiene solo el contenido
+WPF alimentado por los datos sintéticos y usa la paleta clara nativa del escritorio.
+
+Para conservar una base de demostración y consultarla desde la CLI, elige un nombre de archivo
+nuevo en una carpeta existente:
+
+```powershell
+dotnet run --project tools/WPShield.Desktop.Demo -c Release -- --store "$env:TEMP\wpshield-demo-example.db"
+```
+
+El reloj de la demostración está fijado en el 26 de noviembre de 2026 a las 12:42 UTC. Usa esa fecha
+al consultar la base de demostración. El generador rechaza archivos existentes y la carpeta de
+evidencia predeterminada de WPShield. La herramienta está disponible en el código fuente.
+
 ## Estado del proyecto
 
 | Capacidad | Estado | Detalle |
