@@ -269,6 +269,15 @@ must complete first.
 
 ### Fixed
 
+- `listening_ports` names the program behind a listener whose process refuses to be opened, as some service processes do
+  even to an elevated collector, from the kernel's own image name, which needs no access to the process. Such a listener
+  read `unknown`, so every program and app-container rule on any port was listed beside the port rule that really opens it.
+  A name that maps to no drive letter stays `unknown`, never a guessed path.
+- With the owning program unknown, a block rule scoped to a program, an app container or a user no longer makes a verdict
+  `blocked`: nothing says it applies. Measured on a workstation, two such rules decided `blocked` for every listener whose
+  owner could not be read. Allow rules for programs are still taken to apply, the open direction.
+- The owner of a listener bound to a link-local IPv6 address (`fe80::...%5`) is found. The owner tables carry the scope ID in
+  host byte order, not the network order their documentation states, so those listeners read `not-observed`.
 - A task action that names a program without a folder (`xcopy`, `sc.exe`) is judged for `user-writable-path` where Windows
   finds it - the system folder, then `PATH` - instead of in the folder the collector was started from, which marked every
   bare name when that folder was writable by users. A name found nowhere is not judged.
@@ -1312,9 +1321,13 @@ must complete first.
 
 - Host facts do not measure outbound connections from web worker processes yet: a snapshot misses a two-second callback.
   They get their own ADR and sensor. Host facts run in `evidence collect` only, not yet in the service-hosted collector.
-  The exposure verdict reads the Windows Firewall rules and leans open when unsure (a program-scoped rule whose owner could
-  not be read is taken to apply; a remote-address list other than `*` or `Internet` reads as restricted); WFP filters from
+  The exposure verdict reads the Windows Firewall rules and leans open when unsure (with the owner unknown, a program-scoped
+  allow rule is taken to apply and a program-scoped block rule is not; a remote-address list other than `*` or `Internet` reads as restricted); WFP filters from
   other products are not considered.
+- **A per-user firewall rule is taken to apply to every listener but `System`'s,** because the user a listener's process
+  runs as is not read. On a workstation with store apps, their per-user "any port" rules make most listeners
+  `open-to-any` and are named under each red port; on a server without them nothing changes. Reading the process's user
+  would narrow it.
 - **Web evidence is read by `wpshield evidence collect` only.** The collector the gateway hosts as the service does not read IIS logs yet: the IIS configuration reader lives in the CLI, and the service account would first need the manual read grant on the log folders.
 - **On a site without WordPress, every PHP file that answers is a `WEB-OBS-001` observation, legitimate PHP included.** That is why an observation decides nothing; the first week measures how much it catches.
 - **A request whose attack is in its query string is invisible to the web evidence,** because the query is never read. Inspecting it without storing it is the gateway's job.

@@ -75,8 +75,14 @@ Each listener gets a verdict from the enabled inbound rules of the profiles in f
 verdict is always labelled **"by the Windows Firewall rules"** and never presented as "reachable": other
 network filters, an endpoint product or a provider's edge firewall decide too.
 
-When unsure, the verdict leans open: a rule scoped to a program whose path could not be read is taken to
-apply, and a remote-address list is "restricted" unless it is `*` or `Internet`.
+**The program that owns the port.** The collector opens the owning process to read its path. A process that
+refuses even that, as some service processes do to an elevated collector, is named from the kernel's own image
+name, which needs no access to it, and only when that name maps to a drive letter. A listener whose program
+still cannot be named reads `unknown`.
+
+When unsure, the verdict leans open. With the program unknown, an allow rule scoped to a program is taken to
+apply and a block rule scoped to one is not: a verdict is never `blocked` on a rule that may not apply. A remote-address
+list is "restricted" unless it is `*` or `Internet`.
 
 A per-user rule (the kind store apps install) and an app-container rule admit traffic for their own app only:
 they do not open a port the kernel (`System`) owns, such as 139 and 445. An owner nobody could read still

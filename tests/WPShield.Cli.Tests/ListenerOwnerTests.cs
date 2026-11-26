@@ -24,7 +24,8 @@ public sealed class ListenerOwnerTests
             BinaryPrimitives.WriteUInt32LittleEndian(buffer, 1);
             var row = buffer.AsSpan(4, stride);
             address.GetAddressBytes().CopyTo(row[addressOffset..]);
-            if (ipv6) BinaryPrimitives.WriteUInt32BigEndian(row[16..], 9);
+            // Host order, as Windows writes it (not the network order its documentation states).
+            if (ipv6) BinaryPrimitives.WriteUInt32LittleEndian(row[16..], 9);
             BinaryPrimitives.WriteUInt16BigEndian(row[portOffset..], 43210);
             BinaryPrimitives.WriteUInt32LittleEndian(row[^4..], 701);
             size = stride + 4;

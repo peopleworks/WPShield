@@ -364,6 +364,10 @@ above in these points:
   `*`, `Any`, `Internet` or a whole-range literal. A block rule with a list that covers almost every
   address is treated as covering some addresses only, so it does not make a listener `blocked`: the
   verdict leans open, as section 1.1 asks when unsure.
+- **With the owner unknown, a block rule for a program does not block.** An allow rule scoped to a program,
+  an app container or a user is taken to apply to a listener whose program could not be named; a block rule
+  with the same scope is not, so a verdict is never `blocked` on a rule that may not apply. The program is
+  read from the kernel's image name when the process refuses to be opened.
 - **No MCP tools yet, and `evidence collect` only.** The host-fact tools and the `mcp.host_details`
   gate they honour come in the next phase; the setting exists and is audited, and changes nothing yet.
   The service-hosted collector does not take host facts.
