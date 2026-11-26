@@ -16,7 +16,8 @@ namespace WPShield.Cli.Mcp;
 /// takes on its cadence. Nothing here reads the host, so nothing a model asks for makes WPShield probe the
 /// server. Each answer starts with the snapshot it read: its read time, its age, whether it is stale, and its
 /// status with the reason and remedy when it is not <c>ok</c>. A fact never read is <c>no-snapshot-yet</c> and
-/// its values are <see langword="null"/>: unknown is never shown as none.
+/// its values are <see langword="null"/>: unknown is never shown as none. A stored remedy, and a reason that is
+/// not a fixed code, can name a path or a site, so they follow the gate below like every other host detail.
 /// </para>
 /// <para>
 /// <b>The host's own names leave only with <c>mcp.host_details</c>,</b> a gate separate from
@@ -38,6 +39,8 @@ internal sealed partial class EvidenceTools
 
     private const string HostDetailsWithheld =
         "Names of sites, pools, accounts, services and tasks, host names, paths, local addresses and RDP source addresses are withheld: the operator has not enabled mcp.host_details. Counts, statuses, verdicts, port numbers, executable file names, restart times and bugcheck codes are complete.";
+
+    private const string RemedyWithheld = "withheld (mcp.host_details); run `wpshield host` on the server to see it";
 
     private const string NoSnapshotRemedy =
         "Start the WPShield collector elevated ('wpshield evidence collect'): it takes this snapshot on its cadence. Until then this fact is unknown, not empty.";
@@ -503,9 +506,21 @@ internal sealed partial class EvidenceTools
         node["age_seconds"] = Math.Max(0L, (long)(Now - reading.TakenAt).TotalSeconds);
         node["cadence_seconds"] = (long)HostFacts.Cadence(fact).TotalSeconds;
         node["stale"] = HostFacts.IsStale(fact, reading.TakenAt, Now);
-        node["reason"] = reading.Reason is null ? null : Code(reading.Reason);
-        node["remedy"] = reading.Remedy is null ? null : Untrusted(reading.Remedy, 300);
+        node["reason"] = SnapshotReason(reading.Reason);
+        node["remedy"] = reading.Remedy is null ? null : access.HostDetails ? Untrusted(reading.Remedy, 300) : JsonValue.Create(RemedyWithheld);
         return node;
+    }
+
+    /// <summary>
+    /// Why a snapshot is not <c>ok</c>. A fixed code (<c>not-elevated</c>, <c>access-denied</c>) names nothing
+    /// and always passes. Any other reason text, like every stored remedy, can name a path or a site, so it
+    /// is host detail: <c>withheld</c> without <c>mcp.host_details</c>, untrusted text with it.
+    /// </summary>
+    private JsonNode? SnapshotReason(string? reason)
+    {
+        if (reason is null) return null;
+        if (CodePattern().IsMatch(reason)) return JsonValue.Create(reason);
+        return access.HostDetails ? Untrusted(reason, 300) : JsonValue.Create(Withheld);
     }
 
     private JsonObject HostDetailStatement() => new()

@@ -407,10 +407,14 @@ del texto anterior en estos puntos:
   `HostFactsQueries` y respetan `mcp.host_details`, congelado al arrancar el servidor como
   `mcp.detailed_records`; aceptan exactamente los parámetros de la sección 6, así que al analista se le
   ofrecen 24 parámetros opcionales en 20 herramientas, justo los dos límites del uso estricto de
-  herramientas. Como se construyó: `rdp_sessions` usa `7d` por defecto; los reinicios cuentan como
+  herramientas. Como se construyó: `rdp_sessions` usa `7d` por defecto (la sección 6 nombra los dos
+  rangos pero no el valor por defecto; `7d` es todo lo que guarda la instantánea); los reinicios cuentan como
   leídos solo cuando el recolector ha registrado hasta dónde leyó el log de Sistema
-  (`HostFactsQueries.RestartsReadUntil`), y antes de eso el recuento es `null`, nunca 0; un motivo que
-  no es un código y todo remedio guardado vuelven como texto no confiable; el nombre de un volumen que
+  (`HostFactsQueries.RestartsReadUntil`), y antes de eso el recuento es `null`, nunca 0; un remedio
+  guardado, y un motivo que no es un código fijo, pueden nombrar una ruta o un sitio, así que con
+  `mcp.host_details` apagado solo se devuelve el código del motivo y el remedio dice
+  ``withheld (mcp.host_details); run `wpshield host` on the server to see it``, y con él encendido los dos
+  vuelven como texto no confiable; el nombre de un volumen que
   es una letra de unidad se muestra, cualquier otro es una ruta y se retiene; la cuenta de un servicio o
   una tarea se clasifica (`local-system`, `local-service`, `network-service`, `virtual-account`,
   `pool-identity`, `named-account`) para que se vea el tipo mientras el nombre queda tras la compuerta;

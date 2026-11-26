@@ -65,7 +65,10 @@ Las herramientas del host (`host_health`, `iis_sites`, `iis_posture`, `listening
 toma a su ritmo y nunca leen el host por su cuenta, así que nada de lo que pregunte un asistente hace
 que WPShield sondee el servidor. Cada respuesta empieza por la foto que leyó: su hora de lectura, su
 antigüedad, si está vencida (más vieja que tres veces su ritmo) y su estado, con el motivo y el remedio
-cuando no es `ok`. Un dato que el recolector aún no ha leído aparece como `no-snapshot-yet` y sus valores
+cuando no es `ok`. Un remedio, y un motivo que no es un código fijo, pueden nombrar una ruta o un sitio,
+así que siguen `mcp.host_details`: sin él solo se devuelve el código del motivo y el remedio dice
+``withheld (mcp.host_details); run `wpshield host` on the server to see it`` (retenido; ejecute
+`wpshield host` en el servidor para verlo). Un dato que el recolector aún no ha leído aparece como `no-snapshot-yet` y sus valores
 son `null`: desconocido, nunca ninguno. Cuatro no aceptan argumentos; `rdp_sessions` acepta `24h` o `7d`
 (por defecto `7d`, todo lo que guarda la foto) y `host_inventory` exige un `kind`: `accounts`,
 `services` o `tasks`. Ninguna acepta una ruta, un nombre ni un comando. Los veredictos de exposición son
@@ -120,8 +123,8 @@ ni puertos.
 
 | Ajuste `mcp.host_details` | Lo que envían las herramientas del host ([ADR 0013](adr/0013-datos-del-host-y-centro-de-mando.md)) |
 | --- | --- |
-| `false` (por defecto) | Conteos, estados, horas de lectura y marcas de foto vencida; tiempo encendido, CPU, memoria y disco; el nivel de parches y el título de la última actualización acumulativa; los reinicios inesperados con su hora y su código de pantallazo; los ID y conteos de la postura; números de puerto, protocolos, veredictos de exposición y el nombre de archivo del programa que escucha; cuántas sesiones, inicios de sesión, usuarios y direcciones de origen; las marcas de las cuentas y el indicador de nombre completo (sí o no y un conteo, nunca un nombre); y de servicios y tareas, el tipo de cuenta con que corren, el nombre de archivo del ejecutable, la firma y las marcas. Cada nombre, ruta y dirección de origen de RDP aparece como `"withheld"` |
-| `true` | Todo lo anterior, más los nombres de sitios, grupos, cuentas, servicios y tareas, los nombres de host de los bindings, las rutas de los ejecutables, las direcciones locales concretas y la dirección de origen de cada inicio de sesión por RDP, cada uno como `{"untrusted": "..."}` |
+| `false` (por defecto) | Conteos, estados con sus códigos de motivo, horas de lectura y marcas de foto vencida; tiempo encendido, CPU, memoria y disco; el nivel de parches y el título de la última actualización acumulativa; los reinicios inesperados con su hora y su código de pantallazo; los ID y conteos de la postura; números de puerto, protocolos, veredictos de exposición y el nombre de archivo del programa que escucha; cuántas sesiones, inicios de sesión, usuarios y direcciones de origen; las marcas de las cuentas y el indicador de nombre completo (sí o no y un conteo, nunca un nombre); y de servicios y tareas, el tipo de cuenta con que corren, el nombre de archivo del ejecutable, la firma y las marcas. Cada nombre, ruta y dirección de origen de RDP aparece como `"withheld"`, igual que el remedio de un dato que no se pudo leer y todo motivo que no sea un código fijo |
+| `true` | Todo lo anterior, más los nombres de sitios, grupos, cuentas, servicios y tareas, los nombres de host de los bindings, las rutas de los ejecutables, las direcciones locales concretas, la dirección de origen de cada inicio de sesión por RDP, y los remedios y motivos en texto libre de los datos que no se pudieron leer, cada uno como `{"untrusted": "..."}` |
 
 Entre los nombres de cuenta probados hay **cuentas reales de este servidor**, bien o mal escritas.
 Active `mcp.detailed_records` solo si acepta eso, y `mcp.host_details` solo si acepta que el proveedor

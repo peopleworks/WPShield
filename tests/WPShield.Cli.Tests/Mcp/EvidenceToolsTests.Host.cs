@@ -254,9 +254,54 @@ public sealed partial class EvidenceToolsTests
         var snapshot = answer["coverage"]!["snapshots"]![0]!;
         Assert.Equal("needs-elevation", (string)snapshot["status"]!);
         Assert.Equal("not-elevated", (string)snapshot["reason"]!);
-        Assert.Equal("Run the collector elevated.", (string)snapshot["remedy"]!["untrusted"]!);
+        Assert.Equal("withheld (mcp.host_details); run `wpshield host` on the server to see it", (string)snapshot["remedy"]!);
         Assert.False((bool)answer["result"]!["read"]!);
         Assert.Null(answer["result"]!["listeners_total"]);
+    }
+
+    /// <summary>
+    /// A stored remedy, and a reason that is not a fixed code, can name a path or a site. With the gate off they
+    /// must not leave the host - only a reason code does; with it on, they leave wrapped as untrusted text.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARemedyOrAReasonThatNamesTheHostFollowsTheGate(bool hostDetails)
+    {
+        const string Remedy = @"Grant NT SERVICE\WPShield read on C:\inetpub\sites\shop-synthetic.example\logs, then restart.";
+        const string Reason = "iis config of shop-synthetic.example unreadable at C:\\inetpub\\sites";
+        Seed(extra: store =>
+        {
+            var writer = new HostFactsWriter(store);
+            writer.Write(HostFactReading.Failed(HostFacts.Sites, null, Now.AddMinutes(-1), HostFactStatus.Unreadable, Reason, Remedy));
+            writer.Write(HostFactReading.Failed(HostFacts.Ports, null, Now.AddMinutes(-1), HostFactStatus.NeedsElevation, "not-elevated", Remedy));
+            if (hostDetails) new EvidenceSettings(store).Set("mcp.host_details", "true", "admin-synthetic", "allow host details", Now);
+        });
+        var tools = Tools();
+
+        var sites = Ok(tools.IisSites());
+        var ports = Ok(tools.ListeningPorts());
+        var sitesSnapshot = sites["coverage"]!["snapshots"]![0]!;
+        var portsSnapshot = ports["coverage"]!["snapshots"]![0]!;
+
+        Assert.Equal("not-elevated", (string)portsSnapshot["reason"]!);
+        if (hostDetails)
+        {
+            Assert.Equal(Remedy, (string)sitesSnapshot["remedy"]!["untrusted"]!);
+            Assert.Equal(Reason, (string)sitesSnapshot["reason"]!["untrusted"]!);
+            Assert.Equal(Remedy, (string)portsSnapshot["remedy"]!["untrusted"]!);
+        }
+        else
+        {
+            foreach (var text in new[] { sites.ToJsonString(), ports.ToJsonString() })
+            {
+                Assert.DoesNotContain("shop-synthetic.example", text, StringComparison.Ordinal);
+                Assert.DoesNotContain("inetpub", text, StringComparison.Ordinal);
+            }
+            Assert.Equal("withheld", (string)sitesSnapshot["reason"]!);
+            Assert.Equal("withheld (mcp.host_details); run `wpshield host` on the server to see it", (string)sitesSnapshot["remedy"]!);
+            Assert.Equal("withheld (mcp.host_details); run `wpshield host` on the server to see it", (string)portsSnapshot["remedy"]!);
+        }
     }
 
     [Fact]

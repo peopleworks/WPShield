@@ -20,7 +20,9 @@ must complete first.
   running as an administrator), `listening_ports` (verdicts by the Windows Firewall rules, red marked), `rdp_sessions` (`24h` or
   `7d`) and `host_inventory` (a required `kind`: `accounts`, `services` or `tasks`, with flags and the changes of 7 days).
   - They answer only from the collector's snapshots through `HostFactsQueries`; none reads the host. Every answer starts with the
-    snapshot it read: read time, age, whether it is stale, and its status with the reason and remedy. A fact never read is
+    snapshot it read: read time, age, whether it is stale, and its status with the reason and remedy. A remedy, and a reason
+    that is not a fixed code, can name a path or a site, so without `mcp.host_details` only the reason code is returned and the
+    remedy reads "withheld (mcp.host_details); run `wpshield host` on the server to see it". A fact never read is
     `no-snapshot-yet` with `null` values, and restarts are counted only once the collector has recorded reading the System log
     (`HostFactsQueries.RestartsReadUntil`): unknown is never none.
   - The new gate `mcp.host_details` (default `false`, read when the server starts, separate from `mcp.detailed_records`) decides

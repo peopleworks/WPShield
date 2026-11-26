@@ -381,10 +381,13 @@ above in these points:
   `rdp_sessions` and `host_inventory` answer from the snapshots through `HostFactsQueries` and honour
   `mcp.host_details`, frozen when the server starts like `mcp.detailed_records`; they take exactly the
   parameters of section 6, so the analyst is offered 24 optional parameters across 20 tools, both
-  strict-tool-use limits. As built: `rdp_sessions` defaults to `7d`; restarts count as read only once the
+  strict-tool-use limits. As built: `rdp_sessions` defaults to `7d` (section 6 names the two ranges but
+  not the default; `7d` is everything the snapshot holds); restarts count as read only once the
   collector has recorded how far it read the System log (`HostFactsQueries.RestartsReadUntil`), and
-  before that the count is `null`, never 0; a reason that is not a code and every stored remedy come back
-  as untrusted text; a drive-letter volume name is shown, any other volume name is a path and is
+  before that the count is `null`, never 0; a stored remedy, and a reason that is not a fixed code, can
+  name a path or a site, so with `mcp.host_details` off only the reason code is returned and the remedy
+  reads ``withheld (mcp.host_details); run `wpshield host` on the server to see it`` - with it on, both
+  come back as untrusted text; a drive-letter volume name is shown, any other volume name is a path and is
   withheld; a service's or task's account is classified (`local-system`, `local-service`,
   `network-service`, `virtual-account`, `pool-identity`, `named-account`) so the kind shows while the
   name stays behind the gate; and the signer of a signature is always returned, as untrusted text. The

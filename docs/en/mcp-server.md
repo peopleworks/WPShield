@@ -62,7 +62,9 @@ The host tools - `host_health`, `iis_sites`, `iis_posture`, `listening_ports`, `
 collector takes on its cadence and never read the host themselves, so nothing an assistant asks makes
 WPShield probe the server. Every answer starts with the snapshot it read: its read time, its age,
 whether it is stale (older than three times its cadence) and its status, with the reason and the remedy
-when it is not `ok`. A fact the collector has not read yet is `no-snapshot-yet` and its values are
+when it is not `ok`. A remedy, and a reason that is not a fixed code, can name a path or a site, so they
+follow `mcp.host_details`: without it only the reason code is returned and the remedy reads
+``withheld (mcp.host_details); run `wpshield host` on the server to see it``. A fact the collector has not read yet is `no-snapshot-yet` and its values are
 `null`: unknown, never none. Four of them take no argument; `rdp_sessions` takes `24h` or `7d` (default
 `7d`, all the snapshot holds) and `host_inventory` takes a required `kind`: `accounts`, `services` or
 `tasks`. None takes a path, a name or a command. Exposure verdicts are "by the Windows Firewall rules"
@@ -111,8 +113,8 @@ IIS setting, DNS record, certificate, firewall rule, service or port.
 
 | Setting `mcp.host_details` | Sent by the host tools ([ADR 0013](adr/0013-host-facts-and-the-command-center.md)) |
 | --- | --- |
-| `false` (default) | Counts, statuses, read times and stale flags; uptime, CPU, memory and disk; the patch level and the last cumulative update's title; unexpected restarts with their times and bugcheck codes; posture finding IDs and counts; port numbers, protocols, exposure verdicts and the listening program's file name; numbers of sessions, logons, users and source addresses; account flags and the full-name indicator (yes or no and a count, never a name); for services and tasks, the kind of account they run as, the executable's file name, the signature and the flags. Every name, path and RDP source address reads `"withheld"` |
-| `true` | All of the above, plus site, pool, account, service and task names, binding host names, executable paths, specific local addresses and the source address of each RDP logon - each as `{"untrusted": "..."}` |
+| `false` (default) | Counts, statuses with their reason codes, read times and stale flags; uptime, CPU, memory and disk; the patch level and the last cumulative update's title; unexpected restarts with their times and bugcheck codes; posture finding IDs and counts; port numbers, protocols, exposure verdicts and the listening program's file name; numbers of sessions, logons, users and source addresses; account flags and the full-name indicator (yes or no and a count, never a name); for services and tasks, the kind of account they run as, the executable's file name, the signature and the flags. Every name, path and RDP source address reads `"withheld"`, and so does the remedy of a fact that could not be read, and any reason that is not a fixed code |
+| `true` | All of the above, plus site, pool, account, service and task names, binding host names, executable paths, specific local addresses, the source address of each RDP logon, and the remedies and free-text reasons of facts that could not be read - each as `{"untrusted": "..."}` |
 
 Account names that were tried include **real accounts on this server**, correctly spelled or not.
 Turn `mcp.detailed_records` on only if you accept that, and `mcp.host_details` only if you accept that
