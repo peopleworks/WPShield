@@ -180,6 +180,45 @@ public sealed class AttacksWindowTests
         });
 
     [Fact]
+    public Task AnOperatorSortAndSelectionSurviveARefresh() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var now = DateTimeOffset.UtcNow;
+            var path = TempStore(store =>
+            {
+                var writer = new EvidenceWriter(store);
+                writer.BeginCoverage(EvidenceWriter.RawSource, now.AddDays(-8), now);
+                writer.Append([Failure(now.AddDays(-3), "203.0.113.10", "admin", 1), Failure(now.AddDays(-2), "203.0.113.10", "sa", 2),
+                    Failure(now.AddDays(-2), "203.0.113.10", "root", 3), Failure(now.AddDays(-2), "203.0.113.11", "admin", 4),
+                    Failure(now.AddDays(-2), "203.0.113.11", "test", 5), Failure(now.AddHours(-30), "198.51.100.7", "pedro", 6)]);
+            });
+            var window = new AttacksWindow(false, end => Snapshot(end, "read", null), (_, _) => new NoWatch(),
+                new EvidenceAttackStore(path, () => true));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                window.RangeWeek.IsChecked = true;
+                await window.LoadStoredAsync();
+                // The view's own order: most attempts first.
+                Assert.Equal(["203.0.113.10", "203.0.113.11", "198.51.100.7"], window.Rows.Items.Cast<AttackSource>().Select(r => r.Address));
+
+                await GridRefreshTests.ClickHeader(window.Rows, 0);
+                window.Rows.SelectedItem = window.Rows.Items.Cast<AttackSource>().Single(r => r.Address == "203.0.113.11");
+                await window.LoadStoredAsync();
+
+                Assert.Equal(["198.51.100.7", "203.0.113.10", "203.0.113.11"], window.Rows.Items.Cast<AttackSource>().Select(r => r.Address));
+                Assert.Equal(System.ComponentModel.ListSortDirection.Ascending, window.Rows.Columns[0].SortDirection);
+                Assert.Equal("203.0.113.11", Assert.IsType<AttackSource>(window.Rows.SelectedItem).Address);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
     public Task AMonthFromAggregatesSaysNamesAreGoneAndOpensWithTheSettingsRange() =>
         DesktopDispatcher.RunAsync(async () =>
         {

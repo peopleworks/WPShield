@@ -159,6 +159,7 @@ public partial class AttacksWindow : Window
             L("Neighbors", "Vecinas"), L("Decision", "Decisión"), L("Last (UTC)", "Último (UTC)")];
         DetailDecisionsLabel.Text = L("Decisions, last 30 days (Monitor: nothing is blocked)", "Decisiones, últimos 30 días (Monitor: no se bloquea nada)");
         for (var i = 0; i < headers.Length; i++) Rows.Columns[i].Header = headers[i];
+        GridExport.Attach(Rows, "attacks", spanish);
         RangeWeek.ToolTip = RangeMonth.ToolTip = L("Checking the WPShield evidence store…", "Comprobando el almacén de evidencia de WPShield…");
         RangeDay.IsChecked = true;
         flush.Tick += OnFlush;
@@ -450,7 +451,7 @@ public partial class AttacksWindow : Window
         RenderCards(view);
         RenderChart(view.Buckets);
         var previous = selected;
-        Rows.ItemsSource = view.Rows;
+        GridRefresh.Replace(Rows, view.Rows);
         if (previous is not null) Rows.SelectedItem = view.Rows.FirstOrDefault(r => r.Address == previous);
         Empty.Text = isStored
             ? view.NoData
@@ -481,7 +482,7 @@ public partial class AttacksWindow : Window
         foreach (var note in new[] { AttemptsNote, SourcesNote, UnknownNote, HourNote }) note.Text = L("Not read", "Sin lectura");
         ChartTitle.Text = ChartStart.Text = ChartEnd.Text = "";
         Plot.Children.Clear();
-        Rows.ItemsSource = Array.Empty<AttackSource>();
+        GridRefresh.Replace(Rows, Array.Empty<AttackSource>());
         Empty.Text = message;
         Empty.Visibility = Visibility.Visible;
         Footer.Text = message;

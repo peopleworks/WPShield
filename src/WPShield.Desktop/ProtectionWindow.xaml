@@ -205,7 +205,7 @@
                   HorizontalGridLinesBrush="#E6ECEF" BorderThickness="0" Background="White"
                   AlternatingRowBackground="#F6F9FA" RowHeight="33" EnableRowVirtualization="True">
           <DataGrid.Columns>
-            <DataGridTextColumn Binding="{Binding Target}" Width="150" ElementStyle="{StaticResource CellText}"/>
+            <DataGridTextColumn Binding="{Binding Target}" SortMemberPath="TargetSortKey" Width="150" ElementStyle="{StaticResource CellText}"/>
             <DataGridTextColumn Binding="{Binding Label}" Width="140" ElementStyle="{StaticResource CellText}"/>
             <DataGridTextColumn Binding="{Binding Rule}" Width="125" ElementStyle="{StaticResource CellText}"/>
             <DataGridTextColumn Binding="{Binding Action}" Width="105" ElementStyle="{StaticResource CellText}"/>

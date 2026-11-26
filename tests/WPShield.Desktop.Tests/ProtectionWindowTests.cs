@@ -117,6 +117,36 @@ public sealed class ProtectionWindowTests
         });
 
     [Fact]
+    public Task AnOperatorSortAndSelectionSurviveARefresh() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = Recording(DateTimeOffset.UtcNow);
+            var window = new ProtectionWindow(false, new EvidenceProtectionStore(path, () => true), () => new ServiceReading(ServiceState.Running));
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                window.SelectTab(DecisionTab.Month);
+                Assert.Equal(4, window.Rows.Items.Count);
+
+                await GridRefreshTests.ClickHeader(window.Rows, 0);
+                window.Rows.SelectedItem = window.Rows.Items.Cast<ProtectionRow>().Single(r => r.Target == "203.0.113.9");
+                await window.LoadAsync();
+
+                // Targets sort as numbers: IPv4 before IPv6, a network where its first address would be.
+                Assert.Equal(["198.51.100.7", "203.0.113.0/24", "203.0.113.9", "2001:db8:5::17"],
+                    window.Rows.Items.Cast<ProtectionRow>().Select(r => r.Target));
+                Assert.Equal(System.ComponentModel.ListSortDirection.Ascending, window.Rows.Columns[0].SortDirection);
+                Assert.Equal("203.0.113.9", Assert.IsType<ProtectionRow>(window.Rows.SelectedItem).Target);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
     public Task ARecordingStoreShowsItsDecisionsInTabsWithSearch() =>
         DesktopDispatcher.RunAsync(async () =>
         {

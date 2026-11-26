@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Windows;
 using System.Windows.Automation;
@@ -33,6 +34,12 @@ public partial class AttacksWindow
     internal sealed record WebRow(WebSource Source, string Label)
     {
         public long Observations => Source.Observations + Source.LoginPosts + Source.XmlrpcPosts;
+
+        /// <summary>What the address column sorts by: the address as a number (<see cref="AddressOrder"/>).</summary>
+        public string AddressSortKey => AddressOrder.Key(Source.Address);
+
+        /// <summary>What the network column sorts by.</summary>
+        public string NetworkSortKey => AddressOrder.Key(Source.Network);
     }
     internal sealed record WebFindingLine(string Context, string Path, string Ids);
 
@@ -87,9 +94,19 @@ public partial class AttacksWindow
             else
             {
                 column.Binding = new Binding(property) { StringFormat = property == "Source.Last" ? "yyyy-MM-dd HH:mm" : null };
+                // Addresses and networks sort as numbers, so .7 comes before .20.
+                if (property == "Source.Address") column.SortMemberPath = nameof(WebRow.AddressSortKey);
+                if (property == "Source.Network") column.SortMemberPath = nameof(WebRow.NetworkSortKey);
             }
             WebRows.Columns.Add(column);
         }
+        // Busiest first: the address that sent the most requests leads, then the one with more findings, then by
+        // address so equal rows keep a stable order. The operator's own sort replaces it, and survives a refresh.
+        GridRefresh.SetDefaultSort(WebRows,
+            new SortDescription("Source.Requests", ListSortDirection.Descending),
+            new SortDescription("Source.Findings", ListSortDirection.Descending),
+            new SortDescription(nameof(WebRow.AddressSortKey), ListSortDirection.Ascending));
+        GridExport.Attach(WebRows, "web", spanish);
         BindWebSites([]);
         RenderWebUnread(L("Reading the evidence store…", "Leyendo el almacén de evidencia…"));
         webLive.Tick += (_, _) =>
@@ -283,7 +300,7 @@ public partial class AttacksWindow
         var rows = data.Sources.Select(source => new WebRow(source, AttackBoard.LabelFor(data.Labels, source.Address))).ToArray();
         var current = rows.FirstOrDefault(row => row.Source.Address == webSelected);
         bindingWeb = true;
-        WebRows.ItemsSource = rows;
+        GridRefresh.Replace(WebRows, rows);
         WebRows.SelectedItem = current;
         bindingWeb = false;
         if (current is not null)
@@ -316,7 +333,7 @@ public partial class AttacksWindow
         WebCards.ItemsSource = WebMetrics(null).ToArray();
         WebCoverage.Text = WebEmpty.Text = message;
         WebEmpty.Visibility = Visibility.Visible;
-        WebRows.ItemsSource = null;
+        GridRefresh.Replace(WebRows, null);
         WebPlot.Children.Clear();
         WebChartTitle.Text = WebChartStart.Text = WebChartEnd.Text = "";
         WebFooter.Text = EvidenceOnly;

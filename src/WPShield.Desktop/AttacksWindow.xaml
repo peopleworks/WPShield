@@ -163,14 +163,14 @@
         <Grid>
           <DataGrid x:Name="Rows" Style="{StaticResource EvidenceRows}" SelectionChanged="OnRowSelected">
             <DataGrid.Columns>
-              <DataGridTextColumn Binding="{Binding Address}" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Address}" SortMemberPath="AddressSortKey" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Label}" Width="1.1*" MinWidth="130" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Attempts}" Width="90" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Accounts, TargetNullValue=—}" Width="90" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding TopAccounts}" Width="2*" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding UnknownShare, StringFormat=P0}" Width="100" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding LogonTypes}" Width="80" ElementStyle="{StaticResource CellText}"/>
-              <DataGridTextColumn Binding="{Binding Network}" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
+              <DataGridTextColumn Binding="{Binding Network}" SortMemberPath="NetworkSortKey" Width="1.3*" MinWidth="150" ElementStyle="{StaticResource CellText}"/>
               <DataGridTextColumn Binding="{Binding Neighbors}" Width="80" ElementStyle="{StaticResource CellText}"/>
               <!-- The decision in force (Monitor). Before "Last", which the code finds as the last column. -->
               <DataGridTextColumn Binding="{Binding Decision}" Width="110" ElementStyle="{StaticResource CellText}"/>

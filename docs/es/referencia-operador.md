@@ -76,6 +76,40 @@ los identificadores registrados. **Etiquetar…** y **Permitir…** usan el mism
 elevado y auditado que **Ataques**. La evidencia web sirve para revisión y no genera decisiones
 ni bloqueos.
 
+La tabla por dirección abre con la dirección más activa primero: más peticiones, luego más
+hallazgos, luego por dirección.
+
+### Tablas del escritorio: orden y exportación a CSV
+
+Todas las tablas del escritorio se ordenan por cualquier columna. Haz clic en el encabezado, y
+vuelve a hacer clic para invertir el orden. Las direcciones y las redes se ordenan como números, de
+modo que `203.0.113.7` va antes que `203.0.113.20` e IPv4 antes que IPv6.
+
+Al actualizar se conservan tu orden, la flecha del encabezado, la fila seleccionada y la posición
+de desplazamiento. Esto vale para un ciclo de **En vivo**, **Actualizar**, un periodo nuevo y una
+recarga después de "sin lectura". Las tablas afectadas son **Ataques**, **Web**, **Protección**,
+**Puertos locales**, **Tráfico por puertos** y el historial de **Ajustes**.
+
+Haz clic derecho en una tabla y elige **Exportar CSV…** para guardar exactamente lo que muestra: las
+columnas visibles, las filas en su orden actual y los encabezados en el idioma de la ventana. Lo
+mismo vale para la lista de **Referencias de auditoría**. Se abre un cuadro de guardado en
+**Documentos** con un nombre como `wpshield-web-2026-11-26-1830.csv`. No se escribe nada más que el
+archivo que elijas.
+
+El archivo es UTF-8 con marca de orden de bytes, para que Excel lea los acentos. Los campos van
+entre comillas según RFC 4180 y las líneas terminan en CRLF. Si Excel pone todo en una columna, cosa
+que pasa cuando el separador de listas es el punto y coma, ábrelo con **Datos → Desde el
+texto/CSV**.
+
+Los números, las horas (UTC, como `yyyy-MM-dd HH:mm:ss`) y las proporciones (como fracciones,
+`0.93`) se escriben como valores. Toda celda de texto se trata como elegida por el atacante, porque
+muchas lo son: rutas, nombres de cuenta probados, agentes de usuario y etiquetas. Cada celda de
+texto se limpia igual que en la ventana: se sustituyen los caracteres de control y de formato y se
+acota la longitud. Además, recibe un `'` delante cuando, tras los espacios iniciales, empieza por
+`=`, `+`, `-`, `@`, un tabulador o un retorno de carro, o por sus formas de ancho completo. Así, una
+hoja de cálculo lee `=HYPERLINK(...)` o `+cmd|...` como texto, nunca como fórmula. La decisión sigue
+el tipo de la columna, no el valor: una columna de texto con `-2+3` sigue siendo texto.
+
 ## Estado del proyecto
 
 | Capacidad | Estado | Detalle |

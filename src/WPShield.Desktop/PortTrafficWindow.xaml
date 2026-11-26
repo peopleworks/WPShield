@@ -42,12 +42,12 @@
       <DataGrid.RowStyle><Style TargetType="DataGridRow"><Setter Property="ToolTip" Value="{Binding Details}"/></Style></DataGrid.RowStyle>
       <DataGrid.Columns>
         <DataGridTextColumn x:Name="IntervalColumn" Binding="{Binding Interval}" Width="1.25*"/>
-        <DataGridTemplateColumn x:Name="ReceiveColumn" Width="*">
+        <DataGridTemplateColumn x:Name="ReceiveColumn" Width="*" ClipboardContentBinding="{Binding Received}">
           <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Margin="5,2">
             <TextBlock Text="{Binding Received}"/><ProgressBar Height="5" Maximum="1" Value="{Binding ReceiveFraction}" Foreground="#16776F"/>
           </StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>
         </DataGridTemplateColumn>
-        <DataGridTemplateColumn x:Name="SendColumn" Width="*">
+        <DataGridTemplateColumn x:Name="SendColumn" Width="*" ClipboardContentBinding="{Binding Sent}">
           <DataGridTemplateColumn.CellTemplate><DataTemplate><StackPanel Margin="5,2">
             <TextBlock Text="{Binding Sent}"/><ProgressBar Height="5" Maximum="1" Value="{Binding SendFraction}" Foreground="#5069A7"/>
           </StackPanel></DataTemplate></DataGridTemplateColumn.CellTemplate>

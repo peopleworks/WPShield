@@ -29,6 +29,14 @@ must complete first.
     `start-pending` and `flapping` (ten or more state changes in an hour), from at most 5,000 System records.
   - `wpshield host inventory tasks` folds the Microsoft-signed tasks under `\Microsoft\Windows\` that are listed only for
     running a script host into one counted line; `--all` shows them. They are still read and stored.
+- **Export CSV…** on every desktop table (right-click): **Attacks**, **Web**, **Protection**, **Local ports**,
+  **Port traffic**, the **Settings** history and the **Audit references** list. It writes exactly what the table shows
+  (visible columns, rows in their current sort, headers in the window's language) to the one file chosen in a save
+  dialog that starts in Documents. The file is UTF-8 with a BOM, RFC 4180 quoted, with CRLF line ends. Numbers and UTC
+  times are written as values. Every text cell is cleaned like the window cleans it and bounded, and gets a leading `'`
+  when it would start a spreadsheet formula (`=`, `+`, `-`, `@`, tab, carriage return or their full-width forms). The
+  rule follows the column's type, never the value, because paths, attempted account names and labels are
+  attacker-chosen.
 - Six read-only host tools in `wpshield mcp`, which the AI analyst gets too (ADR 0013 as built, ADR 0008 table):
   `host_health` (uptime, CPU, memory, disk, the patch level as Windows reports it, the unexpected restarts of the last 30 days
   with their bugcheck codes, and the last 24 hours), `iis_sites`, `iis_posture` (the audit's summary and the history of pools
@@ -196,6 +204,12 @@ must complete first.
 
 ### Changed
 
+- Desktop tables keep the operator's sort, its header arrow, the selected row and the scroll position across a
+  refresh. Before, every Live tick replaced the rows and the sort snapped back. This applies to **Attacks**, **Web**,
+  **Protection**, **Local ports**, **Port traffic** and the **Settings** history, through one shared helper, and the
+  sort is remembered through an empty or "not read" state in between. **Local ports** can now be sorted too.
+  Addresses and networks sort as numbers (`203.0.113.7` before `203.0.113.20`, IPv4 before IPv6). The **Web**
+  address table opens with the busiest address first: requests, then findings, then address.
 - The AI analyst is offered fewer optional tool parameters than an MCP client, so fourteen tools fit the strict-schema budget of 24 (23 used): `limit` only on `top_sources`, no timeline `bucket`, no `site` on the web tools and no address filter on `web_findings`. The tool's own default applies to what is left out, and MCP clients still see every parameter.
 - `wpshield audit` leads the `AUDIT-002` remedy with the HTTP 503 risk of changing a password before
   moving every pool that uses it. `AUDIT-004` lists the WordPress sites that should keep PHP and

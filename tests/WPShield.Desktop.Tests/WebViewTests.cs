@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.IO;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -91,6 +93,56 @@ public sealed class WebViewTests
             Assert.Equal(last, Assert.IsType<TextBlock>(window.WebRows.Columns[^1].Header).ToolTip);
             return Task.CompletedTask;
         }, spanish);
+
+    [Fact]
+    public Task TheAddressTableOpensBusiestFirstAndKeepsTheOperatorsSortAndSelectionAcrossARefresh() =>
+        Verify(SeedMany, async (window, _) =>
+        {
+            // Requests descending, then findings descending, then the address.
+            Assert.Equal([Busy, Quieter, Address], WebAddresses(window));
+            Assert.Equal(ListSortDirection.Descending, window.WebRows.Columns[2].SortDirection);
+
+            await GridRefreshTests.ClickHeader(window.WebRows, 0);
+            window.WebRows.SelectedItem = window.WebRows.Items.Cast<AttacksWindow.WebRow>().Single(r => r.Source.Address == Quieter);
+            await window.LoadWebAsync();
+
+            Assert.Equal([Busy, Address, Quieter], WebAddresses(window));
+            Assert.Equal(ListSortDirection.Ascending, window.WebRows.Columns[0].SortDirection);
+            Assert.Null(window.WebRows.Columns[2].SortDirection);
+            Assert.Equal(Quieter, Assert.IsType<AttacksWindow.WebRow>(window.WebRows.SelectedItem).Source.Address);
+        });
+
+    [Fact]
+    public Task ExportWritesTheRowsAsShownWithSpanishHeadersAndANeutralisedLabel() =>
+        Verify(SeedMany, (window, _) =>
+        {
+            var directory = Directory.CreateTempSubdirectory("wpshield-web-export-");
+            var (choose, notify) = (GridExport.ChooseFile, GridExport.Notify);
+            try
+            {
+                var path = System.IO.Path.Combine(directory.FullName, "web.csv");
+                GridExport.ChooseFile = (_, _, _) => path;
+                GridExport.Notify = (_, _, _) => { };
+
+                Assert.Equal(path, GridExport.Export(window.WebRows, "web", spanish: true));
+
+                var lines = File.ReadAllText(path, Encoding.UTF8).Split("\r\n");
+                Assert.StartsWith("\"Dirección\",\"Etiqueta\",\"Peticiones\",\"Errores de cliente (4xx)\"", lines[0], StringComparison.Ordinal);
+                Assert.Equal([Busy, Quieter, Address], lines.Skip(1).Take(3).Select(line => line.Split(',')[0].Trim('"')));
+                // The operator's label is the attacker's favourite cell: a spreadsheet must read it as text.
+                Assert.StartsWith("\"" + Busy + "\",\"'=HYPERLINK(", lines[1], StringComparison.Ordinal);
+                Assert.Contains(",40,", lines[1], StringComparison.Ordinal);
+            }
+            finally
+            {
+                (GridExport.ChooseFile, GridExport.Notify) = (choose, notify);
+                directory.Delete(recursive: true);
+            }
+            return Task.CompletedTask;
+        }, spanish: true);
+
+    private static string[] WebAddresses(AttacksWindow window) =>
+        [.. window.WebRows.Items.Cast<AttacksWindow.WebRow>().Select(r => r.Source.Address)];
 
     [Fact]
     public Task SiteFilterChangesTotalsSourcesAndCoverage() =>
@@ -239,6 +291,21 @@ public sealed class WebViewTests
         window.Show();
         window.OpenWebView();
         return window;
+    }
+
+    private const string Busy = "198.51.100.30";
+    private const string Quieter = "203.0.113.20";
+
+    /// <summary>Three addresses on one site: two with the same requests, told apart by findings, and the seeded one.</summary>
+    private static void SeedMany(EvidenceStore store)
+    {
+        Seed(store);
+        var seen = Now.AddMinutes(-20);
+        new WebEvidenceWriter(store).Write(new WebBatch([], [],
+            [new(4, Hour, Quieter, 40, 1, 0, 0, 0, 0, seen, seen, null),
+             new(4, Hour, Busy, 40, 5, 2, 0, 0, 0, seen, seen, null)], []));
+        new EvidenceSettings(store).Set(AddressLabels.SettingKey,
+            "{\"" + Busy + "\":\"=HYPERLINK(\\\"http://198.51.100.1/x\\\",\\\"ok\\\")\"}", "test", "synthetic label");
     }
 
     private static void Seed(EvidenceStore store) => Seed(store, otherSiteRead: false);

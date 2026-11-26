@@ -93,6 +93,39 @@ public sealed class SettingsWindowTests
         });
 
     [Fact]
+    public Task TheHistorySortSurvivesReadingAnotherSettingAndComingBack() =>
+        DesktopDispatcher.RunAsync(async () =>
+        {
+            var path = TempStore(store =>
+            {
+                var settings = new EvidenceSettings(store);
+                settings.Set("retention.raw_days", "30", "LAB\\bravo", "second opinion");
+                settings.Set("retention.raw_days", "45", "LAB\\alpha", "first opinion");
+                settings.Set("retention.raw_days", "60", "LAB\\charlie", "third opinion");
+            });
+            var window = Window(path);
+            try
+            {
+                window.Show();
+                await window.LoadAsync();
+                await window.Select("retention.raw_days");
+                Assert.Equal(3, window.HistoryRows.Items.Count);
+
+                await GridRefreshTests.ClickHeader(window.HistoryRows, 1);
+                await window.Select("mcp.detailed_records");
+                await window.Select("retention.raw_days");
+
+                Assert.Equal(["LAB\\alpha", "LAB\\bravo", "LAB\\charlie"], window.HistoryRows.Items.Cast<SettingHistoryRow>().Select(r => r.Who));
+                Assert.Equal(System.ComponentModel.ListSortDirection.Ascending, window.HistoryRows.Columns[1].SortDirection);
+            }
+            finally
+            {
+                window.Close();
+                Remove(path);
+            }
+        });
+
+    [Fact]
     public Task OpenedFromProtectionItSelectsTheDefenseSettings() =>
         DesktopDispatcher.RunAsync(async () =>
         {

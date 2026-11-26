@@ -50,6 +50,7 @@ public partial class ListenerWindow : Window
         string[] headers = [L("Protocol", "Protocolo"), L("Local address", "Dirección local"), L("Port", "Puerto"),
             L("Family", "Familia"), L("Port name", "Nombre de puerto"), L("Process · PID", "Proceso · PID")];
         for (int i = 0; i < headers.Length; i++) Rows.Columns[i].Header = headers[i];
+        GridExport.Attach(Rows, "listeners", spanish);
         timer.Tick += OnRefresh;
         initialized = true;
     }
@@ -302,7 +303,7 @@ public partial class ListenerWindow : Window
         var previous = (Rows.SelectedItem as ListenerRow)?.Key;
         var query = Search.Text.Trim();
         var visible = inventory.Where(row => row.Matches(protocol, query)).ToArray();
-        Rows.ItemsSource = visible;
+        GridRefresh.Replace(Rows, visible);
         if (previous.HasValue) Rows.SelectedItem = visible.FirstOrDefault(row => row.Key == previous.Value);
         var hasReadableTable = latest.Any(t => (protocol is null || t.Protocol == protocol) && t.Status != "unavailable");
         Empty.Text = hasReadableTable ? L("No matches in the observed rows", "Sin coincidencias en las filas observadas") :

@@ -58,6 +58,7 @@ public partial class PortTrafficWindow : Window
         ReceiveColumn.Header = L("Received (B/s)", "Entrada (B/s)");
         SendColumn.Header = L("Sent (B/s)", "Salida (B/s)");
         CoverageColumn.Header = L("Coverage", "Cobertura");
+        GridExport.Attach(Rows, "port-traffic", spanish);
         Scope.Text = L("Observed IP bytes per second", "Bytes IP observados por segundo");
         timer.Tick += (_, _) => RenderLatest();
         UpdateControls();
@@ -237,7 +238,7 @@ public partial class PortTrafficWindow : Window
         if (ReferenceEquals(displayed, history)) return;
         displayed = history;
         var peak = history.Select(i => Math.Max(i.ReceivedBytesPerSecond ?? 0, i.SentBytesPerSecond ?? 0)).DefaultIfEmpty().Max();
-        Rows.ItemsSource = history.Reverse().Select(i =>
+        GridRefresh.Replace(Rows, history.Reverse().Select(i =>
         {
             var received = i.ReceivedBytesPerSecond;
             var sent = i.SentBytesPerSecond;
@@ -251,7 +252,7 @@ public partial class PortTrafficWindow : Window
             return new IntervalRow($"{i.StartUtc:HH:mm:ss.fff} – {i.EndUtc:HH:mm:ss.fff}", received?.ToString("N1") ?? "—",
                 sent?.ToString("N1") ?? "—", peak > 0 ? (received ?? 0) / peak : 0, peak > 0 ? (sent ?? 0) / peak : 0,
                 coverage, details.TrimEnd(), i.Coverage == "gap");
-        }).ToArray();
+        }).ToArray(), row => row is IntervalRow r ? r.Interval : null);
         if (session is { IsCancellationRequested: false } && history.Count > 0) Status.Text = L("Capturing · newest interval first", "Capturando · intervalo más reciente primero");
     }
 

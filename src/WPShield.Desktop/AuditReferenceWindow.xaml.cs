@@ -27,6 +27,7 @@ public partial class AuditReferenceWindow : Window
         SourceColumn.Header = L("Source", "Fuente");
         IdColumn.Header = L("Record ID / IIS line", "ID de registro / línea IIS");
         TimeColumn.Header = L("Event time (UTC)", "Hora del evento (UTC)");
+        GridExport.Attach(Entries, "audit-references", spanish);
         PreviewLabel.Text = L("Clipboard preview", "Vista previa del portapapeles");
         CoverageLabel.Text = L("Open a saved WPShield snapshot for RDP, SQL Server or IIS.",
             "Abra un informe JSON de WPShield de RDP, SQL Server o IIS.");
